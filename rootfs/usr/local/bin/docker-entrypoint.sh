@@ -12,8 +12,11 @@ if [ "$(id -u)" -eq 0 ]; then
   # gcloud/kubectl state lives on the /paperclip volume and must be node-owned
   # (root-owned files there cause EACCES later). Upstream repairs the rest of
   # the tree recursively right after this.
+  # Recursive: a `docker exec` as root (e.g. `gcloud auth login` without -u node)
+  # leaves root-owned 600 files that break gcloud for agents. Upstream's own
+  # repair runs later, after gcloud-init, so fix these dirs here first.
   for dir in "$(dirname "$CLOUDSDK_CONFIG")" "$CLOUDSDK_CONFIG" "$(dirname "$KUBECONFIG")"; do
-    mkdir -p "$dir" && chown node:node "$dir" 2>/dev/null || true
+    mkdir -p "$dir" && chown -R node:node "$dir" 2>/dev/null || true
   done
   gosu node /usr/local/bin/paperclip-gcloud-init || true
 else

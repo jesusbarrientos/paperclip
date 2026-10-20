@@ -30,7 +30,8 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl \
-      openvpn iproute2 sudo; \
+      openvpn iproute2 sudo \
+      ruby ruby-bundler; \
     rm -rf /var/lib/apt/lists/*
 
 # gcloud and kubectl state on the persistent /paperclip volume. Set explicitly
@@ -50,7 +51,7 @@ RUN set -eux; \
     chmod 0440 /etc/sudoers.d/paperclip-vpn; \
     visudo -cf /etc/sudoers.d/paperclip-vpn; \
     mkdir -p /etc/openvpn/paperclip; \
-    gcloud version; kubectl version --client; gke-gcloud-auth-plugin --version; openvpn --version | head -1
+    gcloud version; kubectl version --client; gke-gcloud-auth-plugin --version; openvpn --version | head -1; ruby --version; bundle --version
 
 # --- Code fixes -------------------------------------------------------------
 COPY patches/ /opt/paperclip-patches/
