@@ -1,0 +1,97 @@
+#!/bin/sh
+# Controlled OpenVPN wrapper for Paperclip agents.
+#
+# Runs as root: at container start (OPENVPN_AUTOSTART=1) or through the
+# sudoers rule in /etc/sudoers.d/paperclip-vpn, which lets the `node` user run
+# exactly this script. Agents call it as `vpn up|down|status|log`.
+#
+# The config is fixed and must be mounted read-only and root-owned at
+# /etc/openvpn/paperclip/client.conf. Agents can neither point OpenVPN at a
+# file they control nor read the VPN credentials. sudo resets the environment,
+# so nothing here is read from env.
+set -eu
+
+DIR=/etc/openvpn/paperclip
+CONFIG="$DIR/client.conf"
+RUN_DIR=/run/paperclip-vpn
+PID_FILE="$RUN_DIR/openvpn.pid"
+LOG=/var/log/paperclip-vpn.log
+TIMEOUT=45
+
+die() { echo "vpn: $*" >&2; exit 1; }
+
+running() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+tun_dev() {
+  ip -o link show 2>/dev/null | awk -F': ' '$2 ~ /^tun/ {sub(/@.*/, "", $2); print $2; exit}'
+}
+
+show_status() {
+  if running; then
+    dev="$(tun_dev)"
+    echo "vpn: up (pid $(cat "$PID_FILE"), device ${dev:-unknown})"
+    if [ -n "$dev" ]; then
+      ip -brief addr show dev "$dev" 2>/dev/null || true
+      echo "routes via $dev:"
+      ip route show dev "$dev" 2>/dev/null | sed 's/^/  /' || true
+    fi
+    return 0
+  fi
+  echo "vpn: down"
+  return 1
+}
+
+[ "$(id -u)" -eq 0 ] || die "must run as root (use: vpn ${1:-status})"
+
+case "${1:-status}" in
+  up)
+    if running; then show_status; exit 0; fi
+    [ -r "$CONFIG" ] || die "missing $CONFIG (mount the .ovpn there, read-only)"
+    [ -c /dev/net/tun ] || die "/dev/net/tun missing: add 'devices: [/dev/net/tun:/dev/net/tun]' and 'cap_add: [NET_ADMIN]' to the compose service"
+    mkdir -p "$RUN_DIR"
+    touch "$LOG"
+    start_line=$(( $(wc -l < "$LOG") + 1 ))
+    # --script-security 1: no user scripts (up/down hooks) can run as root.
+    # pull-filter: split tunnel. Only the routes the server pushes go through
+    # the VPN, so Paperclip, Slack and the model APIs keep the normal network.
+    openvpn --cd "$DIR" --config "$CONFIG" \
+      --script-security 1 \
+      --pull-filter ignore redirect-gateway \
+      --pull-filter ignore block-outside-dns \
+      --daemon paperclip-vpn --writepid "$PID_FILE" --log-append "$LOG"
+    i=0
+    while [ "$i" -lt "$TIMEOUT" ]; do
+      if tail -n +"$start_line" "$LOG" | grep -q "Initialization Sequence Completed"; then
+        show_status
+        exit 0
+      fi
+      running || break
+      i=$((i + 1))
+      sleep 1
+    done
+    echo "vpn: failed to connect; last log lines:" >&2
+    tail -n +"$start_line" "$LOG" | tail -n 25 >&2
+    running && kill "$(cat "$PID_FILE")" 2>/dev/null || true
+    exit 1
+    ;;
+  down)
+    if running; then
+      kill "$(cat "$PID_FILE")"
+      i=0
+      while running && [ "$i" -lt 10 ]; do i=$((i + 1)); sleep 1; done
+    fi
+    rm -f "$PID_FILE"
+    echo "vpn: down"
+    ;;
+  status)
+    show_status
+    ;;
+  log)
+    [ -f "$LOG" ] && tail -n 50 "$LOG" || echo "vpn: no log yet"
+    ;;
+  *)
+    die "usage: vpn up|down|status|log"
+    ;;
+esac

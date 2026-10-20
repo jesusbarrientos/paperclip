@@ -1,0 +1,4 @@
+#!/bin/sh
+# Agent-facing VPN command: vpn up|down|status|log
+if [ "$(id -u)" -eq 0 ]; then exec /usr/local/sbin/paperclip-vpn "$@"; fi
+exec sudo -n /usr/local/sbin/paperclip-vpn "$@"

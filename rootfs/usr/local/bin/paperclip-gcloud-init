@@ -1,0 +1,43 @@
+#!/bin/sh
+# Prepares gcloud/kubectl for agents at container start. Runs as `node`.
+# Every step is optional and failures never block Paperclip.
+#
+#   GCP_SA_KEY_FILE   service-account JSON (mounted read-only). Activated so
+#                     gcloud/kubectl always have a non-expiring identity.
+#   GCP_PROJECT       default project.
+#   GKE_CLUSTERS      space-separated "name:location[:project]" entries;
+#                     kubeconfig entries are (re)generated for each.
+#
+# Without GCP_SA_KEY_FILE, a personal `gcloud auth login` stored in
+# $CLOUDSDK_CONFIG (on the /paperclip volume) is used as-is.
+set -u
+log() { echo "paperclip-gcloud-init: $*" >&2; }
+
+command -v gcloud >/dev/null 2>&1 || exit 0
+
+if [ -n "${GCP_SA_KEY_FILE:-}" ]; then
+  if [ -r "$GCP_SA_KEY_FILE" ]; then
+    gcloud auth activate-service-account --key-file="$GCP_SA_KEY_FILE" --quiet >/dev/null 2>&1 \
+      && log "service account active: $(gcloud config get-value account 2>/dev/null)" \
+      || log "could not activate service account from $GCP_SA_KEY_FILE"
+  else
+    log "GCP_SA_KEY_FILE=$GCP_SA_KEY_FILE is not readable by $(id -un)"
+  fi
+fi
+
+[ -n "${GCP_PROJECT:-}" ] && gcloud config set project "$GCP_PROJECT" --quiet >/dev/null 2>&1
+
+for entry in ${GKE_CLUSTERS:-}; do
+  name=$(echo "$entry" | cut -d: -f1)
+  location=$(echo "$entry" | cut -d: -f2)
+  project=$(echo "$entry" | cut -s -d: -f3)
+  if [ -z "$name" ] || [ -z "$location" ]; then
+    log "skipping malformed GKE_CLUSTERS entry: $entry"
+    continue
+  fi
+  gcloud container clusters get-credentials "$name" --location "$location" \
+    ${project:+--project "$project"} --quiet >/dev/null 2>&1 \
+    && log "kubeconfig ready: $name ($location)" \
+    || log "get-credentials failed for $name ($location); check access/VPN"
+done
+exit 0

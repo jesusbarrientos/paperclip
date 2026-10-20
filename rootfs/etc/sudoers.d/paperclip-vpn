@@ -1,0 +1,2 @@
+# Agents (user node) may control the VPN only through the fixed wrapper.
+node ALL=(root) NOPASSWD: /usr/local/sbin/paperclip-vpn
