@@ -31,7 +31,8 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
       google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl \
       openvpn iproute2 sudo \
-      ruby ruby-bundler; \
+      ruby ruby-bundler \
+      build-essential ruby-dev pkg-config libyaml-dev libffi-dev libssl-dev zlib1g-dev; \
     rm -rf /var/lib/apt/lists/*
 
 # gcloud and kubectl state on the persistent /paperclip volume. Set explicitly
@@ -39,7 +40,9 @@ RUN set -eux; \
 ENV CLOUDSDK_CONFIG=/paperclip/.config/gcloud \
     KUBECONFIG=/paperclip/.kube/config \
     USE_GKE_GCLOUD_AUTH_PLUGIN=True \
-    CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    CLOUDSDK_CORE_DISABLE_PROMPTS=1 \
+    GEM_HOME=/paperclip/.gem \
+    PATH=/paperclip/.gem/bin:$PATH
 
 # Our entrypoint wraps upstream's, which keeps its name and job.
 RUN mv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.upstream.sh
@@ -51,7 +54,7 @@ RUN set -eux; \
     chmod 0440 /etc/sudoers.d/paperclip-vpn; \
     visudo -cf /etc/sudoers.d/paperclip-vpn; \
     mkdir -p /etc/openvpn/paperclip; \
-    gcloud version; kubectl version --client; gke-gcloud-auth-plugin --version; openvpn --version | head -1; ruby --version; bundle --version
+    gcloud version; kubectl version --client; gke-gcloud-auth-plugin --version; openvpn --version | head -1; ruby --version; bundle --version; gcc --version | head -1; make --version | head -1
 
 # --- Code fixes -------------------------------------------------------------
 COPY patches/ /opt/paperclip-patches/
