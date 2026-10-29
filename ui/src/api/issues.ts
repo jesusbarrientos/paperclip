@@ -106,7 +106,7 @@ export type IssueListFilters = {
   q?: string;
   limit?: number;
   offset?: number;
-  sortField?: "updated" | "id";
+  sortField?: "updated" | "id" | "created" | "title" | "priority" | "status";
   afterId?: string;
   sortDir?: "asc" | "desc";
 };

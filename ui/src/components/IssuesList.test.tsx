@@ -8,6 +8,7 @@ import type { Issue, Project } from "@paperclipai/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IssuesList,
+  boardColumnServerSort,
   issueAgeBucket,
   issueAgeBucketsCrossed,
   issueAgeSeparatorLabel,
@@ -2339,6 +2340,20 @@ describe("IssuesList", () => {
     act(() => {
       root.unmount();
     });
+  });
+});
+
+describe("boardColumnServerSort", () => {
+  it("sends server-sortable fields through unchanged", () => {
+    expect(boardColumnServerSort({ sortField: "created", sortDir: "asc" })).toEqual({ sortField: "created", sortDir: "asc" });
+    expect(boardColumnServerSort({ sortField: "title", sortDir: "desc" })).toEqual({ sortField: "title", sortDir: "desc" });
+    expect(boardColumnServerSort({ sortField: "priority", sortDir: "asc" })).toEqual({ sortField: "priority", sortDir: "asc" });
+    expect(boardColumnServerSort({ sortField: "updated", sortDir: "asc" })).toEqual({ sortField: "updated", sortDir: "asc" });
+  });
+
+  it("falls back to most recent activity for client-only or per-column-constant sorts", () => {
+    expect(boardColumnServerSort({ sortField: "workflow", sortDir: "asc" })).toEqual({ sortField: "updated", sortDir: "desc" });
+    expect(boardColumnServerSort({ sortField: "status", sortDir: "asc" })).toEqual({ sortField: "updated", sortDir: "desc" });
   });
 });
 

@@ -1617,6 +1617,57 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     expect(result.map((issue) => issue.id)).toEqual([recentMediumIssueId]);
   });
 
+  it("sorts issues by created, title, priority and status in both directions", async () => {
+    const companyId = randomUUID();
+    const [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    await db.insert(issues).values([
+      {
+        id: a,
+        companyId,
+        title: "banana",
+        status: "done",
+        priority: "low",
+        createdAt: new Date("2026-05-01T10:00:00.000Z"),
+      },
+      {
+        id: b,
+        companyId,
+        title: "Apple",
+        status: "in_progress",
+        priority: "critical",
+        createdAt: new Date("2026-05-03T10:00:00.000Z"),
+      },
+      {
+        id: c,
+        companyId,
+        title: "cherry",
+        status: "todo",
+        priority: "medium",
+        createdAt: new Date("2026-05-02T10:00:00.000Z"),
+      },
+    ]);
+
+    const ids = async (sortField: "created" | "title" | "priority" | "status", sortDir: "asc" | "desc") =>
+      (await svc.list(companyId, { sortField, sortDir })).map((issue) => issue.id);
+
+    expect(await ids("created", "asc")).toEqual([a, c, b]);
+    expect(await ids("created", "desc")).toEqual([b, c, a]);
+    expect(await ids("title", "asc")).toEqual([b, a, c]);
+    expect(await ids("title", "desc")).toEqual([c, a, b]);
+    expect(await ids("priority", "asc")).toEqual([b, c, a]);
+    expect(await ids("priority", "desc")).toEqual([a, c, b]);
+    expect(await ids("status", "asc")).toEqual([b, c, a]);
+    expect(await ids("status", "desc")).toEqual([a, c, b]);
+  });
+
   it("ranks direct description matches ahead of comment-only matches", async () => {
     const companyId = randomUUID();
     const commentMatchId = randomUUID();

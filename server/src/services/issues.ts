@@ -1833,12 +1833,28 @@ export interface IssueFilters {
   q?: string;
   limit?: number;
   offset?: number;
-  sortField?: "updated" | "id";
+  sortField?: IssueListSortField;
   afterId?: string;
   sortDir?: "asc" | "desc";
   /** ISO 8601 timestamp — only return issues with updatedAt strictly after this value. */
   updatedSince?: string;
 }
+
+export const ISSUE_LIST_SORT_FIELDS = [
+  "updated",
+  "id",
+  "created",
+  "title",
+  "priority",
+  "status",
+] as const;
+export type IssueListSortField = (typeof ISSUE_LIST_SORT_FIELDS)[number];
+export function isIssueListSortField(value: unknown): value is IssueListSortField {
+  return typeof value === "string" && (ISSUE_LIST_SORT_FIELDS as readonly string[]).includes(value);
+}
+
+// Same order the board UI uses for status sorting (ui/src/lib/issue-filters.ts).
+const issueStatusSortOrder = sql<number>`CASE ${issues.status} WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'backlog' THEN 2 WHEN 'in_review' THEN 3 WHEN 'blocked' THEN 4 WHEN 'done' THEN 5 WHEN 'cancelled' THEN 6 ELSE 7 END`;
 
 type IssueRow = typeof issues.$inferSelect & { externalConversationState?: "active" | "waiting" | null };
 type IssueLabelRow = typeof labels.$inferSelect;
@@ -3207,6 +3223,20 @@ function issueListOrderBy(
     return hasSearch
       ? [asc(searchOrder), activityOrder, updatedOrder, idOrder]
       : [activityOrder, updatedOrder, idOrder];
+  }
+  if (sortField === "created" || sortField === "title" || sortField === "priority" || sortField === "status") {
+    const dir = sortDir === "desc" ? desc : asc;
+    const primary =
+      sortField === "created"
+        ? [dir(issues.createdAt)]
+        : sortField === "title"
+          ? [dir(sql`lower(${issues.title})`), dir(issues.title)]
+          : sortField === "priority"
+            ? [dir(priorityOrder)]
+            : [dir(issueStatusSortOrder)];
+    // Ties fall back to most recent activity, then id, so pages stay stable.
+    const tieBreak = [desc(canonicalLastActivityAt), desc(issues.updatedAt), desc(issues.id)];
+    return hasSearch ? [asc(searchOrder), ...primary, ...tieBreak] : [...primary, ...tieBreak];
   }
 
   return [

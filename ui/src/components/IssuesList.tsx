@@ -304,6 +304,22 @@ function sortIssues(issues: Issue[], state: IssueViewState): Issue[] {
   return sorted;
 }
 
+/**
+ * Server-side order for each board column request. Columns are capped at
+ * ISSUE_BOARD_COLUMN_RESULT_LIMIT rows, so the server must pick the right
+ * window for the active sort; the client then re-sorts the merged result.
+ * "workflow" is client-only and "status" is constant inside a column, so both
+ * fall back to most recent activity.
+ */
+export function boardColumnServerSort(
+  state: Pick<IssueViewState, "sortField" | "sortDir">,
+): { sortField: "updated" | "created" | "title" | "priority"; sortDir: "asc" | "desc" } {
+  if (state.sortField === "workflow" || state.sortField === "status") {
+    return { sortField: "updated", sortDir: "desc" };
+  }
+  return { sortField: state.sortField, sortDir: state.sortDir };
+}
+
 // Only recency sorts (newest first) get date separators — for any other
 // sort/direction the boundaries would be meaningless.
 function issueDateSeparatorField(state: IssueViewState): "createdAt" | "updatedAt" | null {
@@ -919,6 +935,7 @@ function StreamlinedIssuesList({
     enabled: !!selectedCompanyId && normalizedIssueSearch.length > 0 && !searchWithinLoadedIssues,
     placeholderData: (previousData) => previousData,
   });
+  const boardSort = boardColumnServerSort(viewState);
   const boardIssueQueries = useQueries({
     queries: boardIssueStatuses.map((status) => ({
       queryKey: [
@@ -931,6 +948,8 @@ function StreamlinedIssuesList({
         "compact",
         ISSUE_BOARD_COLUMN_RESULT_LIMIT,
         enableRoutineVisibilityFilter ? "with-routine-executions" : "without-routine-executions",
+        boardSort.sortField,
+        boardSort.sortDir,
       ],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
         issuesApi.listCompact(selectedCompanyId!, {
@@ -939,6 +958,8 @@ function StreamlinedIssuesList({
           projectId,
           status,
           limit: ISSUE_BOARD_COLUMN_RESULT_LIMIT,
+          sortField: boardSort.sortField,
+          sortDir: boardSort.sortDir,
           ...(enableRoutineVisibilityFilter ? { includeRoutineExecutions: true } : {}),
         }, { signal }).then((rows) => rows as Issue[]),
       enabled: !!selectedCompanyId && viewState.viewMode === "board" && !searchWithinLoadedIssues,
@@ -1924,8 +1945,8 @@ function StreamlinedIssuesList({
             presentation={rowPresentation === "task" ? "streamlined" : "legacy"}
           />
 
-          {/* Sort (list view only) */}
-          {viewState.viewMode === "list" && (
+          {/* Sort (shared by list and board) */}
+          {(
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Sort">
@@ -1944,6 +1965,8 @@ function StreamlinedIssuesList({
                     ["updated", "Updated"],
                   ] as const)
                     .filter(([field]) => SHOW_TASK_PRIORITY_UI || field !== "priority")
+                    // Board columns are already statuses, so a status sort is a no-op there.
+                    .filter(([field]) => viewState.viewMode !== "board" || field !== "status")
                     .map(([field, label]) => (
                     <button
                       key={field}
