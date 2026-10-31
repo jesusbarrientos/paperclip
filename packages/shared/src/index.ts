@@ -967,6 +967,7 @@ export type {
   ProjectDiscoveryPage,
   ProjectBudgetSummary,
   ProjectRepository,
+  ProjectClonedRepository,
   ProjectRepositoryOptions,
   ProjectCodebase,
   ProjectCodebaseOrigin,

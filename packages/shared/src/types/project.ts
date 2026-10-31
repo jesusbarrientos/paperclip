@@ -126,6 +126,22 @@ export interface Project {
   updatedAt: Date;
 }
 
+/** On-disk state of one project workspace's git checkout, inspected live. */
+export interface ProjectClonedRepository {
+  workspaceId: string;
+  workspaceName: string;
+  repoUrl: string | null;
+  path: string;
+  /** "configured" = the workspace cwd; "managed" = Paperclip's managed checkout dir. */
+  location: "configured" | "managed";
+  status: "cloned" | "missing" | "not_git";
+  branch: string | null;
+  lastCommit: { sha: string; subject: string; authorName: string; committedAt: string } | null;
+  dirty: boolean;
+  changedFileCount: number;
+  error: string | null;
+}
+
 /** GitHub identity is the provider's stable repository ID, never a credential. */
 export interface ProjectRepository {
   id: string;

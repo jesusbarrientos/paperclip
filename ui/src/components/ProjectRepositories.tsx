@@ -5,6 +5,7 @@ import type { Project, ProjectRepository } from "@paperclipai/shared";
 import { projectsApi } from "@/api/projects";
 import { queryKeys } from "@/lib/queryKeys";
 import { ConnectionSetupFlow } from "@/features/connections/ConnectionSetupFlow";
+import { ProjectClonedRepositories } from "./ProjectClonedRepositories";
 import { ProjectRepositoryInput, repositoryOptionsKey } from "./ProjectRepositoryInput";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -32,6 +33,7 @@ export function ProjectRepositories({ project }: { project: Project }) {
   return <section aria-label="Repositories" className="flex min-w-0 flex-col gap-4 py-4">
     <ProjectRepositoryInput companyId={project.companyId} selected={draft ?? saved} onChange={(repos) => { setDraft(repos); save.reset(); }} onConnect={() => setConnecting(true)} disabled={save.isPending} />
     {project.workspaces.filter((workspace) => workspace.repoUrl && !workspace.metadata?.githubRepositoryId).map((workspace) => <LegacyProjectRepository key={workspace.id} workspace={workspace} projectRef={project.urlKey} />)}
+    <ProjectClonedRepositories projectId={project.id} companyId={project.companyId} />
     <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
       {save.isError && <p role="alert" className="mr-auto text-sm text-destructive">{save.error.message}</p>}
       {save.isSuccess && <span role="status" className="mr-auto text-sm text-muted-foreground">Changes saved</span>}

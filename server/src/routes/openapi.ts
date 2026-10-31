@@ -4652,6 +4652,15 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "get",
+  path: "/api/projects/{id}/cloned-repositories",
+  tags: ["projects"],
+  summary: "List the project's cloned repositories with live git state (path, branch, last commit, dirty)",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
   method: "post",
   path: "/api/projects/{id}/workspaces",
   tags: ["projects"],

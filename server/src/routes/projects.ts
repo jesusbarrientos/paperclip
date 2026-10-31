@@ -6,6 +6,7 @@ import { persistActivity, publishActivity } from "../services/activity-log.js";
 import { z } from "zod";
 import { normalizeProjectRepositoryUrl, resolveProjectRepositorySelection } from "../services/project-repositories.js";
 import { toolAccessService } from "../services/tool-access.js";
+import { listProjectClonedRepositories } from "../services/project-cloned-repositories.js";
 import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
 import {
@@ -405,6 +406,13 @@ export function projectRoutes(db: Db) {
     if (!existing) return;
     const workspaces = await svc.listWorkspaces(id);
     res.json(workspaces);
+  });
+
+  router.get("/projects/:id/cloned-repositories", async (req, res) => {
+    const existing = await getAccessibleResource(req, res, svc.getById(req.params.id as string), "Project not found");
+    if (!existing) return;
+    const workspaces = await svc.listWorkspaces(existing.id);
+    res.json(await listProjectClonedRepositories(workspaces));
   });
 
   router.post("/projects/:id/workspaces", validate(createProjectWorkspaceSchema), async (req, res) => {
