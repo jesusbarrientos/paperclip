@@ -79,20 +79,19 @@ describeEmbeddedPostgres("companyService", () => {
     await tempDb?.cleanup();
   });
 
-  it("retries generated issue prefixes when Drizzle wraps the unique constraint error", async () => {
+  it("refuses to create a second organization on the instance", async () => {
     await db.insert(companies).values({
-      name: "Aron Existing",
-      issuePrefix: "ARO",
+      name: "Existing Org",
+      issuePrefix: "EXI",
     });
 
-    const created = await companyService(db).create({
-      name: "Aron & Sharon",
+    await expect(companyService(db).create({ name: "Second Org" })).rejects.toMatchObject({
+      status: 409,
+      details: { code: "organization_exists" },
     });
 
-    expect(created.issuePrefix).toBe("AROA");
-
-    const rows = await db.select({ issuePrefix: companies.issuePrefix }).from(companies);
-    expect(rows.map((row) => row.issuePrefix).sort()).toEqual(["ARO", "AROA"]);
+    const rows = await db.select({ name: companies.name }).from(companies);
+    expect(rows.map((row) => row.name)).toEqual(["Existing Org"]);
   });
 
   it("does not auto-provision bundled built-in agents for a freshly created company", async () => {

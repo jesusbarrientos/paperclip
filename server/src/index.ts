@@ -88,6 +88,7 @@ import {
   toolAccessService,
   workspaceOperationService,
 } from "./services/index.js";
+import { assertSingleOrganization } from "./services/organization.js";
 import { questionResponseDeliveryService } from "./services/question-response-delivery.js";
 import { deliverNativeQuestionResponse } from "./services/native-runtime/native-question-bridge.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
@@ -652,6 +653,8 @@ async function startServerWithDatabaseTeardown(
   // A claimed warm-pool stack may restart while its provider environment still
   // names the pool host. Restore the signed, durable identity before Better
   // Auth, routes, or child-runtime configuration capture any public URL.
+  await assertSingleOrganization(db as any);
+
   const restoredCloudRuntimeIdentity = await initializeCloudRuntimeIdentity(db as any);
   if (restoredCloudRuntimeIdentity) config = loadConfig();
   const isWarmStandby = await createCloudWarmStandby(db as any);

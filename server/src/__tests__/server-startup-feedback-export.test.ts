@@ -355,6 +355,7 @@ vi.mock("../services/index.js", () => ({
   })),
 }));
 
+vi.mock("../services/organization.js", () => ({ assertSingleOrganization: vi.fn(async () => {}) }));
 vi.mock("../services/chat-completion-delivery.js", () => ({ chatCompletionDeliveryService: () => ({ sweepPending: completionSweepMock }) }));
 
 vi.mock("../services/connection-intent-delivery.js", () => ({

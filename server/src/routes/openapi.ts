@@ -2003,6 +2003,14 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/organization",
+  tags: ["companies"],
+  summary: "Get the instance organization",
+  responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/companies/{companyId}",
   tags: ["companies"],
   summary: "Get a company",

@@ -242,7 +242,8 @@ describeEmbeddedPostgres("company import batches inserts", () => {
     await tempDb?.cleanup();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await db.execute(sql.raw("TRUNCATE companies CASCADE"));
     counts.reset();
   });
 
