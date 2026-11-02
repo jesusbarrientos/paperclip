@@ -248,7 +248,6 @@ export async function slackBoardReplyBindings(
     .innerJoin(
       companyMemberships,
       and(
-        eq(companyMemberships.companyId, input.companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, input.userId),
         eq(companyMemberships.status, "active"),

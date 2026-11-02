@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { activityLog, agents, authUsers, companies, companyMemberships, createDb, documents, documentRevisions, heartbeatRuns,
   issueComments, issueDocuments, issues, issueThreadInteractions } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -28,7 +29,7 @@ const support = await getEmbeddedPostgresTestSupport();
     await db.insert(companies).values({ id: companyId, name: "Replies", issuePrefix: companyId.slice(0, 8) });
     if (conversation) {
       await db.insert(authUsers).values({ id: "operator", name: "Operator", email: "operator@example.test", createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
-      await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: "operator", status: "active", membershipRole: "member" });
+      await db.insert(companyMemberships).values({ principalType: "user", principalId: "operator", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     }
     await db.insert(agents).values({ id: agentId, companyId, name: "Planner", adapterType: "paperclip_runner" });
     const [issue] = await db.insert(issues).values({ id: issueId, companyId, title: "Proposal", status: "in_progress", assigneeAgentId: agentId,
@@ -43,6 +44,10 @@ const support = await getEmbeddedPostgresTestSupport();
     const args = { companyId, issueId, interactionId: card.id, actor: { agentId, runId }, input: { commentId: comment.id, decision: "accept" as const, ...(checkbox ? { selectedOptionIds: ["note"] } : {}) } };
     return { args, card, issue, comment, svc, companyId, issueId, agentId, runId };
   }
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
   const readCard = (id: string) => db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, id)).then(rows => rows[0]!);
   const audit = (id: string) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).then(rows => rows.filter(row => row.details?.source === "conversation_reply"));
 

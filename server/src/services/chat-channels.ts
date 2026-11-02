@@ -9981,7 +9981,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
   async function findAuthorizedIdentityLink(endpoint: EndpointRow, userId: string) {
     return db.select({ id: chatIdentityLinks.id }).from(chatIdentityLinks)
       .innerJoin(companyMemberships, and(
-        eq(companyMemberships.companyId, chatIdentityLinks.companyId), eq(companyMemberships.principalType, "user"),
+        eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId), eq(companyMemberships.status, "active"), ne(companyMemberships.membershipRole, "viewer"),
       ))
       .where(and(eq(chatIdentityLinks.companyId, endpoint.companyId), eq(chatIdentityLinks.endpointId, endpoint.id),
@@ -10302,7 +10302,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, endpoint.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, link.userId),
           ),
@@ -10335,7 +10334,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, endpoint.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, endpoint.sponsorUserId),
         ),
@@ -10392,7 +10390,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, endpoint.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, link.userId),
           ),
@@ -10422,7 +10419,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, endpoint.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, endpoint.sponsorUserId),
         ),
@@ -11414,7 +11410,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(companyMemberships)
                 .where(
                   and(
-                    eq(companyMemberships.companyId, endpoint.companyId),
                     eq(companyMemberships.principalType, "user"),
                     eq(companyMemberships.principalId, endpoint.sponsorUserId),
                   ),
@@ -22588,7 +22583,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
                 .from(companyMemberships)
                 .where(
                   and(
-                    eq(companyMemberships.companyId, record.endpoint.companyId),
                     eq(companyMemberships.principalType, "user"),
                     eq(companyMemberships.principalId, link.paperclipUserId),
                     eq(companyMemberships.status, "active"),
@@ -28247,7 +28241,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       sql`${chatActions.payload}->>'identityLinkHash' = ${tokenHash}`,
     )).limit(1).then((rows) => rows[0]));
     const membership = userId ? await db.select({ status: companyMemberships.status }).from(companyMemberships).where(and(
-      eq(companyMemberships.companyId, row.link.companyId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId),
+      eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId),
     )).then((rows) => rows[0]) : null;
     return {
       selfService,
@@ -28285,18 +28279,18 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       const user = await tx.select({ email: authUsers.email }).from(authUsers).where(eq(authUsers.id, userId)).then((rows) => rows[0]);
       if (!user) throw forbidden("Sign in to request company access");
       const existing = await tx.select({ id: joinRequests.id }).from(joinRequests).where(and(
-        eq(joinRequests.companyId, preview.companyId), eq(joinRequests.requestType, "human"), eq(joinRequests.status, "pending_approval"),
+        eq(joinRequests.requestType, "human"), eq(joinRequests.status, "pending_approval"),
         or(eq(joinRequests.requestingUserId, userId), sql`lower(${joinRequests.requestEmailSnapshot}) = ${user.email.toLowerCase()}`),
       )).then((rows) => rows[0]);
       if (existing) return { status: "pending_approval" as const };
       const now = new Date();
       const [invite] = await tx.insert(invites).values({
-        companyId: preview.companyId, tokenHash: createHash("sha256").update(randomBytes(32)).digest("hex"),
+        tokenHash: createHash("sha256").update(randomBytes(32)).digest("hex"),
         inviteType: "company_join", allowedJoinTypes: "human", acceptedAt: now, expiresAt: now,
         defaultsPayload: { human: { role: "operator" }, source: "slack_identity_link" },
       }).returning({ id: invites.id });
       const [request] = await tx.insert(joinRequests).values({
-        inviteId: invite.id, companyId: preview.companyId, requestType: "human", status: "pending_approval",
+        inviteId: invite.id, requestType: "human", status: "pending_approval",
         requestIp, requestingUserId: userId, requestEmailSnapshot: user.email,
       }).returning({ id: joinRequests.id });
       await logActivity(tx as unknown as Db, {
@@ -28363,7 +28357,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, currentLink.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, paperclipUserId),
           ),
@@ -30099,7 +30092,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
             .from(companyMemberships)
             .where(
               and(
-                eq(companyMemberships.companyId, record.endpoint.companyId),
                 eq(companyMemberships.principalType, "user"),
                 eq(companyMemberships.principalId, link.paperclipUserId),
                 eq(companyMemberships.status, "active"),
@@ -31094,7 +31086,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, endpoint.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, userId),
           ),
@@ -31398,7 +31389,6 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, userId),
         ),
@@ -38310,7 +38300,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         const [issue] = await tx.select().from(issues).where(and(eq(issues.companyId, binding.companyId), eq(issues.id, binding.issueId), eq(issues.assigneeAgentId, binding.agentId)));
         if (!issue) throw forbidden("Slack tools require a task assigned to this agent");
         const [member] = await tx.select().from(companyMemberships).where(and(
-          eq(companyMemberships.companyId, binding.companyId), eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, run.responsibleUserId!), eq(companyMemberships.status, "active"), ne(companyMemberships.membershipRole, "viewer"),
         ));
         if (!member) throw forbidden("The responsible user must be an active company operator");

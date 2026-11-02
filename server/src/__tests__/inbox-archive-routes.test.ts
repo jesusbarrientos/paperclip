@@ -25,6 +25,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -101,20 +102,18 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     ]);
     await db.insert(companyMemberships).values([
       {
-        companyId,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId,
         principalType: "user",
         principalId: targetUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,
@@ -444,14 +443,12 @@ describeEmbeddedPostgres("inbox archive routes", () => {
       .expect(({ body }) => expect(body.code).toBe("inbox_cross_user_grant_required"));
 
     await db.insert(companyMemberships).values({
-      companyId: seeded.companyId,
       principalType: "agent",
       principalId: seeded.agentId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId: seeded.companyId,
       principalType: "agent",
       principalId: seeded.agentId,
       permissionKey: "inbox:manage",

@@ -213,8 +213,9 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     await tempDb?.cleanup();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     runningProcesses.clear();
+    await db.delete(companyMemberships);
   });
 
   async function readGatewayWakePayload(

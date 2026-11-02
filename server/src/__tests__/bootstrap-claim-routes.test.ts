@@ -20,6 +20,7 @@ vi.mock("../first-admin-claim.js", () => ({
 }));
 
 vi.mock("../services/index.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
   accessService: () => accessServiceMock,
   agentService: () => ({
     getById: vi.fn(),

@@ -25,6 +25,7 @@ import { attentionService } from "../services/attention.js";
 import { decisionService } from "../services/decisions.js";
 import { hashAttentionArchiveManifest } from "../services/decision-retention.js";
 import type { AttentionArchiveManifestEntry, AttentionArchiveTargetSnapshot } from "@paperclipai/shared";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 const describePg = support.supported ? describe : describe.skip;
@@ -57,9 +58,9 @@ describePg("decisionService", () => {
       { id: decidedByUserId, name: "Decider", email: `${decidedByUserId}@example.test`, createdAt: now, updatedAt: now },
     ]);
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: originResponsibleUserId, status: "active", membershipRole: "member" },
-      { companyId, principalType: "user", principalId: decidedByUserId, status: "active", membershipRole: "member" },
-    ]);
+      { principalType: "user", principalId: originResponsibleUserId, status: "active", membershipRole: "member" },
+      { principalType: "user", principalId: decidedByUserId, status: "active", membershipRole: "member" },
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({ id: agentId, companyId, name: "Proposer", role: "engineer", status: "active", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
     await db.insert(issues).values([
       { id: originIssueId, companyId, title: "Origin", status: "in_progress", priority: "medium", assigneeAgentId: agentId, responsibleUserId: originResponsibleUserId },

@@ -4460,7 +4460,6 @@ export function createToolGatewayService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, session.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, selected.grant.subjectUserId!),
               eq(companyMemberships.status, "active"),
@@ -4490,7 +4489,6 @@ export function createToolGatewayService(
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, connection.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, actingUserId),
             eq(companyMemberships.status, "active"),
@@ -4564,7 +4562,6 @@ export function createToolGatewayService(
             .from(companyMemberships)
             .where(
               and(
-                eq(companyMemberships.companyId, connection.companyId),
                 eq(companyMemberships.principalType, "user"),
                 eq(companyMemberships.principalId, actingUserId),
                 eq(companyMemberships.status, "active"),
@@ -4687,7 +4684,6 @@ export function createToolGatewayService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, connection.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, userGrant.subjectUserId),
               eq(companyMemberships.status, "active"),

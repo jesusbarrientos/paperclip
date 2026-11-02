@@ -20,6 +20,7 @@ vi.mock("../services/index.js", () => ({
     revokeBoardApiKey: vi.fn(),
   }),
   deduplicateAgentName: vi.fn(),
+  organizationService: () => ({ findId: async () => "company-1" }),
   logActivity: vi.fn(),
   notifyHireApproved: vi.fn(),
 }));

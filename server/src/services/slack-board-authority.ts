@@ -31,7 +31,6 @@ export async function slackBoardAuthor(db: Reader, endpoint: Endpoint, userId: s
       eq(chatExternalPrincipals.isBot, false),
     ))
     .innerJoin(companyMemberships, and(
-      eq(companyMemberships.companyId, endpoint.companyId),
       eq(companyMemberships.principalType, "user"),
       eq(companyMemberships.principalId, userId),
       eq(companyMemberships.status, "active"),

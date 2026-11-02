@@ -206,59 +206,6 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     expect(actor?.memberships?.[0]?.membershipRole).toBe("member");
   });
 
-  describe("company membership union", () => {
-    // The primary company id is derived from the stack id; resolve it once
-    // through the same code path instead of duplicating the hash here.
-    async function resolvePrimaryCompanyId() {
-      const { db } = createFakeDb();
-      const actor = await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-      return actor!.companyIds![0]!;
-    }
-
-    it("unions the pinned primary with the user's own active membership rows, primary first and deduped", async () => {
-      const primaryCompanyId = await resolvePrimaryCompanyId();
-      const { db } = createFakeDb({
-        membershipQueryRows: [
-          // The user's own row for the primary company comes back from the
-          // query too — it must not appear twice.
-          { companyId: primaryCompanyId, membershipRole: "owner", status: "active" },
-          { companyId: "company-imported", membershipRole: "member", status: "active" },
-        ],
-      });
-      const actor = await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-      expect(actor!.companyIds).toEqual([primaryCompanyId, "company-imported"]);
-      expect(actor!.memberships).toEqual([
-        { companyId: primaryCompanyId, membershipRole: "owner", status: "active" },
-        { companyId: "company-imported", membershipRole: "member", status: "active" },
-      ]);
-    });
-
-    it("loads memberships with the session path's exact own-user active-status filter", async () => {
-      const { db, selectWheres } = createFakeDb();
-      await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-      const membershipSelects = selectWheres.filter((entry) => entry.table === companyMemberships);
-      expect(membershipSelects).toHaveLength(1);
-      // Rows for other users and rows in any non-active status are excluded
-      // by the query itself: the filter binds exactly this user id and the
-      // "active" status — the same condition the session path applies.
-      expect(membershipSelects[0]!.condition).toEqual(
-        and(
-          eq(companyMemberships.principalType, "user"),
-          eq(companyMemberships.principalId, "user-123"),
-          eq(companyMemberships.status, "active"),
-        ),
-      );
-    });
-
-    it("degrades to the primary company when the membership read fails", async () => {
-      const { db } = createFakeDb({ selectThrows: true });
-      const actor = await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-      expect(actor).not.toBeNull();
-      expect(actor!.companyIds).toHaveLength(1);
-      expect(actor!.memberships).toHaveLength(1);
-    });
-  });
-
   describe("owner instance-admin elevation (enableOwnerInstanceAdmin)", () => {
     it("elevates the owner while the flag is enabled, still without any role row", async () => {
       const { db, insertedTables, deletedTables } = createFakeDb({

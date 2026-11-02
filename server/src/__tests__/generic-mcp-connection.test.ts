@@ -5,7 +5,8 @@ import { Writable } from "node:stream";
 import express from "express";
 import pino from "pino";
 import request from "supertest";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   agents,
@@ -298,12 +299,11 @@ async function createCompany(db: ReturnType<typeof createDb>) {
     .returning()
     .then((rows) => rows[0]!);
   await db.insert(companyMemberships).values({
-    companyId: company.id,
     principalType: "user",
     principalId: "board-user",
     status: "active",
     membershipRole: "admin",
-  });
+  }).onConflictDoUpdate(membershipUpsert);
   return company;
 }
 
@@ -344,6 +344,10 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-generic-mcp-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -1107,8 +1111,8 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
     await db.update(toolConnections).set({ status: "archived" }).where(eq(toolConnections.id, first.connectionId));
     await db.update(toolApplications).set({ status: "archived" }).where(eq(toolApplications.id, first.application.id));
     await db.insert(companyMemberships).values({
-      companyId: company.id, principalType: "user", principalId: "other-user", status: "active", membershipRole: "admin",
-    });
+      principalType: "user", principalId: "other-user", status: "active", membershipRole: "admin",
+    }).onConflictDoUpdate(membershipUpsert);
     fixture.fetchMock.mockClear();
 
     await expect(service.connectGalleryApp(company.id, input, {
@@ -1380,8 +1384,7 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
     });
     await db
       .update(companyMemberships)
-      .set({ membershipRole: "viewer" })
-      .where(eq(companyMemberships.companyId, company.id));
+      .set({ membershipRole: "viewer" });
 
     const authorizationUrl = new URL(start.authorizationUrl);
     const code = fixture.issueAuthorizationCode(start.authorizationUrl);
@@ -1441,7 +1444,6 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
 
     const removal = removalDb.transaction(async (tx) => {
       await tx.select({ id: companyMemberships.id }).from(companyMemberships).where(and(
-        eq(companyMemberships.companyId, company.id),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, "board-user"),
       )).for("update");
@@ -1451,7 +1453,6 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
         membershipRole: "viewer",
         updatedAt: new Date(),
       }).where(and(
-        eq(companyMemberships.companyId, company.id),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, "board-user"),
       ));
@@ -1659,8 +1660,7 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
     const company = await createCompany(db);
     await db
       .update(companyMemberships)
-      .set({ membershipRole: "owner" })
-      .where(eq(companyMemberships.companyId, company.id));
+      .set({ membershipRole: "owner" });
     const service = toolAccessService(db);
 
     const connected = await service.connectGalleryApp(company.id, {

@@ -242,7 +242,6 @@ describeEmbeddedPostgres("inbox dismissals", () => {
 
     await db.insert(invites).values({
       id: inviteId,
-      companyId,
       inviteType: "company_join",
       tokenHash: "hash-1",
       allowedJoinTypes: "both",
@@ -252,7 +251,6 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(joinRequests).values({
       id: hiddenJoinRequestId,
       inviteId,
-      companyId,
       requestType: "human",
       status: "pending_approval",
       requestIp: "127.0.0.1",

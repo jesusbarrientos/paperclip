@@ -44,7 +44,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   agentWakeupRequests,
@@ -1032,6 +1033,10 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     }
   }, 30_000);
 
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
+
   afterAll(async () => {
     await tempDb?.cleanup();
     if (previousKeyFile === undefined)
@@ -1104,20 +1109,18 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       })
       .onConflictDoNothing();
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "owner-user",
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId,
       principalType: "user",
       principalId: "owner-user",
       permissionKey: "tools:manage_connections",
       scope: null,
       grantedByUserId: "owner-user",
-    });
+    }).onConflictDoNothing();
     await db.insert(agents).values([
       {
         id: assignedAgentId,
@@ -2494,10 +2497,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .update(companyMemberships)
         .set({ status: "inactive" })
         .where(
-          and(
-            eq(companyMemberships.companyId, f.companyId),
-            eq(companyMemberships.principalId, "owner-user"),
-          ),
+          eq(companyMemberships.principalId, "owner-user"),
         );
       await expect(
         githubChatReviewService(db, f.providerFetch).execute(
@@ -5139,12 +5139,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: memberUserId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const memberApp = routesApp(db, fixture.companyId, service, memberUserId);
     await request(memberApp)
@@ -7550,12 +7549,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: linkedUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const intent = await service.createLinkIntent(
       endpoint.id,
       principal!.id,
@@ -7589,10 +7587,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     await send(
       "59003",
@@ -18772,7 +18767,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, "owner-user"),
             ),
@@ -18870,7 +18864,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .set({ status: "suspended", updatedAt: new Date() })
       .where(
         and(
-          eq(companyMemberships.companyId, fixture.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, "owner-user"),
         ),
@@ -24793,12 +24786,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: "linked-paperclip-user",
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const [principal] = await db
       .select()
       .from(chatExternalPrincipals)
@@ -24933,7 +24925,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .set({ status: "suspended" })
       .where(
         and(
-          eq(companyMemberships.companyId, fixture.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, "owner-user"),
         ),
@@ -25259,20 +25250,18 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     ]);
     await db.insert(companyMemberships).values([
       {
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: "paperclip-user-a",
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: "paperclip-user-b",
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     const principal = await db
       .select()
       .from(chatExternalPrincipals)
@@ -33198,12 +33187,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: now,
       });
       await db.insert(companyMemberships).values({
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: linkedUserId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       const principal = await db
         .select()
         .from(chatExternalPrincipals)
@@ -33590,12 +33578,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           updatedAt: now,
         });
         await db.insert(companyMemberships).values({
-          companyId: fixture.companyId,
           principalType: "user",
           principalId: linkedUserId,
           status: "active",
           membershipRole: "operator",
-        });
+        }).onConflictDoUpdate(membershipUpsert);
         const principal = await db
           .select()
           .from(chatExternalPrincipals)
@@ -33895,10 +33882,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(companyMemberships)
           .set({ membershipRole: "viewer" })
           .where(
-            and(
-              eq(companyMemberships.companyId, fixture.companyId),
-              eq(companyMemberships.principalId, linkedUserId),
-            ),
+            eq(companyMemberships.principalId, linkedUserId),
           );
         const denied = click(
           reopenId,
@@ -33918,10 +33902,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(companyMemberships)
           .set({ membershipRole: "operator" })
           .where(
-            and(
-              eq(companyMemberships.companyId, fixture.companyId),
-              eq(companyMemberships.principalId, linkedUserId),
-            ),
+            eq(companyMemberships.principalId, linkedUserId),
           );
         const wrongThread = click(
           reopenId,
@@ -36275,12 +36256,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: linkedUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const principal = await db
       .select()
       .from(chatExternalPrincipals)
@@ -36403,20 +36383,14 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     await callbacks.onAction(actionEvent({ actionId: "pcq:viewer-forbidden" }));
     await db
       .update(companyMemberships)
       .set({ membershipRole: "operator" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
 
     const otherChannel = makeThread({
@@ -36997,12 +36971,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: now,
       });
       await db.insert(companyMemberships).values({
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: linkedUserId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       const intent = await service.createLinkIntent(
         endpoint.id,
         principal.id,
@@ -37314,7 +37287,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole, updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, linkedUserId),
             ),
@@ -37605,12 +37577,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: now,
       });
       await db.insert(companyMemberships).values({
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: linkedUserId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       const principal = await db
         .select()
         .from(chatExternalPrincipals)
@@ -37750,7 +37721,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, linkedUserId),
             ),
@@ -37764,7 +37734,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "operator", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, linkedUserId),
             ),
@@ -37796,7 +37765,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, linkedUserId),
             ),
@@ -37819,7 +37787,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "operator", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, linkedUserId),
             ),
@@ -38044,7 +38011,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ membershipRole: "viewer", updatedAt: new Date() })
         .where(
           and(
-            eq(companyMemberships.companyId, fixture.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, linkedUserId),
           ),
@@ -38087,7 +38053,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ membershipRole: "operator", updatedAt: new Date() })
         .where(
           and(
-            eq(companyMemberships.companyId, fixture.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, linkedUserId),
           ),
@@ -38265,7 +38230,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ membershipRole: "viewer" })
         .where(
           and(
-            eq(companyMemberships.companyId, fixture.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, linkedUserId),
           ),
@@ -38276,7 +38240,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         .set({ membershipRole: "operator" })
         .where(
           and(
-            eq(companyMemberships.companyId, fixture.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, linkedUserId),
           ),
@@ -38310,12 +38273,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: now,
       });
       await db.insert(companyMemberships).values({
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: relinkedUserId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       await db
         .update(chatIdentityLinks)
         .set({ paperclipUserId: relinkedUserId })
@@ -39255,12 +39217,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: linkedUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const principal = await db
       .select()
       .from(chatExternalPrincipals)
@@ -39547,10 +39508,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     await callbacks.onAction(
       actionEvent({
@@ -39577,10 +39535,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ membershipRole: "operator" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     channel.post.mockClear();
 
@@ -39603,10 +39558,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer", updatedAt: new Date() })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     releaseQuestionResolution();
     await racedCallback;
@@ -39630,10 +39582,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       .update(companyMemberships)
       .set({ membershipRole: "operator", updatedAt: new Date() })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, linkedUserId),
-        ),
+        eq(companyMemberships.principalId, linkedUserId),
       );
     channel.post.mockClear();
 
@@ -39732,12 +39681,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: linkedUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const principal = await db
       .select()
       .from(chatExternalPrincipals)
@@ -47194,10 +47142,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
               .update(companyMemberships)
               .set({ membershipRole: "viewer" })
               .where(
-                and(
-                  eq(companyMemberships.companyId, f.fixture.companyId),
-                  eq(companyMemberships.principalId, "owner-user"),
-                ),
+                eq(companyMemberships.principalId, "owner-user"),
               );
           if (reason === "disabled reach")
             await db
@@ -48457,8 +48402,8 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     await request(outsideApp).post("/api/chat-identity-links/confirm").send({ token }).expect(403);
     expect((await request(outsideApp).post("/api/chat-identity-links/request-access").send({ token })).body).toMatchObject({ status: "pending_approval" });
     await service.requestIdentityAccess(token, outsiderId, "test");
-    expect(await db.select().from(joinRequests).where(eq(joinRequests.companyId, fixture.companyId))).toHaveLength(1);
-    expect(await db.select().from(companyMemberships).where(and(eq(companyMemberships.companyId, fixture.companyId), eq(companyMemberships.principalId, outsiderId)))).toHaveLength(0);
+    expect(await db.select().from(joinRequests)).toHaveLength(1);
+    expect(await db.select().from(companyMemberships).where(eq(companyMemberships.principalId, outsiderId))).toHaveLength(0);
     const adminOnly = await service.createLinkIntent(other.id, identity.principalId, 600);
     const adminToken = new URL(adminOnly.confirmationUrl).searchParams.get("token")!;
     expect((await request(outsideApp).get(`/api/chat-identity-links/preview?token=${adminToken}`)).status).toBe(404);
@@ -49420,7 +49365,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, fixture.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, "owner-user"),
             ),
@@ -55218,12 +55162,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId: fixture.companyId,
       principalType: "user",
       principalId: linkedUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(chatIdentityLinks).values({
       companyId: fixture.companyId,
       endpointId: endpoint.id,
@@ -66145,10 +66088,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
           .update(companyMemberships)
           .set({ status: "suspended", updatedAt: new Date() })
           .where(
-            and(
-              eq(companyMemberships.companyId, committed.fixture.companyId),
-              eq(companyMemberships.principalId, "owner-user"),
-            ),
+            eq(companyMemberships.principalId, "owner-user"),
           );
       } else {
         await db
@@ -67921,12 +67861,11 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
         updatedAt: new Date(),
       });
       await db.insert(companyMemberships).values({
-        companyId: fixture.companyId,
         principalType: "user",
         principalId: userId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
     }
     if (settings.separateSponsor)
       await db
@@ -70097,7 +70036,6 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
                 .set({ membershipRole: "viewer" })
                 .where(
                   and(
-                    eq(companyMemberships.companyId, context.fixture.companyId),
                     eq(companyMemberships.principalType, "user"),
                     eq(
                       companyMemberships.principalId,

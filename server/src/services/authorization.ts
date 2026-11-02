@@ -585,7 +585,6 @@ export function authorizationService(db: Db | DbTransaction) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, principalType),
           eq(companyMemberships.principalId, principalId),
           eq(companyMemberships.status, "active"),
@@ -603,14 +602,12 @@ export function authorizationService(db: Db | DbTransaction) {
         .then((rows) => rows[0] ?? null),
       db
         .select({
-          companyId: companyMemberships.companyId,
           membershipRole: companyMemberships.membershipRole,
           status: companyMemberships.status,
         })
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, userId),
             eq(companyMemberships.status, "active"),
@@ -622,7 +619,7 @@ export function authorizationService(db: Db | DbTransaction) {
       userId,
       companyId,
       userExists: Boolean(user),
-      activeMembership: user ? membership : null,
+      activeMembership: user && membership ? { ...membership, companyId } : null,
     };
   }
 
@@ -672,7 +669,6 @@ export function authorizationService(db: Db | DbTransaction) {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, companyId),
           eq(principalPermissionGrants.principalType, principalType),
           eq(principalPermissionGrants.principalId, principalId),
           eq(principalPermissionGrants.permissionKey, permissionKey),
@@ -1422,7 +1418,6 @@ export function authorizationService(db: Db | DbTransaction) {
           .select({ principalId: companyMemberships.principalId })
           .from(companyMemberships)
           .where(and(
-            eq(companyMemberships.companyId, input.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.status, "active"),
             inArray(companyMemberships.principalId, authorUserIds),

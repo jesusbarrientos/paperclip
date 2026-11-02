@@ -9,6 +9,7 @@ import { documentService } from "../../services/documents.js";
 import { connectionIntentService } from "../../services/connection-intents.js";
 import { initializeRunIdentity } from "../../services/run-identity.js";
 import { startEmbeddedPostgresTestDatabase } from "./embedded-postgres.js";
+import { membershipUpsert } from "./reset-organization.js";
 import { createApp } from "../../app.js";
 import { createLocalDiskStorageProvider } from "../../storage/local-disk-provider.js";
 import { createStorageService } from "../../storage/service.js";
@@ -42,6 +43,7 @@ export async function startRunnerApiTestServer(options: {
   if (!address || typeof address === "string") throw new Error("Missing eval listener");
   const apiUrl = `http://127.0.0.1:${address.port}`;
   setupRunnerPrpWebSocketServer(http, { apiUrl });
+  let fixtureCount = 0;
   return {
     db, root, apiUrl, storage,
     async fixture(options: { mode?: "standard" | "ask" | "planning"; apiToolsEnabled?: boolean; reset?: boolean; conversation?: boolean; connectionScenario?: RunnerConnectionScenario; contextSnapshot?: Record<string, unknown>; disableWakeOnDemand?: boolean } = {}) {
@@ -80,12 +82,13 @@ export async function startRunnerApiTestServer(options: {
       const workspace = await mkdtemp(join(root, "workspace-"));
       await writeFile(join(workspace, "sample.txt"), "API escape hatch fixture\n");
       await db.insert(companies).values([
-        { id: companyId, name: "API eval", issueCounter: 2, issuePrefix: "E" + companyId.replaceAll("-", "").slice(0, 8) },
+        // The organization is the oldest company, so each fixture predates the previous one.
+        { id: companyId, createdAt: new Date(Date.UTC(2000, 0, 1) - ++fixtureCount * 1000), name: "API eval", issueCounter: 2, issuePrefix: "E" + companyId.replaceAll("-", "").slice(0, 8) },
         { id: foreignCompanyId, name: "Isolated foreign company", issuePrefix: "O" + foreignCompanyId.replaceAll("-", "").slice(0, 8) },
       ]);
       if (responsibleUserId) {
         await db.insert(authUsers).values({ id: responsibleUserId, name: "Eval responsible user", email: `${responsibleUserId}@fixture.invalid`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
-        await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: responsibleUserId, status: "active", membershipRole: "member" });
+        await db.insert(companyMemberships).values({ principalType: "user", principalId: responsibleUserId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       }
       await db.insert(agents).values({ id: agentId, companyId, name: "API eval agent", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", cwd: workspace }, runtimeConfig: { heartbeat: { enabled: false, ...(options.disableWakeOnDemand ? { wakeOnDemand: false } : {}) } }, status: "active" });
       await db.insert(projects).values([

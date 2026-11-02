@@ -19,6 +19,7 @@ import { conflict } from "../errors.js";
 import { assertAssignableAgent } from "./agent-assignability.js";
 import { authorizationService, type AuthorizationActor, type AuthorizationResource } from "./authorization.js";
 import { ensureHumanRoleDefaultGrants } from "./principal-access-compatibility.js";
+import { organizationService } from "./organization.js";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -166,7 +167,6 @@ export function accessService(db: Db) {
           eq(connectionGrantMembers.subjectType, "user"),
         )),
         tx.select({ userId: companyMemberships.principalId }).from(companyMemberships).where(and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, "user"),
           ne(companyMemberships.principalId, userId),
         )),
@@ -368,7 +368,6 @@ export function accessService(db: Db) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, principalType),
           eq(companyMemberships.principalId, principalId),
         ),
@@ -416,7 +415,6 @@ export function accessService(db: Db) {
     return db
       .select()
       .from(companyMemberships)
-      .where(eq(companyMemberships.companyId, companyId))
       .orderBy(sql`${companyMemberships.createdAt} desc`);
   }
 
@@ -424,7 +422,7 @@ export function accessService(db: Db) {
     return db
       .select()
       .from(companyMemberships)
-      .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+      .where(eq(companyMemberships.id, memberId))
       .then((rows) => rows[0] ?? null);
   }
 
@@ -434,7 +432,6 @@ export function accessService(db: Db) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.status, "active"),
         ),
@@ -456,7 +453,6 @@ export function accessService(db: Db) {
         .delete(principalPermissionGrants)
         .where(
           and(
-            eq(principalPermissionGrants.companyId, companyId),
             eq(principalPermissionGrants.principalType, member.principalType),
             eq(principalPermissionGrants.principalId, member.principalId),
           ),
@@ -464,7 +460,6 @@ export function accessService(db: Db) {
       if (grants.length > 0) {
         await tx.insert(principalPermissionGrants).values(
           grants.map((grant) => ({
-            companyId,
             principalType: member.principalType,
             principalId: member.principalId,
             permissionKey: grant.permissionKey,
@@ -494,8 +489,7 @@ export function accessService(db: Db) {
       await tx.execute(sql`
         select ${companyMemberships.id}
         from ${companyMemberships}
-        where ${companyMemberships.companyId} = ${companyId}
-          and ${companyMemberships.principalType} = 'user'
+        where ${companyMemberships.principalType} = 'user'
           and ${companyMemberships.status} = 'active'
           and ${companyMemberships.membershipRole} = 'owner'
         for update
@@ -504,7 +498,7 @@ export function accessService(db: Db) {
       const existing = await tx
         .select()
         .from(companyMemberships)
-        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+        .where(eq(companyMemberships.id, memberId))
         .for("update")
         .then((rows) => rows[0] ?? null);
       if (!existing) return null;
@@ -524,7 +518,6 @@ export function accessService(db: Db) {
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.status, "active"),
               eq(companyMemberships.membershipRole, "owner"),
@@ -555,7 +548,6 @@ export function accessService(db: Db) {
         .delete(principalPermissionGrants)
         .where(
           and(
-            eq(principalPermissionGrants.companyId, companyId),
             eq(principalPermissionGrants.principalType, existing.principalType),
             eq(principalPermissionGrants.principalId, existing.principalId),
           ),
@@ -563,7 +555,6 @@ export function accessService(db: Db) {
       if (data.grants.length > 0) {
         await tx.insert(principalPermissionGrants).values(
           data.grants.map((grant) => ({
-            companyId,
             principalType: existing.principalType,
             principalId: existing.principalId,
             permissionKey: grant.permissionKey,
@@ -599,7 +590,6 @@ export function accessService(db: Db) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.status, "active"),
           eq(companyMemberships.membershipRole, "owner"),
@@ -626,7 +616,6 @@ export function accessService(db: Db) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, input.assigneeUserId),
             eq(companyMemberships.status, "active"),
@@ -647,8 +636,7 @@ export function accessService(db: Db) {
       await tx.execute(sql`
         select ${companyMemberships.id}
         from ${companyMemberships}
-        where ${companyMemberships.companyId} = ${companyId}
-          and ${companyMemberships.principalType} = 'user'
+        where ${companyMemberships.principalType} = 'user'
           and ${companyMemberships.status} = 'active'
           and ${companyMemberships.membershipRole} = 'owner'
         for update
@@ -657,7 +645,7 @@ export function accessService(db: Db) {
       const existing = await tx
         .select()
         .from(companyMemberships)
-        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+        .where(eq(companyMemberships.id, memberId))
         .for("update")
         .then((rows) => rows[0] ?? null);
       if (!existing) return null;
@@ -714,7 +702,6 @@ export function accessService(db: Db) {
         .delete(principalPermissionGrants)
         .where(
           and(
-            eq(principalPermissionGrants.companyId, companyId),
             eq(principalPermissionGrants.principalType, existing.principalType),
             eq(principalPermissionGrants.principalId, existing.principalId),
           ),
@@ -763,11 +750,14 @@ export function accessService(db: Db) {
   }
 
   async function listUserCompanyAccess(userId: string) {
-    return db
+    const organizationId = await organizationService(db).findId();
+    if (!organizationId) return [];
+    const rows = await db
       .select()
       .from(companyMemberships)
       .where(and(eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId)))
       .orderBy(sql`${companyMemberships.createdAt} desc`);
+    return rows.map((row) => ({ ...row, companyId: organizationId }));
   }
 
   async function setUserCompanyAccess(
@@ -775,94 +765,66 @@ export function accessService(db: Db) {
     companyIds: string[],
     options: { actorUserId?: string | null } = {},
   ) {
-    const target = new Set(companyIds);
+    const organizationId = await organizationService(db).findId();
+    const grantAccess = organizationId !== null && companyIds.includes(organizationId);
 
     await db.transaction(async (tx) => {
-      // Serialize every company-access removal/reactivation with personal OAuth
+      // Serialize every access removal/reactivation with personal OAuth
       // completion, which locks the same membership row before writing secrets.
       const existing = await tx
         .select()
         .from(companyMemberships)
         .where(and(eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId)))
-        .for("update");
-      const existingByCompany = new Map(existing.map((row) => [row.companyId, row]));
-      const toArchive = existing.filter((row) => !target.has(row.companyId) && row.status !== "archived");
-      if (toArchive.length > 0 && options.actorUserId && options.actorUserId === userId) {
-        throw conflict("You cannot remove yourself");
-      }
-      if (toArchive.length > 0 && (await isInstanceAdmin(userId))) {
-        throw conflict("Instance admins cannot be removed from company access");
-      }
-      const protectedArchives = toArchive.filter((row) => row.membershipRole === "owner" || row.membershipRole === "admin");
-      if (protectedArchives.length > 0) {
-        throw conflict("Owners and admins cannot be removed from company access");
-      }
-      const activeOwnerArchives = toArchive.filter(
-        (row) => row.status === "active" && row.membershipRole === "owner",
-      );
-      if (activeOwnerArchives.length > 0) {
-        const activeOwnerRows = await tx
-          .select({ companyId: companyMemberships.companyId, id: companyMemberships.id })
-          .from(companyMemberships)
-          .where(
-            and(
-              eq(companyMemberships.principalType, "user"),
-              eq(companyMemberships.status, "active"),
-              eq(companyMemberships.membershipRole, "owner"),
-              inArray(companyMemberships.companyId, activeOwnerArchives.map((row) => row.companyId)),
-            ),
-          );
-        for (const row of activeOwnerArchives) {
-          const remainingOwners =
-            activeOwnerRows.filter((owner) => owner.companyId === row.companyId).length - 1;
-          if (remainingOwners <= 0) {
-            throw conflict("Cannot remove the last active owner");
-          }
+        .for("update")
+        .then((rows) => rows[0] ?? null);
+
+      if (!grantAccess) {
+        if (!existing || existing.status === "archived") return;
+        if (options.actorUserId && options.actorUserId === userId) {
+          throw conflict("You cannot remove yourself");
         }
-      }
-      if (toArchive.length > 0) {
+        if (await isInstanceAdmin(userId)) {
+          throw conflict("Instance admins cannot be removed from company access");
+        }
+        if (existing.membershipRole === "owner" || existing.membershipRole === "admin") {
+          throw conflict("Owners and admins cannot be removed from company access");
+        }
         const now = new Date();
-        for (const membership of toArchive) {
-          await sweepMemberConnectionAccess(tx, membership.companyId, membership.principalId, now);
-        }
+        await sweepMemberConnectionAccess(tx, organizationId!, existing.principalId, now);
         await tx
           .update(companyMemberships)
           .set({ status: "archived", updatedAt: now })
-          .where(inArray(companyMemberships.id, toArchive.map((row) => row.id)));
+          .where(eq(companyMemberships.id, existing.id));
         await tx
           .delete(principalPermissionGrants)
           .where(
             and(
               eq(principalPermissionGrants.principalType, "user"),
-              eq(principalPermissionGrants.principalId, userId),
-              inArray(principalPermissionGrants.companyId, toArchive.map((row) => row.companyId)),
+              eq(principalPermissionGrants.principalId, userId)
             ),
           );
+        return;
       }
 
-      for (const companyId of target) {
-        const existingMembership = existingByCompany.get(companyId);
-        if (existingMembership) {
-          if (existingMembership.status !== "active") {
-            await tx
-              .update(companyMemberships)
-              .set({
-                status: "active",
-                membershipRole: existingMembership.membershipRole ?? "operator",
-                updatedAt: new Date(),
-              })
-              .where(eq(companyMemberships.id, existingMembership.id));
-          }
-          continue;
+      if (existing) {
+        if (existing.status !== "active") {
+          await tx
+            .update(companyMemberships)
+            .set({
+              status: "active",
+              membershipRole: existing.membershipRole ?? "operator",
+              updatedAt: new Date(),
+            })
+            .where(eq(companyMemberships.id, existing.id));
         }
-        await tx.insert(companyMemberships).values({
-          companyId,
-          principalType: "user",
-          principalId: userId,
-          status: "active",
-          membershipRole: "operator",
-        });
+        return;
       }
+      await tx.insert(companyMemberships).values({
+        principalType: "user",
+        principalId: userId,
+        status: "active",
+        membershipRole: "operator",
+      });
     });
 
     return listUserCompanyAccess(userId);
@@ -892,7 +854,6 @@ export function accessService(db: Db) {
     return db
       .insert(companyMemberships)
       .values({
-        companyId,
         principalType,
         principalId,
         status,
@@ -914,7 +875,6 @@ export function accessService(db: Db) {
         .delete(principalPermissionGrants)
         .where(
           and(
-            eq(principalPermissionGrants.companyId, companyId),
             eq(principalPermissionGrants.principalType, principalType),
             eq(principalPermissionGrants.principalId, principalId),
           ),
@@ -922,7 +882,6 @@ export function accessService(db: Db) {
       if (grants.length === 0) return;
       await tx.insert(principalPermissionGrants).values(
         grants.map((grant) => ({
-          companyId,
           principalType,
           principalId,
           permissionKey: grant.permissionKey,
@@ -935,26 +894,6 @@ export function accessService(db: Db) {
     });
   }
 
-  async function copyActiveUserMemberships(sourceCompanyId: string, targetCompanyId: string) {
-    const sourceMemberships = await listActiveUserMemberships(sourceCompanyId);
-    for (const membership of sourceMemberships) {
-      await ensureMembership(
-        targetCompanyId,
-        "user",
-        membership.principalId,
-        membership.membershipRole,
-        "active",
-      );
-      await ensureHumanRoleDefaultGrants(db, {
-        companyId: targetCompanyId,
-        principalId: membership.principalId,
-        membershipRole: membership.membershipRole,
-        grantedByUserId: null,
-      });
-    }
-    return sourceMemberships;
-  }
-
   async function ensureRoleDefaultGrants(
     companyId: string,
     principalId: string,
@@ -962,7 +901,6 @@ export function accessService(db: Db) {
     grantedByUserId: string | null,
   ) {
     return ensureHumanRoleDefaultGrants(db, {
-      companyId,
       principalId,
       membershipRole,
       grantedByUserId,
@@ -979,7 +917,6 @@ export function accessService(db: Db) {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, companyId),
           eq(principalPermissionGrants.principalType, principalType),
           eq(principalPermissionGrants.principalId, principalId),
         ),
@@ -1001,7 +938,6 @@ export function accessService(db: Db) {
         .delete(principalPermissionGrants)
         .where(
           and(
-            eq(principalPermissionGrants.companyId, companyId),
             eq(principalPermissionGrants.principalType, principalType),
             eq(principalPermissionGrants.principalId, principalId),
             eq(principalPermissionGrants.permissionKey, permissionKey),
@@ -1017,7 +953,6 @@ export function accessService(db: Db) {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, companyId),
           eq(principalPermissionGrants.principalType, principalType),
           eq(principalPermissionGrants.principalId, principalId),
           eq(principalPermissionGrants.permissionKey, permissionKey),
@@ -1038,7 +973,6 @@ export function accessService(db: Db) {
     }
 
     await db.insert(principalPermissionGrants).values({
-      companyId,
       principalType,
       principalId,
       permissionKey,
@@ -1061,8 +995,7 @@ export function accessService(db: Db) {
       await tx.execute(sql`
         select ${companyMemberships.id}
         from ${companyMemberships}
-        where ${companyMemberships.companyId} = ${companyId}
-          and ${companyMemberships.principalType} = 'user'
+        where ${companyMemberships.principalType} = 'user'
           and ${companyMemberships.status} = 'active'
           and ${companyMemberships.membershipRole} = 'owner'
         for update
@@ -1071,7 +1004,7 @@ export function accessService(db: Db) {
       const existing = await tx
         .select()
         .from(companyMemberships)
-        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+        .where(eq(companyMemberships.id, memberId))
         .for("update")
         .then((rows) => rows[0] ?? null);
       if (!existing) return null;
@@ -1091,7 +1024,6 @@ export function accessService(db: Db) {
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.status, "active"),
               eq(companyMemberships.membershipRole, "owner"),
@@ -1136,7 +1068,6 @@ export function accessService(db: Db) {
     ensureMembership,
     listMembers,
     listActiveUserMemberships,
-    copyActiveUserMemberships,
     ensureRoleDefaultGrants,
     archiveMember,
     setMemberPermissions,

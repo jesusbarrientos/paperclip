@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { agents, heartbeatRuns, issues, toolCatalogEntries, toolConnectionInstalls, toolInvocations, companies, companyMemberships, instanceSettings, createDb, toolConnections, toolPolicies, toolProfileEntries } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -24,10 +25,14 @@ describe("remote connector lifecycle", () => {
     fixture = await startEmbeddedPostgresTestDatabase("mcp-connectors-test-");
     db = createDb(fixture.connectionString);
   });
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
   afterAll(async () => { await fixture?.cleanup(); vi.unstubAllEnvs(); if (keyDir) await rm(keyDir, { recursive: true, force: true }); });
   async function company() {
     const [row] = await db.insert(companies).values({ name: `MCP ${randomUUID()}`, issuePrefix: `M${randomUUID().slice(0, 5)}` }).returning();
-    await db.insert(companyMemberships).values({ companyId: row.id, principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" }).onConflictDoUpdate(membershipUpsert);
     return row;
   }
   function remoteFixture() {

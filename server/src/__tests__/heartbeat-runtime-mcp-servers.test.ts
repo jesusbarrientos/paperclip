@@ -31,6 +31,7 @@ import { buildPaperclipRuntimeMcpServers, createManagedMcpRunConfig } from "../s
 import { createToolGatewayService, ToolGatewayHttpError } from "../services/tool-gateway.js";
 
 import { toolAccessService } from "../services/tool-access.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -526,12 +527,11 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
       issuePrefix: `RG${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
     await db.insert(companyMemberships).values({
-      companyId: company!.id,
       principalType: "user",
       principalId: "responsible-user",
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const [agent] = await db.insert(agents).values({
       companyId: company!.id,
       name: "Dedicated GitHub Agent",

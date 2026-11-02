@@ -8,6 +8,10 @@ const mockStorage = vi.hoisted(() => ({
   headObject: vi.fn(),
 }));
 
+vi.mock("../services/organization.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
+}));
+
 vi.mock("../storage/index.js", () => ({
   getStorageService: () => mockStorage,
 }));

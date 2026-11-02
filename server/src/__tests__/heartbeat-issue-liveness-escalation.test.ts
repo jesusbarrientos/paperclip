@@ -75,6 +75,7 @@ import {
   buildIssueBlockersResolvedWakeStateKey,
   buildIssueBlockersResolvedWakeStateKeyWithoutCycle,
 } from "../services/issue-dependency-wakeups.ts";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -244,12 +245,11 @@ describeEmbeddedPostgres("heartbeat resolved dependency wake reconciliation", ()
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: ownerUserId,
       membershipRole: "owner",
       status: "active",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,

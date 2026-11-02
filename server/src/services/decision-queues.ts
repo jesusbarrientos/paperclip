@@ -269,7 +269,7 @@ async function sourceIssueId(
     case "join_request": {
       const row = await db.select({ id: joinRequests.id })
         .from(joinRequests)
-        .where(and(eq(joinRequests.companyId, companyId), eq(joinRequests.id, sourceId)))
+        .where(eq(joinRequests.id, sourceId))
         .then((rows) => rows[0] ?? null);
       return { exists: Boolean(row), issueId: null };
     }

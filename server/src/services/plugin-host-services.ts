@@ -895,7 +895,6 @@ export function buildHostServices(
       .select({ id: companyMemberships.id, membershipRole: companyMemberships.membershipRole })
       .from(companyMemberships)
       .where(and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId),
         eq(companyMemberships.status, "active"),
@@ -1261,10 +1260,11 @@ export function buildHostServices(
     return "active" as const;
   };
 
-  const redactInvite = (invite: typeof invites.$inferSelect) => {
+  const redactInvite = (invite: typeof invites.$inferSelect, companyId: string) => {
     const { tokenHash: _tokenHash, defaultsPayload, ...safeInvite } = invite;
     return {
       ...safeInvite,
+      companyId,
       allowedJoinTypes: safeInvite.allowedJoinTypes as InviteJoinType,
       defaultsPayload: defaultsPayload && typeof defaultsPayload === "object"
         ? sanitizeRecord(defaultsPayload)
@@ -1308,8 +1308,9 @@ export function buildHostServices(
     return sanitizeRecord(defaults);
   };
 
-  const redactGrant = (grant: typeof principalPermissionGrants.$inferSelect) => ({
+  const redactGrant = (grant: typeof principalPermissionGrants.$inferSelect, companyId: string) => ({
     ...grant,
+    companyId,
     principalType: grant.principalType as PrincipalType,
     permissionKey: grant.permissionKey as PermissionKey,
     scope: grant.scope && typeof grant.scope === "object" ? sanitizeRecord(grant.scope) : grant.scope ?? null,
@@ -1325,9 +1326,10 @@ export function buildHostServices(
     );
     return {
       ...member,
+      companyId,
       principalType: member.principalType as PrincipalType,
       status: member.status as "pending" | "active" | "suspended" | "archived",
-      grants: grants.map(redactGrant),
+      grants: grants.map((grant) => redactGrant(grant, companyId)),
     };
   };
 
@@ -2894,8 +2896,7 @@ export function buildHostServices(
         const visibleRows = params.includeArchived ? rows : rows.filter((row) => row.status !== "archived");
         const grants = await db
           .select()
-          .from(principalPermissionGrants)
-          .where(eq(principalPermissionGrants.companyId, companyId));
+          .from(principalPermissionGrants);
         const grantsByPrincipal = new Map<string, typeof grants>();
         for (const grant of grants) {
           const key = `${grant.principalType}:${grant.principalId}`;
@@ -2905,9 +2906,10 @@ export function buildHostServices(
         }
         return visibleRows.map((member) => ({
           ...member,
+          companyId,
           principalType: member.principalType as PrincipalType,
           status: member.status as "pending" | "active" | "suspended" | "archived",
-          grants: (grantsByPrincipal.get(`${member.principalType}:${member.principalId}`) ?? []).map(redactGrant),
+          grants: (grantsByPrincipal.get(`${member.principalType}:${member.principalId}`) ?? []).map((grant) => redactGrant(grant, companyId)),
         }));
       },
       async getMember(params) {
@@ -2940,13 +2942,13 @@ export function buildHostServices(
         const rows = await db
           .select()
           .from(invites)
-          .where(stateClause ? and(eq(invites.companyId, companyId), stateClause) : eq(invites.companyId, companyId))
+          .where(stateClause)
           .orderBy(desc(invites.createdAt))
           .limit(limit + 1)
           .offset(offset);
         const hasMore = rows.length > limit;
         return {
-          invites: rows.slice(0, limit).map(redactInvite),
+          invites: rows.slice(0, limit).map((invite) => redactInvite(invite, companyId)),
           nextOffset: hasMore ? offset + limit : null,
         };
       },
@@ -2959,7 +2961,6 @@ export function buildHostServices(
         const allowedJoinTypes = params.allowedJoinTypes ?? "both";
         const humanRole = allowedJoinTypes === "agent" ? null : params.humanRole ?? "operator";
         const insertValues = {
-          companyId,
           inviteType: "company_join" as const,
           allowedJoinTypes,
           defaultsPayload: mergeInviteDefaults(params.defaultsPayload ?? null, normalizedAgentMessage, humanRole),
@@ -2997,7 +2998,7 @@ export function buildHostServices(
             hasAgentMessage: Boolean(normalizedAgentMessage),
           },
         });
-        return { ...redactInvite(created), token };
+        return { ...redactInvite(created, companyId), token };
       },
       async revokeInvite(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -3005,11 +3006,11 @@ export function buildHostServices(
         const invite = await db
           .select()
           .from(invites)
-          .where(and(eq(invites.id, params.inviteId), eq(invites.companyId, companyId)))
+          .where(eq(invites.id, params.inviteId))
           .then((rows) => rows[0] ?? null);
         if (!invite) throw new Error("Invite not found");
         if (invite.acceptedAt) throw new Error("Invite already consumed");
-        if (invite.revokedAt) return redactInvite(invite);
+        if (invite.revokedAt) return redactInvite(invite, companyId);
         const revoked = await db
           .update(invites)
           .set({ revokedAt: new Date(), updatedAt: new Date() })
@@ -3022,7 +3023,7 @@ export function buildHostServices(
           entityType: "invite",
           entityId: invite.id,
         });
-        return redactInvite(revoked);
+        return redactInvite(revoked, companyId);
       },
     },
 
@@ -3031,7 +3032,6 @@ export function buildHostServices(
         const companyId = ensureCompanyId(params.companyId);
         await ensurePluginAvailableForCompany(companyId);
         const conditions = [
-          eq(principalPermissionGrants.companyId, companyId),
           params.principalType ? eq(principalPermissionGrants.principalType, params.principalType) : undefined,
           params.principalId ? eq(principalPermissionGrants.principalId, params.principalId) : undefined,
         ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
@@ -3040,7 +3040,7 @@ export function buildHostServices(
           .from(principalPermissionGrants)
           .where(and(...conditions))
           .orderBy(principalPermissionGrants.principalType, principalPermissionGrants.principalId, principalPermissionGrants.permissionKey);
-        return rows.map(redactGrant);
+        return rows.map((grant) => redactGrant(grant, companyId));
       },
       async setGrants(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -3073,7 +3073,7 @@ export function buildHostServices(
         });
         return access
           .listPrincipalGrants(companyId, params.principalType as PrincipalType, params.principalId)
-          .then((rows) => rows.map(redactGrant));
+          .then((rows) => rows.map((grant) => redactGrant(grant, companyId)));
       },
       async policySummary(params) {
         const companyId = ensureCompanyId(params.companyId);
@@ -3082,8 +3082,7 @@ export function buildHostServices(
           access.listMembers(companyId),
           db
             .select({ id: principalPermissionGrants.id })
-            .from(principalPermissionGrants)
-            .where(eq(principalPermissionGrants.companyId, companyId)),
+            .from(principalPermissionGrants),
         ]);
         return {
           companyId,

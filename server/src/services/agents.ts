@@ -951,7 +951,6 @@ export function agentService(db: Db) {
             !readBuiltInAgentMarker(created.metadata)) {
           await tx.insert(principalPermissionGrants).values(
             NEW_STANDARD_AGENT_DEFAULT_GRANT_KEYS.map((permissionKey) => ({
-              companyId,
               principalType: "agent" as const,
               principalId: created.id,
               permissionKey,
@@ -1100,7 +1099,6 @@ export function agentService(db: Db) {
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.agentId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.agentId, id));
         await tx.delete(principalPermissionGrants).where(and(
-          eq(principalPermissionGrants.companyId, existing.companyId),
           eq(principalPermissionGrants.principalType, "agent"),
           eq(principalPermissionGrants.principalId, id),
         ));
@@ -1174,7 +1172,6 @@ export function agentService(db: Db) {
         if (!permissionsImplyLowTrust(updated.permissions) && !readBuiltInAgentMarker(updated.metadata)) {
           await tx.insert(principalPermissionGrants).values(
             NEW_STANDARD_AGENT_DEFAULT_GRANT_KEYS.map((permissionKey) => ({
-              companyId: updated.companyId,
               principalType: "agent" as const,
               principalId: updated.id,
               permissionKey,
@@ -1283,7 +1280,6 @@ export function agentService(db: Db) {
         .insert(agentApiKeys)
         .values({
           agentId: id,
-          companyId: existing.companyId,
           name,
           keyHash,
           responsibleUserId: options?.responsibleUserId?.trim() || null,
@@ -1328,7 +1324,6 @@ export function agentService(db: Db) {
         .select({
           id: agentApiKeys.id,
           agentId: agentApiKeys.agentId,
-          companyId: agentApiKeys.companyId,
           name: agentApiKeys.name,
           responsibleUserId: agentApiKeys.responsibleUserId,
           scopeConfig: agentApiKeys.scopeConfig,

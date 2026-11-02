@@ -48,6 +48,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -1544,8 +1545,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
     }).where(eq(toolConnections.id, connection.id));
     await db.insert(toolConnectionInstalls).values({ companyId: company.id,
       connectionId: connection.id, targetType: "agent", targetId: agent.id });
-    await db.insert(companyMemberships).values(["A", "B"].map(principalId => ({ companyId: company.id,
-      principalType: "user", principalId, status: "active", membershipRole: "member" })));
+    await db.insert(companyMemberships).values(["A", "B"].map(principalId => ({ principalType: "user", principalId, status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
     const grants = await db.insert(connectionGrants).values(["A", "B"].map(subjectUserId => ({
       companyId: company.id, connectionId: connection.id, kind: "user", subjectUserId,
       status: "active", credentialSecretRefs: [],
@@ -1577,7 +1577,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
       expect((await gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: {} })).status).toBe("completed");
     }
     expect(resolvedGrants).toEqual([grants[0].id, grants[1].id, grants[0].id]);
-    await db.delete(companyMemberships).where(eq(companyMemberships.companyId, company.id));
+    await db.delete(companyMemberships);
     await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: {} }))
       .rejects.toMatchObject({ reasonCode: "grant_owner_membership_inactive" });
     expect(resolvedGrants).toHaveLength(3);

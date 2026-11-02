@@ -50,6 +50,7 @@ import {
   WORKSPACE_WORKTREE_REQUIRES_PROJECT_REMEDIATION,
 } from "../services/execution-workspace-policy.ts";
 import { buildAgentMentionHref, buildProjectMentionHref, MAX_ISSUE_REQUEST_DEPTH, type IssueWorkMode } from "@paperclipai/shared";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -772,8 +773,8 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const userId = randomUUID();
     await db.insert(agents).values(agentRow(companyId, { id: agentId, name: "ConnectionRequester" }));
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: userId, status: "active", membershipRole: "member",
-    });
+      principalType: "user", principalId: userId, status: "active", membershipRole: "member",
+    }).onConflictDoUpdate(membershipUpsert);
     const issue = await svc.create(companyId, {
       title: "Waiting for a connection", status: "in_review", priority: "medium", assigneeAgentId: agentId,
     });

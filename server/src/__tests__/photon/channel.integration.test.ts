@@ -60,6 +60,7 @@ import { resolveChatRunPresentationAuthorizationReason } from "../../services/ch
 import { PhotonChatAdapter } from "../../services/photon/adapter.js";
 import { PhotonCloudClient, PhotonError } from "../../services/photon/cloud.js";
 import { photonFixture, photonEvent, photonChat, stream } from "./fixture.js";
+import { membershipUpsert } from "../helpers/reset-organization.js";
 
 function idleStream<T>(): TypedEventStream<T> {
   let close!: () => void;
@@ -136,14 +137,12 @@ describe("iMessage Photon channel control plane", () => {
       updatedAt: new Date(),
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       permissionKey: "tools:manage_connections",
@@ -594,12 +593,11 @@ describe("iMessage Photon channel control plane", () => {
       updatedAt: new Date(),
     });
     await db.insert(companyMemberships).values({
-      companyId: t.companyId,
       principalType: "user",
       principalId: second,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const fromSecond = (sequence: number, text: string) => {
       const event = photonEvent(sequence, group, text);
       return {
@@ -1036,12 +1034,11 @@ describe("iMessage Photon channel control plane", () => {
       updatedAt: new Date(),
     });
     await db.insert(companyMemberships).values({
-      companyId: t.companyId,
       principalType: "user",
       principalId: second,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const discover = photonEvent(5, group);
     Object.assign(discover.message, {
       sender: { address: "+15555550102", service: "iMessage" },

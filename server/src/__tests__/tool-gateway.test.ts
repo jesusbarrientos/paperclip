@@ -3,7 +3,8 @@ import { createServer, type IncomingMessage } from "node:http";
 import express from "express";
 import { and, eq, sql } from "drizzle-orm";
 import request from "supertest";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   agents,
@@ -131,12 +132,11 @@ async function createIssueAndRun(db: Db, companyId: string, agentId: string) {
 
 async function createActiveMember(db: Db, companyId: string, userId: string) {
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     status: "active",
     membershipRole: "member",
-  });
+  }).onConflictDoUpdate(membershipUpsert);
 }
 
 async function allowToolsForAgent(db: Db, companyId: string, agentId: string, toolNames: string[]) {
@@ -549,6 +549,10 @@ describeEmbeddedPostgres("tool gateway acceptance", () => {
     db = createDb(tempDb.connectionString);
   }, 90_000);
 
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
+
   afterEach(async () => {
     await db.delete(activityLog);
     await db.delete(toolCallEvents);
@@ -637,8 +641,8 @@ describeEmbeddedPostgres("tool gateway acceptance", () => {
       expect(events.some((event) => event.eventType === "call_completed")).toBe(false);
       const agent = await createAgent(db, company.id);
       await allowAllToolsForAgent(db, company.id, agent.id);
-      await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user",
-        principalId: "test-user", status: "active", membershipRole: "member" });
+      await db.insert(companyMemberships).values({ principalType: "user",
+        principalId: "test-user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       const testCall = await gateway.executeTestCall({ companyId: company.id, connectionId: connection.id,
         agentId: agent.id, userId: "test-user", toolName, parameters: {} });
       expect(testCall).toMatchObject({ decision: "allowed", error: { reasonCode: "tool_error" } });
@@ -2731,10 +2735,7 @@ rl.on("line", (line) => {
         .resolves.toMatchObject({ status: "completed", result: { content: "delegated" } });
       expect(fake.requests).toHaveLength(2);
 
-      await db.update(companyMemberships).set({ status: "suspended" }).where(and(
-        eq(companyMemberships.companyId, company.id),
-        eq(companyMemberships.principalId, "alice"),
-      ));
+      await db.update(companyMemberships).set({ status: "suspended" }).where(eq(companyMemberships.principalId, "alice"));
       await expect(gateway.executeTool({
         sessionToken: unattendedSession.token,
         tool: unattendedTool.name,
@@ -4716,15 +4717,13 @@ rl.on("line", (line) => {
     const agent = await createAgent(db, company.id);
     const userId = `board-${randomUUID()}`;
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values([
       {
-        companyId: company.id,
         principalType: "user",
         principalId: userId,
         permissionKey: "tools:manage_runtime",
@@ -4732,7 +4731,6 @@ rl.on("line", (line) => {
         grantedByUserId: "owner",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: userId,
         permissionKey: "tools:view_audit",

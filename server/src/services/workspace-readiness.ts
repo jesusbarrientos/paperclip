@@ -242,7 +242,6 @@ export async function resolveWorkspaceReadiness(deps: WorkspaceReadinessDeps): P
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, authUsers.id),
               eq(companyMemberships.status, "active"),
-              eq(companyMemberships.companyId, companyId),
               ...(handoffUserId ? [eq(authUsers.id, handoffUserId)] : []),
               ...(handoffUserEmail ? [sql`lower(${authUsers.email}) = ${handoffUserEmail}`] : []),
             ),

@@ -39,6 +39,7 @@ const mockStorage = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/index.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
   boardAuthService: () => mockBoardAuthService,
@@ -220,7 +221,6 @@ describe("POST /companies/:companyId/openclaw/invite-prompt", () => {
     expect(res.body.onboardingTextPath).toContain("/api/invites/");
     expect((db as any).__insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        companyId: "company-1",
         inviteType: "company_join",
         allowedJoinTypes: "agent",
       }),

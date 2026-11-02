@@ -59,6 +59,7 @@ import {
   subscribeAllCompanyLiveEvents,
   subscribeCompanyLiveEvents,
 } from "../live-events.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("PaperclipControlPlanePort conformance", () => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
@@ -1050,9 +1051,9 @@ describe("PaperclipControlPlanePort conformance", () => {
       createdAt: new Date(), updatedAt: new Date(),
     });
     await db.insert(companyMemberships).values({
-      companyId: identity.companyId, principalType: "user", principalId: "reviewer-24",
+      principalType: "user", principalId: "reviewer-24",
       status: "active", membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: reviewerAgentId, companyId: identity.companyId, name: "Review lead",
       adapterType: "codex_local", status: "idle",

@@ -27,7 +27,6 @@ const accessSvc = {
   ensureMembership: vi.fn(),
   ensureRoleDefaultGrants: vi.fn(),
   listActiveUserMemberships: vi.fn(),
-  copyActiveUserMemberships: vi.fn(),
   setPrincipalPermission: vi.fn(),
 };
 
@@ -482,7 +481,6 @@ describe("company portability", () => {
         status: "active",
       },
     ]);
-    accessSvc.copyActiveUserMemberships.mockResolvedValue([]);
     agentInstructionsSvc.exportFiles.mockImplementation(async (agent: { name: string }) => ({
       files: { "AGENTS.md": agent.name === "CMO" ? "You are CMO." : "You are ClaudeCoder." },
       entryFile: "AGENTS.md",
@@ -2780,7 +2778,6 @@ describe("company portability", () => {
       name: "Imported Paperclip",
     });
     accessSvc.listActiveUserMemberships.mockResolvedValue([{ userId: "user-1" }]);
-    accessSvc.copyActiveUserMemberships.mockResolvedValue([]);
 
     const files = {
       "COMPANY.md": ["---", 'schema: "agentcompanies/v1"', 'name: "Imported Paperclip"', "---", ""].join("\n"),
@@ -3471,61 +3468,6 @@ describe("company portability", () => {
     }));
     expect(companySvc.update).toHaveBeenCalledWith("company-imported", {
       logoAssetId: "asset-created",
-    });
-  });
-
-  it("copies source company memberships for safe new-company imports", async () => {
-    const portability = companyPortabilityService({} as any);
-
-    companySvc.create.mockResolvedValue({
-      id: "company-imported",
-      name: "Imported Paperclip",
-    });
-    agentSvc.create.mockResolvedValue({
-      id: "agent-created",
-      name: "ClaudeCoder",
-    });
-
-    const exported = await portability.exportBundle("company-1", {
-      include: {
-        company: true,
-        agents: true,
-        projects: false,
-        issues: false,
-      },
-    });
-
-    agentSvc.list.mockResolvedValue([]);
-
-    await portability.importBundle({
-      source: {
-        type: "inline",
-        rootPath: exported.rootPath,
-        files: exported.files,
-      },
-      include: {
-        company: true,
-        agents: true,
-        projects: false,
-        issues: false,
-      },
-      target: {
-        mode: "new_company",
-        newCompanyName: "Imported Paperclip",
-      },
-      agents: "all",
-      collisionStrategy: "rename",
-    }, null, {
-      mode: "agent_safe",
-      sourceCompanyId: "company-1",
-    });
-
-    expect(accessSvc.listActiveUserMemberships).toHaveBeenCalledWith("company-1");
-    expect(accessSvc.copyActiveUserMemberships).toHaveBeenCalledWith("company-1", "company-imported");
-    expect(accessSvc.ensureMembership).not.toHaveBeenCalledWith("company-imported", "user", expect.anything(), "owner", "active");
-    const textOnlyFiles = Object.fromEntries(Object.entries(exported.files).filter(([, v]) => typeof v === "string"));
-    expect(companySkillSvc.importPackageFiles).toHaveBeenCalledWith("company-imported", textOnlyFiles, {
-      onConflict: "rename",
     });
   });
 

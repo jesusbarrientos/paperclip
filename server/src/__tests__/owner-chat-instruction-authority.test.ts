@@ -15,6 +15,7 @@ import { agentInstructionWorkingCopyService } from "../services/agent-instructio
 import { resolveManagedInstructionsRoot } from "../services/agent-instructions.js";
 import { authorizationService } from "../services/authorization.js";
 import { initializeRunIdentity } from "../services/run-identity.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe("owner-chat instruction authority", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -56,10 +57,10 @@ describe("owner-chat instruction authority", () => {
     await db.insert(agents).values({ id: agentId, companyId, name: "Ralph", status: "active", permissions,
       adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: "AGENTS.md" } });
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: userId, membershipRole: "operator", status: "active" },
-      { companyId, principalType: "agent", principalId: agentId, membershipRole: "member", status: "active" },
-    ]);
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
+      { principalType: "user", principalId: userId, membershipRole: "operator", status: "active" },
+      { principalType: "agent", principalId: agentId, membershipRole: "member", status: "active" },
+    ]).onConflictDoUpdate(membershipUpsert);
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
     const [chat] = await db.insert(issues).values({ companyId, title: "Owner chat", status: "in_progress",
       assigneeAgentId: agentId, conversationAgentId: agentId, conversationUserId: userId,
       conversationState: "active", conversationSessionGeneration: 0 }).returning();
@@ -228,7 +229,7 @@ describe("owner-chat instruction authority", () => {
   it("keeps peer instruction changes prohibited even with explicit grants", async () => {
     const f = await seed();
     const [peer] = await db.insert(agents).values({ companyId: f.companyId, name: "Peer", status: "active" }).returning();
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "agent", principalId: f.agentId, permissionKey: "agents:configure" });
+    await db.insert(principalPermissionGrants).values({ principalType: "agent", principalId: f.agentId, permissionKey: "agents:configure" });
     await db.update(principalPermissionGrants).set({ scope: { agentIds: [f.agentId, peer.id] } }).where(eq(principalPermissionGrants.principalId, f.userId));
     await expect(authorizeInstructionCommit(db, f.actor, { companyId: f.companyId, id: peer.id })).rejects.toMatchObject({ status: 403 });
   });
@@ -271,11 +272,11 @@ describe("owner-chat instruction authority", () => {
 
   it("still enforces explicit protected-change restrictions inside owner chat", async () => {
     const f = await seed();
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "agent",
+    await db.insert(principalPermissionGrants).values({ principalType: "agent",
       principalId: f.agentId, permissionKey: "agents:suggest-changes" });
     await expect(authorize(f)).rejects.toMatchObject({ status: 403, details: { code: "reflection_coach_mutation_gate_required" } });
     await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.principalId, f.agentId));
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "agent",
+    await db.insert(principalPermissionGrants).values({ principalType: "agent",
       principalId: f.agentId, permissionKey: "agents:configure", scope: { agentIds: [randomUUID()] } });
     await expect(authorize(f)).rejects.toMatchObject({ status: 403 });
   });

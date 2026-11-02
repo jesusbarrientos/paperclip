@@ -299,7 +299,6 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
     });
     await db.insert(invites).values({
       id: inviteId,
-      companyId,
       inviteType: "company_join",
       tokenHash: `invite-token-${randomUUID()}`,
       allowedJoinTypes: "agent",
@@ -331,7 +330,6 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
     await db.insert(joinRequests).values({
       id: joinRequestId,
       inviteId,
-      companyId,
       requestType: "agent",
       status: "pending_approval",
       requestIp: "127.0.0.1",

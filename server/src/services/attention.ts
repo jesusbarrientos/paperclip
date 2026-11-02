@@ -1339,11 +1339,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         })
         .from(joinRequests)
         .innerJoin(invites, eq(joinRequests.inviteId, invites.id))
-        .where(and(
-          eq(joinRequests.companyId, companyId),
-          eq(invites.companyId, companyId),
-          eq(joinRequests.status, "pending_approval"),
-        ))
+        .where(eq(joinRequests.status, "pending_approval"))
         .orderBy(desc(joinRequests.updatedAt), desc(joinRequests.id));
 
       for (const join of pendingJoins) {

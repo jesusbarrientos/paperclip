@@ -7,6 +7,7 @@ import {
   agentApiKeys,
   agents,
   boardApiKeys,
+  companies,
   heartbeatRuns,
 } from "@paperclipai/db";
 import { actorMiddleware } from "../middleware/auth.js";
@@ -24,6 +25,9 @@ function createSelectChain(rowsForTable: (table: unknown) => unknown[]) {
       return {
         where() {
           return Promise.resolve(rowsForTable(table));
+        },
+        orderBy() {
+          return { limit: () => Promise.resolve(rowsForTable(table)) };
         },
       };
     },
@@ -72,6 +76,7 @@ function createDbState(input: {
         if (table === agentApiKeys) return keyRow ? [keyRow] : [];
         if (table === agents) return [agentRow];
         if (table === heartbeatRuns) return runRow ? [runRow] : [];
+        if (table === companies) return [{ id: agentRow.companyId }];
         return [];
       }),
     update: () => ({

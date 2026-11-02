@@ -162,7 +162,6 @@ describeEmbeddedPostgres("companySkillPolicyService", () => {
       }],
     });
     await db.insert(principalPermissionGrants).values({
-      companyId: seeded.companyId,
       principalType: "agent",
       principalId: seeded.agentId,
       permissionKey: "skills:create",

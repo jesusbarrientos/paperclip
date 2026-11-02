@@ -8,6 +8,7 @@ import { activityLog, agents, authUsers, companies, companyMemberships, principa
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { resolveManagedInstructionsRoot } from "../agent-instructions.js";
 import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("canonical instruction tools through native authority", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -39,12 +40,12 @@ describe("canonical instruction tools through native authority", () => {
       { id: targetAgentId, companyId, name: "Target", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } },
     ]);
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: userId, membershipRole: "operator" },
-      { companyId, principalType: "agent", principalId: agentId, membershipRole: "member" },
-    ]);
+      { principalType: "user", principalId: userId, membershipRole: "operator" },
+      { principalType: "agent", principalId: agentId, membershipRole: "member" },
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values([
-      { companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [targetAgentId] } },
-      { companyId, principalType: "agent", principalId: agentId, permissionKey: "agents:configure", scope: { agentIds: [targetAgentId] } },
+      { principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [targetAgentId] } },
+      { principalType: "agent", principalId: agentId, permissionKey: "agents:configure", scope: { agentIds: [targetAgentId] } },
     ]);
     await db.insert(issues).values({ id: issueId, companyId, title: "Maintain instructions", status: "in_progress", workMode: "standard", assigneeAgentId: agentId });
     await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, status: "running", runtimeMode: "native", nativeIssueId: issueId, invocationSource: "on_demand", responsibleUserId: userId });

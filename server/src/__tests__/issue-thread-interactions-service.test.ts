@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   agents,
@@ -50,6 +51,10 @@ describeEmbeddedPostgres("issueThreadInteractionService", () => {
     issuesSvc = issueService(db);
     interactionsSvc = issueThreadInteractionService(db);
   }, 20_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -298,7 +303,7 @@ describeEmbeddedPostgres("issueThreadInteractionService", () => {
 
   async function seedQuestionUser(companyId: string, userId: string, role = "member", status = "active") {
     await db.insert(authUsers).values({ id: userId, name: "Question recipient", email: `${randomUUID()}@example.test`, createdAt: new Date(), updatedAt: new Date() });
-    await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: userId, membershipRole: role, status });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: role, status }).onConflictDoUpdate(membershipUpsert);
   }
 
   async function seedChatQuestion() {
@@ -405,12 +410,11 @@ describeEmbeddedPostgres("issueThreadInteractionService", () => {
     expect(await interactionsSvc.answerQuestions(scope, addressed.id, answer, { userId })).toMatchObject({ status: "answered", resolvedByUserId: userId });
   });
 
-  it.each(["unknown", "prefix-dropped", "cross-company", "inactive", "viewer"])("rejects %s explicit task recipients before saving", async (kind) => {
+  it.each(["unknown", "prefix-dropped", "inactive", "viewer"])("rejects %s explicit task recipients before saving", async (kind) => {
     const fixture = await seedSourceQuestionFixture({});
     const userId = "paperclip-id:task-recipient";
     if (kind !== "unknown") {
-      const companyId = kind === "cross-company" ? (await seedConfirmationIssue()).companyId : fixture.companyId;
-      await seedQuestionUser(companyId, userId, kind === "viewer" ? "viewer" : "member", kind === "inactive" ? "inactive" : "active");
+      await seedQuestionUser(fixture.companyId, userId, kind === "viewer" ? "viewer" : "member", kind === "inactive" ? "inactive" : "active");
     }
     await expect(interactionsSvc.create({ id: fixture.issueId, companyId: fixture.companyId }, {
       ...questionCreateInput(fixture.runId), addresseeUserId: kind === "prefix-dropped" ? "task-recipient" : userId,

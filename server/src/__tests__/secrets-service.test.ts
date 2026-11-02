@@ -28,6 +28,7 @@ import { awsSecretsManagerProvider } from "../secrets/aws-secrets-manager-provid
 import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
 import { SecretProviderClientError } from "../secrets/types.js";
 import { secretService } from "../services/secrets.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -213,14 +214,13 @@ describeEmbeddedPostgres("secretService", () => {
     membershipRole: "owner" | "member" | "viewer" = "member",
   ) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
   }
 
   async function seedAgentRun(companyId: string, permissions: Record<string, unknown> = {}) {

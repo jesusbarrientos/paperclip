@@ -17,7 +17,6 @@ export type PrincipalAccessCompatibilityBackfillStats = {
 export async function insertMissingPrincipalGrants(
   db: Db,
   input: {
-    companyId: string;
     principalType: PrincipalType;
     principalId: string;
     grants: GrantInput[];
@@ -31,7 +30,6 @@ export async function insertMissingPrincipalGrants(
     .insert(principalPermissionGrants)
     .values(
       input.grants.map((grant) => ({
-        companyId: input.companyId,
         principalType: input.principalType,
         principalId: input.principalId,
         permissionKey: grant.permissionKey,
@@ -43,7 +41,6 @@ export async function insertMissingPrincipalGrants(
     )
     .onConflictDoNothing({
       target: [
-        principalPermissionGrants.companyId,
         principalPermissionGrants.principalType,
         principalPermissionGrants.principalId,
         principalPermissionGrants.permissionKey,
@@ -57,7 +54,6 @@ export async function insertMissingPrincipalGrants(
 export async function ensureHumanRoleDefaultGrants(
   db: Db,
   input: {
-    companyId: string;
     principalId: string;
     membershipRole: string | null | undefined;
     grantedByUserId: string | null;
@@ -65,7 +61,6 @@ export async function ensureHumanRoleDefaultGrants(
 ): Promise<number> {
   const role = normalizeHumanRole(input.membershipRole, "operator");
   return insertMissingPrincipalGrants(db, {
-    companyId: input.companyId,
     principalType: "user",
     principalId: input.principalId,
     grants: grantsForHumanRole(role),
@@ -79,7 +74,6 @@ export async function backfillPrincipalAccessCompatibility(
   const now = new Date();
   const nonTerminalAgents = await db
     .select({
-      companyId: agents.companyId,
       principalId: agents.id,
     })
     .from(agents)
@@ -90,7 +84,6 @@ export async function backfillPrincipalAccessCompatibility(
       .insert(companyMemberships)
       .values(
         nonTerminalAgents.map((agent) => ({
-          companyId: agent.companyId,
           principalType: "agent",
           principalId: agent.principalId,
           status: "active",
@@ -101,7 +94,6 @@ export async function backfillPrincipalAccessCompatibility(
       )
       .onConflictDoNothing({
         target: [
-          companyMemberships.companyId,
           companyMemberships.principalType,
           companyMemberships.principalId,
         ],
@@ -112,7 +104,6 @@ export async function backfillPrincipalAccessCompatibility(
 
   const activeHumanMemberships = await db
     .select({
-      companyId: companyMemberships.companyId,
       principalId: companyMemberships.principalId,
       membershipRole: companyMemberships.membershipRole,
     })
@@ -127,7 +118,6 @@ export async function backfillPrincipalAccessCompatibility(
   let humanGrantsInserted = 0;
   for (const membership of activeHumanMemberships) {
     humanGrantsInserted += await ensureHumanRoleDefaultGrants(db, {
-      companyId: membership.companyId,
       principalId: membership.principalId,
       membershipRole: membership.membershipRole,
       grantedByUserId: null,

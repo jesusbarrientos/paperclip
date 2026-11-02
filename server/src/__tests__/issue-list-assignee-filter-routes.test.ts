@@ -18,6 +18,7 @@ import {
 import { issueRecoveryActionService } from "../services/issue-recovery-actions.js";
 import { ensureHumanRoleDefaultGrants } from "../services/principal-access-compatibility.js";
 import { resolveRequiredSuccessfulRunHandoffOnValidPath } from "../services/successful-run-handoff-state.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -82,15 +83,13 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
 
   async function seedCloudTenantMember(companyId: string, userId = "cloud-user-1") {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
       principalId: userId,
       membershipRole: "owner",
       grantedByUserId: null,

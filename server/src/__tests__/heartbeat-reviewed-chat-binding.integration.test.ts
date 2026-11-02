@@ -32,6 +32,7 @@ import {
 } from "../services/native-runtime/chat-attachment-reuse.js";
 import { decideIssueReviewPathRecovery } from "../services/recovery/review-path-recovery.js";
 import { resolveCurrentWakeCommentsBinding } from "../services/native-runtime/current-wake-comments.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (provider) => {
   let temporary: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -221,12 +222,11 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     await db
       .insert(companyMemberships)
       .values({
-        companyId,
         principalType: "user",
         principalId: userId,
         status: "active",
         membershipRole: "member",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
     await db
       .insert(issueComments)
       .values({

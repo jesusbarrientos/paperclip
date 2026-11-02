@@ -17,6 +17,7 @@ import {
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { secretService } from "../services/secrets.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -83,14 +84,13 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
   async function seedCompanyMember(companyId: string, userId: string) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "owner",
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
   }
 
   it("save path (syncEnvBindingsForTarget) names the env variable, the agent id, and the deleted definition key", async () => {

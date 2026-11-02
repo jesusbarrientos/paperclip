@@ -246,7 +246,6 @@ export async function listManagedWorkspaceHandoffSubjects(
       and(
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, authUsers.id),
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.status, "active"),
       ),
     );

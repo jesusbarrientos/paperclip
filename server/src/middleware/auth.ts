@@ -27,6 +27,7 @@ import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
 import { captureRunIdentity } from "../services/run-identity.js";
 import { boardAuthService } from "../services/board-auth.js";
+import { organizationService } from "../services/organization.js";
 import { retryIdempotentDatabaseOperation } from "../database-retry.js";
 
 export {
@@ -110,10 +111,10 @@ async function resolveLegacyRunResponsibleUserId(
 
 async function loadResponsibleUserMemberships(
   db: Db,
-  input: { companyId: string; userId: string | null },
+  input: { userId: string | null },
 ) {
   if (!input.userId) return [];
-  const [user, memberships] = await Promise.all([
+  const [user, memberships, organizationId] = await Promise.all([
     db
       .select({ id: authUsers.id })
       .from(authUsers)
@@ -121,21 +122,21 @@ async function loadResponsibleUserMemberships(
       .then((rows) => rows[0] ?? null),
     db
       .select({
-        companyId: companyMemberships.companyId,
         membershipRole: companyMemberships.membershipRole,
         status: companyMemberships.status,
       })
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, input.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, input.userId),
           eq(companyMemberships.status, "active"),
         ),
       ),
+    organizationService(db).findId(),
   ]);
-  return user ? memberships : [];
+  if (!user || !organizationId) return [];
+  return memberships.map((row) => ({ ...row, companyId: organizationId }));
 }
 
 /**
@@ -144,9 +145,10 @@ async function loadResponsibleUserMemberships(
  * and the Cloud trusted-header path so both resolve the same access set.
  */
 async function loadActiveUserCompanyMemberships(db: Db, userId: string) {
-  return db
+  const organizationId = await organizationService(db).findId();
+  if (!organizationId) return [];
+  const rows = await db
     .select({
-      companyId: companyMemberships.companyId,
       membershipRole: companyMemberships.membershipRole,
       status: companyMemberships.status,
     })
@@ -158,6 +160,7 @@ async function loadActiveUserCompanyMemberships(db: Db, userId: string) {
         eq(companyMemberships.status, "active"),
       ),
     );
+  return rows.map((row) => ({ ...row, companyId: organizationId }));
 }
 
 async function auditAgentJwtRunHeaderMismatch(
@@ -425,7 +428,6 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
             runId: claims.run_id,
           });
       const onBehalfOfMemberships = await loadResponsibleUserMemberships(db, {
-        companyId: claims.company_id,
         userId: onBehalfOfUserId,
       });
 
@@ -456,8 +458,8 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       .where(eq(agents.id, key.agentId))
       .then((rows) => rows[0] ?? null);
 
-    if (!agentRecord || agentRecord.companyId !== key.companyId) {
-      next(unauthorized("Agent record is missing or belongs to another company; obtain fresh credentials and retry"));
+    if (!agentRecord) {
+      next(unauthorized("Agent record is missing; obtain fresh credentials and retry"));
       return;
     }
     if (agentRecord.status === "terminated") {
@@ -472,7 +474,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     const responsibleUserId = normalizeOptionalString(key.responsibleUserId);
     if (!responsibleUserId) {
       await auditAgentKeyMissingResponsibleUser(db, {
-        companyId: key.companyId,
+        companyId: agentRecord.companyId,
         agentId: key.agentId,
         keyId: key.id,
         method: req.method,
@@ -487,12 +489,11 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     req.actor = {
       type: "agent",
       agentId: key.agentId,
-      companyId: key.companyId,
+      companyId: agentRecord.companyId,
       keyId: key.id,
       keyScope: normalizeAgentApiKeyScope(key.scopeConfig),
       onBehalfOfUserId: responsibleUserId,
       onBehalfOfMemberships: await loadResponsibleUserMemberships(db, {
-        companyId: key.companyId,
         userId: responsibleUserId,
       }),
       runId: runIdHeader || undefined,
@@ -651,7 +652,6 @@ async function resolveCloudTenantActorOnce(
   effectiveMembership = shouldSync ? await db
     .insert(companyMemberships)
     .values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -660,7 +660,6 @@ async function resolveCloudTenantActorOnce(
     })
     .onConflictDoUpdate({
       target: [
-        companyMemberships.companyId,
         companyMemberships.principalType,
         companyMemberships.principalId,
       ],
@@ -671,17 +670,16 @@ async function resolveCloudTenantActorOnce(
       },
     })
     .returning()
-    .then((rows) => rows[0] ?? {
+    .then((rows) => ({
       companyId,
-      membershipRole,
-      status: "active",
-    }) : { companyId, membershipRole, status: "active" as const };
+      membershipRole: rows[0]?.membershipRole ?? membershipRole,
+      status: rows[0]?.status ?? "active",
+    })) : { companyId, membershipRole, status: "active" as const };
 
   // Without instance-admin elevation, cloud tenant users are authorized purely
   // through company-scoped permission grants — seed the same role defaults the
   // regular membership flows create.
   if (shouldSync) await ensureHumanRoleDefaultGrants(db, {
-    companyId,
     principalId: userId,
     membershipRole: effectiveMembership.membershipRole ?? membershipRole,
     grantedByUserId: null,
@@ -692,41 +690,18 @@ async function resolveCloudTenantActorOnce(
     pruneCloudTenantWriteDebounce(cloudTenantWriteDebounce, Date.now());
   }
 
-  // The stack's seeded company is only where Cloud provisioned this user.
-  // Companies created afterwards on the instance (imports, in-app company
-  // creation) attach real membership rows for the user, so union those with
-  // the pinned primary — the same active-membership scope a locally
-  // authenticated session actor carries. Strictly this user's own rows; the
-  // membership-creating flows seed their own permission grants, so nothing
-  // needs seeding per request here. A read failure degrades to the pinned
-  // primary instead of blocking authentication, mirroring the fail-closed
-  // owner-elevation resolution below.
-  let additionalMemberships: { companyId: string; membershipRole: string | null; status: string }[] =
-    [];
-  try {
-    additionalMemberships = (await loadActiveUserCompanyMemberships(db, userId)).filter(
-      (row) => row.companyId !== companyId,
-    );
-  } catch (err) {
-    logger.warn(
-      { err, userId, stackId },
-      "Failed to load cloud tenant user's company memberships; scoping actor to the stack's primary company",
-    );
-  }
-
   return {
     type: "board",
     userId,
     userName,
     userEmail,
-    companyIds: [companyId, ...additionalMemberships.map((row) => row.companyId)],
+    companyIds: [companyId],
     memberships: [
       {
         companyId,
         membershipRole: effectiveMembership.membershipRole ?? membershipRole,
         status: effectiveMembership.status,
       },
-      ...additionalMemberships,
     ],
     // Computed per request, never persisted: the stack owner is elevated to
     // instance admin of their own dedicated instance only while the

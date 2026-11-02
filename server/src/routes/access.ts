@@ -86,7 +86,8 @@ import {
   boardAuthService,
   deduplicateAgentName,
   logActivity,
-  notifyHireApproved
+  notifyHireApproved,
+  organizationService
 } from "../services/index.js";
 import {
   grantsForHumanRole,
@@ -1104,6 +1105,7 @@ function toInviteSummaryResponse(
   company:
     | string
     | {
+      id?: string | null;
       name: string | null;
       logoUrl: string | null;
     }
@@ -1111,7 +1113,7 @@ function toInviteSummaryResponse(
   authPublicBaseUrl?: string
 ) {
   const companyInfo = typeof company === "string"
-    ? { name: company, logoUrl: null }
+    ? { id: null, name: company, logoUrl: null }
     : company;
   const baseUrl = resolveBaseUrl(req, authPublicBaseUrl);
   const invitePath = `/invite/${token}`;
@@ -1121,7 +1123,7 @@ function toInviteSummaryResponse(
   const inviteMessage = extractInviteMessage(invite);
   return {
     id: invite.id,
-    companyId: invite.companyId,
+    companyId: companyInfo?.id ?? null,
     companyName: companyInfo?.name ?? null,
     companyLogoUrl: companyInfo?.logoUrl ?? null,
     inviteType: invite.inviteType,
@@ -1222,7 +1224,6 @@ async function loadCompanyMemberRecords(
     .from(companyMemberships)
     .where(
       and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         options.includeArchived ? undefined : ne(companyMemberships.status, "archived"),
       ),
@@ -1238,7 +1239,6 @@ async function loadCompanyMemberRecords(
           .from(principalPermissionGrants)
           .where(
             and(
-              eq(principalPermissionGrants.companyId, companyId),
               eq(principalPermissionGrants.principalType, "user"),
               inArray(principalPermissionGrants.principalId, userIds),
             ),
@@ -1383,7 +1383,6 @@ async function loadCompanyUserDirectory(db: Db, companyId: string) {
     .from(companyMemberships)
     .where(
       and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.status, "active"),
       ),
@@ -1439,7 +1438,7 @@ async function loadCompanyInviteRecords(
   const rows = await db
     .select()
     .from(invites)
-    .where(whereClause ? and(eq(invites.companyId, companyId), whereClause) : eq(invites.companyId, companyId))
+    .where(whereClause)
     .orderBy(desc(invites.createdAt))
     .limit(options.limit + 1)
     .offset(options.offset);
@@ -1459,13 +1458,10 @@ async function loadCompanyInviteRecords(
           .select({ id: joinRequests.id, inviteId: joinRequests.inviteId })
           .from(joinRequests)
           .where(
-            and(
-              eq(joinRequests.companyId, companyId),
-              inArray(
-                joinRequests.inviteId,
-                visibleRows.map((invite) => invite.id),
-              ),
-            ),
+            inArray(
+                              joinRequests.inviteId,
+                              visibleRows.map((invite) => invite.id),
+                            ),
           )
       : Promise.resolve([]),
     db
@@ -1499,7 +1495,6 @@ async function loadJoinRequestRecords(db: Db, companyId: string) {
     await db
       .select()
       .from(joinRequests)
-      .where(eq(joinRequests.companyId, companyId))
       .orderBy(desc(joinRequests.createdAt))
   );
   const inviteIds = [...new Set(rows.map((row) => row.inviteId))];
@@ -1728,6 +1723,7 @@ function buildInviteOnboardingManifest(
   token: string,
   invite: typeof invites.$inferSelect,
   opts: {
+    companyId?: string | null;
     companyName?: string | null;
     deploymentMode: DeploymentMode;
     deploymentExposure: DeploymentExposure;
@@ -1765,7 +1761,7 @@ function buildInviteOnboardingManifest(
       req,
       token,
       invite,
-      opts.companyName ?? null,
+      { id: opts.companyId ?? null, name: opts.companyName ?? null, logoUrl: null },
       opts.authPublicBaseUrl
     ),
     onboarding: {
@@ -1828,6 +1824,7 @@ export function buildInviteOnboardingTextDocument(
   token: string,
   invite: typeof invites.$inferSelect,
   opts: {
+    companyId?: string | null;
     companyName?: string | null;
     deploymentMode: DeploymentMode;
     deploymentExposure: DeploymentExposure;
@@ -2178,7 +2175,7 @@ async function resolveAcceptedInviteJoinRequest(
     .then((rows) => rows[0] ?? null);
   if (directJoinRequest) return directJoinRequest;
 
-  if (!invite.companyId) return null;
+  if (invite.inviteType === "bootstrap_ceo") return null;
 
   const actorRequestingUserId = isLocalImplicit(req)
     ? "local-board"
@@ -2197,10 +2194,7 @@ async function resolveAcceptedInviteJoinRequest(
       })
       .from(joinRequests)
       .where(
-        and(
-          eq(joinRequests.companyId, invite.companyId),
-          eq(joinRequests.requestType, "human"),
-        ),
+        eq(joinRequests.requestType, "human"),
       )
       .orderBy(desc(joinRequests.createdAt)),
     {
@@ -2638,6 +2632,7 @@ export function accessRoutes(
 ) {
   const router = Router();
   const access = accessService(db);
+  const organization = organizationService(db);
   const boardAuth = boardAuthService(db);
   const agents = agentService(db);
   const routeInviteResolutionNetwork = opts.inviteResolutionNetwork
@@ -3074,7 +3069,6 @@ export function accessRoutes(
         ? null
         : input.humanRole ?? "operator";
     const insertValues = {
-      companyId: input.companyId,
       inviteType: "company_join" as const,
       allowedJoinTypes: input.allowedJoinTypes,
       defaultsPayload: mergeInviteDefaults(
@@ -3192,16 +3186,21 @@ export function accessRoutes(
     };
   }
 
+  async function inviteOrganizationId(invite: { inviteType: string }): Promise<string | null> {
+    return invite.inviteType === "bootstrap_ceo" ? null : organization.findId();
+  }
+
   async function getInviteCompanyBranding(
     companyId: string | null,
     inviteToken: string | null = null,
   ): Promise<{
+    id: string | null;
     name: string | null;
     logoAssetId: string | null;
     logoUrl: string | null;
   }> {
     if (!companyId) {
-      return { name: null, logoAssetId: null, logoUrl: null };
+      return { id: null, name: null, logoAssetId: null, logoUrl: null };
     }
     const company = await db
       .select({
@@ -3236,6 +3235,7 @@ export function accessRoutes(
     }
 
     return {
+      id: company ? companyId : null,
       name: company?.name ?? null,
       logoAssetId: company?.logoAssetId ?? null,
       logoUrl,
@@ -3343,7 +3343,7 @@ export function accessRoutes(
         }
       });
 
-      const companyBranding = await getInviteCompanyBranding(created.companyId, token);
+      const companyBranding = await getInviteCompanyBranding(companyId, token);
       const inviteSummary = toInviteSummaryResponse(
         req,
         token,
@@ -3398,7 +3398,7 @@ export function accessRoutes(
         }
       });
 
-      const companyBranding = await getInviteCompanyBranding(created.companyId, token);
+      const companyBranding = await getInviteCompanyBranding(companyId, token);
       const inviteSummary = toInviteSummaryResponse(
         req,
         token,
@@ -3437,7 +3437,7 @@ export function accessRoutes(
       throw notFound("Invite not found");
     }
 
-    const companyBranding = await getInviteCompanyBranding(invite.companyId, token);
+    const companyBranding = await getInviteCompanyBranding(await inviteOrganizationId(invite), token);
     const inviterName = invite.invitedByUserId
       ? await loadUsersById(db, [invite.invitedByUserId]).then(
           (m) => m.get(invite.invitedByUserId!)?.name ?? null
@@ -3469,7 +3469,7 @@ export function accessRoutes(
       throw notFound("Invite not found");
     }
 
-    const logoAsset = await getInviteLogoAsset(invite.companyId);
+    const logoAsset = await getInviteLogoAsset(await inviteOrganizationId(invite));
     if (!logoAsset || !logoAsset.companyId) {
       throw notFound("Invite logo not found");
     }
@@ -3517,9 +3517,10 @@ export function accessRoutes(
       throw notFound("Invite not found");
     }
 
-    const companyBranding = await getInviteCompanyBranding(invite.companyId);
+    const companyBranding = await getInviteCompanyBranding(await inviteOrganizationId(invite));
     res.json(buildInviteOnboardingManifest(req, token, invite, {
       ...opts,
+      companyId: companyBranding.id,
       companyName: companyBranding.name
     }));
   });
@@ -3536,12 +3537,13 @@ export function accessRoutes(
       throw notFound("Invite not found");
     }
 
-    const companyBranding = await getInviteCompanyBranding(invite.companyId);
+    const companyBranding = await getInviteCompanyBranding(await inviteOrganizationId(invite));
     res
       .type("text/plain; charset=utf-8")
       .send(
         buildInviteOnboardingTextDocument(req, token, invite, {
           ...opts,
+          companyId: companyBranding.id,
           companyName: companyBranding.name
         })
       );
@@ -3704,7 +3706,7 @@ export function accessRoutes(
       }
 
       const requestType = req.body.requestType as "human" | "agent";
-      const companyId = invite.companyId;
+      const companyId = await inviteOrganizationId(invite);
       if (!companyId) throw conflict("Invite is missing company scope");
       if (
         invite.allowedJoinTypes !== "both" &&
@@ -3864,10 +3866,7 @@ export function accessRoutes(
                 .select()
                 .from(joinRequests)
                 .where(
-                  and(
-                    eq(joinRequests.companyId, companyId),
-                    eq(joinRequests.requestType, "human")
-                  )
+                  eq(joinRequests.requestType, "human")
                 )
                 .orderBy(desc(joinRequests.createdAt)),
               {
@@ -3907,7 +3906,6 @@ export function accessRoutes(
                 .insert(joinRequests)
                 .values({
                   inviteId: invite.id,
-                  companyId,
                   requestType,
                   status: "pending_approval",
                   requestIp: requestIp(req),
@@ -4096,13 +4094,14 @@ export function accessRoutes(
 
       const response = toJoinRequestResponse(created);
       if (claimSecret) {
-        const companyBranding = await getInviteCompanyBranding(invite.companyId);
+        const companyBranding = await getInviteCompanyBranding(await inviteOrganizationId(invite));
         const onboardingManifest = buildInviteOnboardingManifest(
           req,
           token,
           invite,
           {
             ...opts,
+            companyId: companyBranding.id,
             companyName: companyBranding.name
           }
         );
@@ -4132,11 +4131,12 @@ export function accessRoutes(
       .where(eq(invites.id, id))
       .then((rows) => rows[0] ?? null);
     if (!invite) throw notFound("Invite not found");
+    const inviteCompanyId = await inviteOrganizationId(invite);
     if (invite.inviteType === "bootstrap_ceo") {
       await assertInstanceAdmin(req);
     } else {
-      if (!invite.companyId) throw conflict("Invite is missing company scope");
-      await assertCompanyPermission(req, invite.companyId, "users:invite");
+      if (!inviteCompanyId) throw conflict("Invite is missing company scope");
+      await assertCompanyPermission(req, inviteCompanyId, "users:invite");
     }
     if (invite.acceptedAt) throw conflict("Invite already consumed");
     if (invite.revokedAt) return res.json(invite);
@@ -4148,9 +4148,9 @@ export function accessRoutes(
       .returning()
       .then((rows) => rows[0]);
 
-    if (invite.companyId) {
+    if (inviteCompanyId) {
       await logActivity(db, {
-        companyId: invite.companyId,
+        companyId: inviteCompanyId,
         actorType: req.actor.type === "agent" ? "agent" : "user",
         actorId:
           req.actor.type === "agent"
@@ -4198,10 +4198,7 @@ export function accessRoutes(
         .select()
         .from(joinRequests)
         .where(
-          and(
-            eq(joinRequests.companyId, companyId),
-            eq(joinRequests.id, requestId)
-          )
+          eq(joinRequests.id, requestId)
         )
         .then((rows) => rows[0] ?? null);
       if (!existing) throw notFound("Join request not found");
@@ -4349,10 +4346,7 @@ export function accessRoutes(
         .select()
         .from(joinRequests)
         .where(
-          and(
-            eq(joinRequests.companyId, companyId),
-            eq(joinRequests.id, requestId)
-          )
+          eq(joinRequests.id, requestId)
         )
         .then((rows) => rows[0] ?? null);
       if (!existing) throw notFound("Join request not found");
@@ -4447,8 +4441,10 @@ export function accessRoutes(
         { responsibleUserId: joinRequest.approvedByUserId ?? joinRequest.requestingUserId ?? null },
       );
 
+      const claimCompanyId = await organization.findId();
+      if (!claimCompanyId) throw conflict("Organization is not initialized");
       await logActivity(db, {
-        companyId: joinRequest.companyId,
+        companyId: claimCompanyId,
         actorType: "system",
         actorId: "join-claim",
         action: "agent_api_key.claimed",

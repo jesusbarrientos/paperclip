@@ -36,6 +36,7 @@ vi.mock("../services/issue-assignment-wakeup.js", () => ({
 
 import { activityRoutes } from "../routes/activity.js";
 import { issueRoutes } from "../routes/issues.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -317,14 +318,12 @@ describeEmbeddedPostgres("permissions upgrade visibility and route boundaries", 
     expect(deniedPrivateAssignment.body.error).toContain("private");
 
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: actorAgent.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: actorAgent.id,
       permissionKey: "tasks:assign_scope",

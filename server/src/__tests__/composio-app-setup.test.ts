@@ -11,6 +11,7 @@ import { toolAccessPolicyService } from "../services/tool-access-policy.js";
 import { toolAccessRoutes } from "../routes/tool-access.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe("Composio app authorization evidence", () => {
   it("completes app setup without an agent selection", () => {
@@ -61,7 +62,7 @@ const support = await getEmbeddedPostgresTestSupport();
   async function fixture(syncToolkits: string[] = ["circleback_mcp", "notion", "hubspot"]) {
     const [company] = await db.insert(companies).values({ name: "Composio direct setup", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
     const userId = randomUUID();
-    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: userId, membershipRole: "admin", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const [agent, otherAgent] = await db.insert(agents).values(["Default agent", "Other agent"].map(name => ({ companyId: company.id, name, role: "general" as const, status: "idle" as const, adapterType: "codex_local" }))).returning();
     const [app] = await db.insert(toolApplications).values({ companyId: company.id, applicationKey: randomUUID(), name: "Composio", type: "mcp_http", metadata: { sourceTemplateKey: "composio" } }).returning();
     const [connection] = await db.insert(toolConnections).values({ companyId: company.id, applicationId: app.id, uid: randomUUID(), name: "Composio account", transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: "composio", url: "https://connect.composio.dev/mcp" } }).returning();
@@ -177,7 +178,7 @@ const support = await getEmbeddedPostgresTestSupport();
   it("rejects agents, non-managers, and other companies before calling Composio", async () => {
     const f = await fixture();
     const userId = randomUUID();
-    await db.insert(companyMemberships).values({ companyId: f.company.id, principalType: "user", principalId: userId, membershipRole: "member", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     let providerCalls = 0;
     const member: Express.Request["actor"] = { type: "board", userId, source: "session", isInstanceAdmin: false, companyIds: [f.company.id], memberships: [{ companyId: f.company.id, membershipRole: "member", status: "active" }] };
     const actors: [Express.Request["actor"], number][] = [

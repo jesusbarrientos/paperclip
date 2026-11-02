@@ -35,6 +35,7 @@ import type { StorageService } from "../../storage/types.js";
 import { issueService } from "../issues.js";
 import { NativeChatAttachmentReadScope } from "./chat-attachment-read.js";
 import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 const stagingControl = vi.hoisted(() => ({
   beforeStage: undefined as (() => Promise<void>) | undefined,
@@ -203,12 +204,11 @@ describe("native same-conversation historical attachment reading", () => {
       status: "linked",
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const sourceComment = await issueService(db).addComment(
       issueId,

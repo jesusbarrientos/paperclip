@@ -44,6 +44,7 @@ import {
   PIPELINE_CONTEXT_PACK_EVENT_LIMIT,
 } from "../services/pipelines.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -374,14 +375,12 @@ describeEmbeddedPostgres("pipeline routes", () => {
       adapterType: "codex_local",
     }).returning();
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent!.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent!.id,
       permissionKey: "pipelines:write",

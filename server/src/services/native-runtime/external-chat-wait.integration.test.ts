@@ -70,6 +70,7 @@ import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.
 import { createLocalDiskStorageProvider } from "../../storage/local-disk-provider.js";
 import { createStorageService } from "../../storage/service.js";
 import { subscribeAllCompanyLiveEvents } from "../live-events.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("native external-chat response wait", () => {
   const externalTestDatabaseUrl = process.env.PAPERCLIP_TEST_DATABASE_URL;
@@ -262,12 +263,11 @@ describe("native external-chat response wait", () => {
       status: "linked",
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(issueComments).values({
       id: commentId,
       companyId,
@@ -935,12 +935,11 @@ describe("native external-chat response wait", () => {
         await db
           .insert(companyMemberships)
           .values({
-            companyId: fixture.companyId,
             principalType: "user",
             principalId: otherUser,
             status: "active",
             membershipRole: "member",
-          });
+          }).onConflictDoUpdate(membershipUpsert);
         await db
           .update(issueThreadInteractions)
           .set({ resolvedByUserId: otherUser })
@@ -970,8 +969,7 @@ describe("native external-chat response wait", () => {
             change === "viewer"
               ? { membershipRole: "viewer" }
               : { status: "suspended" },
-          )
-          .where(eq(companyMemberships.companyId, fixture.companyId));
+          );
       if (change === "identity_revoked")
         await db
           .update(chatIdentityLinks)
@@ -1098,8 +1096,7 @@ describe("native external-chat response wait", () => {
       if (change === "membership")
         await db
           .update(companyMemberships)
-          .set({ membershipRole: "viewer" })
-          .where(eq(companyMemberships.companyId, fixture.companyId));
+          .set({ membershipRole: "viewer" });
       if (change === "reach")
         await db
           .update(chatEndpointResources)
@@ -1422,10 +1419,7 @@ describe("native external-chat response wait", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(
-        and(
-          eq(companyMemberships.companyId, fixture.companyId),
-          eq(companyMemberships.principalId, fixture.userId),
-        ),
+        eq(companyMemberships.principalId, fixture.userId),
       );
     await expect(
       attestReviewedExternalChatRun({
@@ -1645,10 +1639,7 @@ describe("native external-chat response wait", () => {
               .update(companyMemberships)
               .set({ status: "suspended" })
               .where(
-                and(
-                  eq(companyMemberships.companyId, fixture.companyId),
-                  eq(companyMemberships.principalId, fixture.userId),
-                ),
+                eq(companyMemberships.principalId, fixture.userId),
               );
           }
           await expect(invoke()).rejects.toThrow(
@@ -1880,10 +1871,7 @@ describe("native external-chat response wait", () => {
           .update(companyMemberships)
           .set({ status: "suspended" })
           .where(
-            and(
-              eq(companyMemberships.companyId, fixture.companyId),
-              eq(companyMemberships.principalId, fixture.userId),
-            ),
+            eq(companyMemberships.principalId, fixture.userId),
           );
       await expect(
         materializeExternalChatQuestionResponseInput({
@@ -2247,12 +2235,11 @@ describe("native external-chat response wait", () => {
         await db
           .insert(companyMemberships)
           .values({
-            companyId: fixture.companyId,
             principalType: "user",
             principalId: "second-user",
             status: "active",
             membershipRole: "member",
-          });
+          }).onConflictDoUpdate(membershipUpsert);
         await db
           .update(chatActions)
           .set({ principalId })
@@ -2393,20 +2380,14 @@ describe("native external-chat response wait", () => {
           .update(companyMemberships)
           .set({ status: "suspended" })
           .where(
-            and(
-              eq(companyMemberships.companyId, fixture.companyId),
-              eq(companyMemberships.principalId, fixture.userId),
-            ),
+            eq(companyMemberships.principalId, fixture.userId),
           );
       if (kind === "demoted_membership")
         await db
           .update(companyMemberships)
           .set({ membershipRole: "viewer" })
           .where(
-            and(
-              eq(companyMemberships.companyId, fixture.companyId),
-              eq(companyMemberships.principalId, fixture.userId),
-            ),
+            eq(companyMemberships.principalId, fixture.userId),
           );
       if (kind === "changed_generation")
         await db

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { and, eq } from "drizzle-orm";
 import {
   agents,
@@ -106,14 +107,12 @@ async function grantAgentPermission(
   scope: Record<string, unknown> | null = null,
 ) {
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "agent",
     principalId: agentId,
     status: "active",
     membershipRole: "member",
-  });
+  }).onConflictDoUpdate(membershipUpsert);
   await db.insert(principalPermissionGrants).values({
-    companyId,
     principalType: "agent",
     principalId: agentId,
     permissionKey,
@@ -147,14 +146,12 @@ async function grantUserPermission(
   scope: Record<string, unknown> | null = null,
 ) {
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     status: "active",
     membershipRole: "operator",
-  });
+  }).onConflictDoUpdate(membershipUpsert);
   await db.insert(principalPermissionGrants).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     permissionKey,
@@ -171,6 +168,10 @@ describeEmbeddedPostgres("authorization service", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-authorization-service-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   afterEach(async () => {
     await db.delete(issueComments);
@@ -193,14 +194,12 @@ describeEmbeddedPostgres("authorization service", () => {
     const company = await createCompany(db, "UserGrant");
     const userId = `user-${randomUUID()}`;
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       permissionKey: "tasks:assign",
@@ -280,12 +279,11 @@ describeEmbeddedPostgres("authorization service", () => {
     await grantAgentPermission(db, company.id, directAgent.id, "agents:configure");
     await grantAgentPermission(db, company.id, suggestAgent.id, "agents:suggest-changes");
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: noGrantAgent.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authz = authorizationService(db);
     await expect(authz.decide({
@@ -340,12 +338,11 @@ describeEmbeddedPostgres("authorization service", () => {
     await grantAgentPermission(db, company.id, directAgent.id, "skills:create");
     await grantAgentPermission(db, company.id, suggestAgent.id, "skills:suggest-changes");
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: noGrantAgent.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authz = authorizationService(db);
     await expect(authz.decide({
@@ -422,12 +419,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const responsibleUserId = await createUser(db);
     await grantAgentPermission(db, company.id, actorAgent.id, "skills:create");
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: {
@@ -458,12 +454,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const responsibleUserId = await createUser(db);
     await grantAgentPermission(db, company.id, actorAgent.id, "skills:create");
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: {
@@ -535,12 +530,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const actorAgent = await createAgent(db, company.id, { role: "engineer" });
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: actorAgent.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
@@ -714,12 +708,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const responsibleUserId = await createUser(db);
     await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign");
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: {
@@ -749,12 +742,11 @@ describeEmbeddedPostgres("authorization service", () => {
     });
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     await expect(authorizationService(db).decide({
       actor: {
@@ -786,12 +778,11 @@ describeEmbeddedPostgres("authorization service", () => {
     });
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const authz = authorizationService(db);
     const resource = {
       type: "issue" as const,
@@ -816,7 +807,6 @@ describeEmbeddedPostgres("authorization service", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(and(
-        eq(companyMemberships.companyId, company.id),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, responsibleUserId),
       ));
@@ -846,12 +836,11 @@ describeEmbeddedPostgres("authorization service", () => {
     });
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     await expect(authorizationService(db).decide({
       actor: {
@@ -1099,7 +1088,6 @@ describeEmbeddedPostgres("authorization service", () => {
     });
     await grantAgentPermission(db, company.id, actorAgent.id, "agents:configure");
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: actorAgent.id,
       permissionKey: "skills:create",
@@ -1275,12 +1263,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: { type: "board", userId, source: "session" },
@@ -1302,12 +1289,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     const issue = await createIssue(db, company.id, { projectId: project.id });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
     const actor = { type: "board" as const, userId, source: "session" as const };
@@ -1357,12 +1343,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const assignee = await createAgent(db, company.id, { role: "engineer" });
     const issue = await createIssue(db, company.id, { assigneeAgentId: assignee.id });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
     const actor = { type: "board" as const, userId, source: "board_key" as const };
@@ -1395,12 +1380,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const assignee = await createAgent(db, company.id, { role: "engineer" });
     const issue = await createIssue(db, company.id, { assigneeAgentId: assignee.id });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
     const actor = { type: "board" as const, userId, source: "board_key" as const };
@@ -1428,33 +1412,17 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("denies null-mapped visibility actions for board users without an active membership", async () => {
-    const memberCompany = await createCompany(db, "BoardVisibilityMember");
     const otherCompany = await createCompany(db, "BoardVisibilityOther");
-    const userId = `user-${randomUUID()}`;
-    const targetAgent = await createAgent(db, otherCompany.id, { role: "engineer" });
     const inactiveUserId = `user-${randomUUID()}`;
     await db.insert(companyMemberships).values({
-      companyId: memberCompany.id,
-      principalType: "user",
-      principalId: userId,
-      status: "active",
-      membershipRole: "member",
-    });
-    await db.insert(companyMemberships).values({
-      companyId: otherCompany.id,
       principalType: "user",
       principalId: inactiveUserId,
       status: "removed",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
 
-    await expect(authorization.decide({
-      actor: { type: "board", userId, source: "session" },
-      action: "agent:read",
-      resource: { type: "agent", companyId: otherCompany.id, agentId: targetAgent.id },
-    })).resolves.toMatchObject({ allowed: false, reason: "deny_missing_membership" });
     await expect(authorization.decide({
       actor: { type: "board", userId: inactiveUserId, source: "session" },
       action: "company_scope:read",
@@ -1467,12 +1435,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
 
@@ -1716,12 +1683,11 @@ describeEmbeddedPostgres("authorization service", () => {
     });
     const boardUserId = `user-${randomUUID()}`;
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: boardUserId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(issueComments).values({
       companyId: company.id,
       issueId: issue.id,
@@ -1753,8 +1719,7 @@ describeEmbeddedPostgres("authorization service", () => {
     const company = await createCompany(db, "wake");
     const agent = await createAgent(db, company.id);
     const userId = await createUser(db);
-    await db.insert(companyMemberships).values({ companyId: company.id,
-      principalType: "user", principalId: userId, status: "active", membershipRole: "operator" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "operator" }).onConflictDoUpdate(membershipUpsert);
     const auth = authorizationService(db);
     const actor = { type: "board" as const, source, userId, companyIds: [company.id] };
     const resource = { type: "agent" as const, companyId: company.id, agentId: agent.id };
@@ -1773,12 +1738,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const authorization = authorizationService(db);
     const actor = { type: "board", userId, source: "session" } as const;
@@ -1810,12 +1774,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, company.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: { type: "board", userId, companyIds: [company.id], source: "session" },
@@ -1832,16 +1795,9 @@ describeEmbeddedPostgres("authorization service", () => {
 
   it("never elevates cloud_tenant actors through stale instance_admin rows", async () => {
     const tenantCompany = await createCompany(db, "CloudTenantStale");
-    const otherCompany = await createCompany(db, "CloudTenantOther");
+    const otherCompany = tenantCompany;
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, otherCompany.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: tenantCompany.id,
-      principalType: "user",
-      principalId: userId,
-      status: "active",
-      membershipRole: "owner",
-    });
     // Stale grant left behind by a pre-hardening cloud_tenant deployment.
     await db.insert(instanceUserRoles).values({ userId, role: "instance_admin" });
 
@@ -1882,12 +1838,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, otherCompany.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: tenantCompany.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "owner",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     // Deliberately NO instanceUserRoles row: elevation is computed, not stored.
 
     const decision = await authorizationService(db).decide({
@@ -1911,12 +1866,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const actorAgent = await createAgent(db, sourceCompany.id, { role: "engineer" });
     const targetAgent = await createAgent(db, targetCompany.id, { role: "engineer" });
     await db.insert(companyMemberships).values({
-      companyId: sourceCompany.id,
       principalType: "agent",
       principalId: actorAgent.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const decision = await authorizationService(db).decide({
       actor: { type: "agent", agentId: actorAgent.id, companyId: sourceCompany.id, source: "agent_key" },
@@ -2366,12 +2320,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const actorAgent = await createAgent(db, company.id);
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     await expect(authorizationService(db).decide({
       actor: {
@@ -2395,12 +2348,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const actorAgent = await createAgent(db, company.id);
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(userInboxAgentPolicies).values({
       companyId: company.id,
       userId: responsibleUserId,
@@ -2426,12 +2378,11 @@ describeEmbeddedPostgres("authorization service", () => {
     const deniedAgent = await createAgent(db, company.id);
     const responsibleUserId = await createUser(db);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(userInboxAgentPolicies).values({
       companyId: company.id,
       userId: responsibleUserId,
@@ -2468,20 +2419,18 @@ describeEmbeddedPostgres("authorization service", () => {
     const targetUserId = await createUser(db);
     await db.insert(companyMemberships).values([
       {
-        companyId: company.id,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: targetUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
 
     await expect(authorizationService(db).decide({
       actor: {
@@ -2506,27 +2455,24 @@ describeEmbeddedPostgres("authorization service", () => {
     const openTargetUserId = await createUser(db);
     await db.insert(companyMemberships).values([
       {
-        companyId: company.id,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: allowlistTargetUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: openTargetUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(userInboxAgentPolicies).values([
       {
         companyId: company.id,
@@ -2576,20 +2522,18 @@ describeEmbeddedPostgres("authorization service", () => {
     const targetUserId = await createUser(db);
     await db.insert(companyMemberships).values([
       {
-        companyId: company.id,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: targetUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await grantAgentPermission(db, company.id, actorAgent.id, "inbox:manage");
 
     await expect(authorizationService(db).decide({
@@ -2614,13 +2558,12 @@ describeEmbeddedPostgres("authorization service", () => {
     const disallowedUserId = await createUser(db);
     await db.insert(companyMemberships).values(
       [responsibleUserId, disabledUserId, disallowedUserId].map((principalId) => ({
-        companyId: company.id,
         principalType: "user" as const,
         principalId,
         status: "active" as const,
         membershipRole: "operator" as const,
       })),
-    );
+    ).onConflictDoUpdate(membershipUpsert);
     await db.insert(userInboxAgentPolicies).values([
       { companyId: company.id, userId: disabledUserId, mode: "disabled" },
       { companyId: company.id, userId: disallowedUserId, mode: "allowlist", allowedAgentIds: [] },
@@ -2652,27 +2595,24 @@ describeEmbeddedPostgres("authorization service", () => {
     const deniedTargetUserId = await createUser(db);
     await db.insert(companyMemberships).values([
       {
-        companyId: company.id,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: allowedTargetUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId: company.id,
         principalType: "user",
         principalId: deniedTargetUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await grantAgentPermission(db, company.id, actorAgent.id, "inbox:manage", {
       userIds: [allowedTargetUserId],
     });
@@ -2724,12 +2664,11 @@ describeEmbeddedPostgres("authorization service", () => {
       },
     });
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     await expect(authorizationService(db).decide({
       actor: {

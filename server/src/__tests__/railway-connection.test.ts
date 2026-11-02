@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { agents, approvals, companies, companyMemberships, companySecrets, connectionGrants, createDb, heartbeatRuns, issues, toolCatalogEntries, toolActionRequests, toolConnections, toolPolicies, toolProfileBindings, toolProfiles, toolAccessAuditEvents } from "@paperclipai/db";
 import { toolAccessService } from "../services/tool-access.js";
 import { createToolGatewayService } from "../services/tool-gateway.js";
@@ -26,7 +27,7 @@ const initialTools = [
 
   async function fixture() {
     const [company] = await db.insert(companies).values({ name: "Railway fixture", issuePrefix: `RW${randomUUID().slice(0, 6)}` }).returning();
-    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" }).onConflictDoUpdate(membershipUpsert);
     let tools: unknown[] = [...initialTools];
     let apiStatus = 200;
     let tokenStatus = 200;
@@ -65,6 +66,10 @@ const initialTools = [
     await service.completeOAuthCallback({ state: url.searchParams.get("state")!, code: "fixture-code", iss: railwayAuthorizationMetadata.issuer, redirectUri, actor });
     return { company, service, connectionId: connection.connectionId, request, setTools: (next: unknown[]) => { tools = next; }, setApiStatus: (next: number) => { apiStatus = next; }, setTokenStatus: (next: number) => { tokenStatus = next; } };
   }
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   it("discovers direct tools, blocks opaque actions and quarantines changed tools even on reconnect", async () => {
     const f = await fixture();

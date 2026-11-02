@@ -28,6 +28,8 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
+
 const support = await getEmbeddedPostgresTestSupport();
 (support.supported ? describe : describe.skip)(
   "aggregator connection fallback",
@@ -60,12 +62,11 @@ const support = await getEmbeddedPostgresTestSupport();
         createdAt: new Date(), updatedAt: new Date(),
       });
       await db.insert(companyMemberships).values({
-        companyId,
         principalType: "user",
         principalId: "responsible-user",
         status: "active",
         membershipRole: "member",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       await db.insert(goals).values({
         id: goalId,
         companyId,

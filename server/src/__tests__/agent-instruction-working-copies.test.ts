@@ -17,6 +17,7 @@ import { agentInstructionWorkingCopyService } from "../services/agent-instructio
 import { appendHeartbeatRunEvent } from "../services/heartbeat-run-events.js";
 import { resolveManagedInstructionsRoot } from "../services/agent-instructions.js";
 import { buildNativeRuntimeContext } from "../services/native-runtime/runtime-context.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe("registered run instruction copies", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -62,10 +63,10 @@ describe("registered run instruction copies", () => {
     root = resolveManagedInstructionsRoot({ ...target(), id: agentId, name: "Target", adapterConfig: {} });
     await db.insert(agents).values({ id: agentId, companyId, name: "Target", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } });
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: userId, membershipRole: "operator" },
-      { companyId, principalType: "agent", principalId: agentId, membershipRole: "member" },
-    ]);
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
+      { principalType: "user", principalId: userId, membershipRole: "operator" },
+      { principalType: "agent", principalId: agentId, membershipRole: "member" },
+    ]).onConflictDoUpdate(membershipUpsert);
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
     await fs.mkdir(path.dirname(path.join(root, entryFile)), { recursive: true });
     await fs.writeFile(path.join(root, entryFile), initial);
   });

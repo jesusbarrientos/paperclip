@@ -68,8 +68,8 @@ describeEmbeddedPostgres("built-in agent unique marker migration", () => {
       VALUES (${approvalId}, ${affectedCompanyId}, 'hire_agent', 'pending', ${sql.json({ agentId: newerId, sourceBuiltInAgentKey: "summarizer" })})
     `;
     await sql`
-      INSERT INTO "agent_api_keys" ("id", "agent_id", "company_id", "name", "key_hash")
-      VALUES (${apiKeyId}, ${newerId}, ${affectedCompanyId}, 'dupe-key', 'hash')
+      INSERT INTO "agent_api_keys" ("id", "agent_id", "name", "key_hash")
+      VALUES (${apiKeyId}, ${newerId}, 'dupe-key', 'hash')
     `;
 
     // Re-run the migration: it should clean up the duplicates, then recreate the index.

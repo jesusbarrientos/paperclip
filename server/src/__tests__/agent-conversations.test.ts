@@ -57,6 +57,7 @@ import {
   buildPaperclipWakePayload,
   heartbeatService,
 } from "../services/heartbeat.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 (support.supported ? describe : describe.skip)(
@@ -195,14 +196,12 @@ const support = await getEmbeddedPostgresTestSupport();
         await db
           .insert(companyMemberships)
           .values({
-            companyId,
             principalType: "user",
             principalId: userId,
             status: "active",
             membershipRole: "operator",
-          });
+          }).onConflictDoUpdate(membershipUpsert);
         await ensureHumanRoleDefaultGrants(db, {
-          companyId,
           principalId: userId,
           membershipRole: "operator",
           grantedByUserId: null,

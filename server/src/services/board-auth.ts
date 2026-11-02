@@ -10,6 +10,7 @@ import {
   instanceUserRoles,
 } from "@paperclipai/db";
 import { conflict, forbidden, notFound } from "../errors.js";
+import { organizationService } from "./organization.js";
 
 export const BOARD_API_KEY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const CLI_AUTH_CHALLENGE_TTL_MS = 10 * 60 * 1000;
@@ -67,7 +68,7 @@ export function boardAuthService(db: Db) {
     }
   }
   async function resolveBoardAccess(userId: string) {
-    const [user, memberships, adminRole] = await Promise.all([
+    const [user, membershipRows, adminRole, organizationId] = await Promise.all([
       db
         .select({
           id: authUsers.id,
@@ -79,7 +80,6 @@ export function boardAuthService(db: Db) {
         .then((rows) => rows[0] ?? null),
       db
         .select({
-          companyId: companyMemberships.companyId,
           membershipRole: companyMemberships.membershipRole,
           status: companyMemberships.status,
         })
@@ -97,7 +97,11 @@ export function boardAuthService(db: Db) {
         .from(instanceUserRoles)
         .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
         .then((rows) => rows[0] ?? null),
+      organizationService(db).findId(),
     ]);
+    const memberships = organizationId
+      ? membershipRows.map((row) => ({ ...row, companyId: organizationId }))
+      : [];
 
     return {
       user,

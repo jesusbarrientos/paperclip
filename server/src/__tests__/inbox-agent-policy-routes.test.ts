@@ -18,6 +18,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -88,20 +89,18 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     ]);
     await db.insert(companyMemberships).values([
       {
-        companyId,
         principalType: "user",
         principalId: userId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId,
         principalType: "user",
         principalId: otherUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,
@@ -178,7 +177,6 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
       .expect(({ body }) => expect(body.code).toBe("inbox_agent_policy_admin_required"));
 
     await db.insert(principalPermissionGrants).values({
-      companyId: seeded.companyId,
       principalType: "user",
       principalId: seeded.userId,
       permissionKey: "users:manage_permissions",
@@ -199,7 +197,6 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     const seeded = await seed();
     const actor = boardActor(seeded.companyId, seeded.userId);
     await db.insert(principalPermissionGrants).values({
-      companyId: seeded.companyId,
       principalType: "user",
       principalId: seeded.userId,
       permissionKey: "users:manage_permissions",

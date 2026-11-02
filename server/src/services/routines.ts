@@ -156,7 +156,6 @@ async function resolveCompanyDefaultResponsibleUserId(db: Db, companyId: string)
     .from(companyMemberships)
     .where(
       and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.status, "active"),
         eq(companyMemberships.membershipRole, "owner"),

@@ -135,12 +135,11 @@ export function decisionService(db: Db, options: DecisionServiceOptions) {
   }
 
   async function recoveryActor(companyId: string, userId: string): Promise<AuthorizationActor> {
-    const membership = await db.select({ companyId: companyMemberships.companyId, membershipRole: companyMemberships.membershipRole,
-      status: companyMemberships.status }).from(companyMemberships).where(and(eq(companyMemberships.companyId, companyId),
-      eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId), eq(companyMemberships.status, "active")))
+    const membership = await db.select({ membershipRole: companyMemberships.membershipRole,
+      status: companyMemberships.status }).from(companyMemberships).where(and(eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId), eq(companyMemberships.status, "active")))
       .then((rows) => rows[0] ?? null);
     if (!membership) return { type: "none", source: "none" };
-    return { type: "board", userId, companyIds: [companyId], memberships: [membership], source: "session" };
+    return { type: "board", userId, companyIds: [companyId], memberships: [{ ...membership, companyId }], source: "session" };
   }
 
   async function collectDescendantIds(companyId: string, rootId: string, dbOrTx: Db) {

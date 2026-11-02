@@ -10,6 +10,7 @@ const logActivityMock = vi.fn();
 
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
+    organizationService: () => ({ findId: async () => "company-1" }),
     accessService: () => ({
       isInstanceAdmin: vi.fn(),
       canUser: vi.fn(),

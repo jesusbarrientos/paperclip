@@ -12671,7 +12671,6 @@ export function issueRoutes(
               .from(companyMemberships)
               .where(
                 and(
-                  eq(companyMemberships.companyId, issue.companyId),
                   eq(companyMemberships.principalType, "user"),
                   eq(companyMemberships.principalId, userId),
                   eq(companyMemberships.status, "active"),
@@ -13290,7 +13289,6 @@ export function issueRoutes(
             .from(companyMemberships)
             .where(
               and(
-                eq(companyMemberships.companyId, existing.companyId),
                 eq(companyMemberships.principalType, "user"),
                 eq(companyMemberships.principalId, owner.userId),
                 eq(companyMemberships.status, "active"),

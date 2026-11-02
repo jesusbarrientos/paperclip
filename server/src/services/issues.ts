@@ -7188,7 +7188,6 @@ export function issueService(db: Db) {
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, userId),
           eq(companyMemberships.status, "active"),

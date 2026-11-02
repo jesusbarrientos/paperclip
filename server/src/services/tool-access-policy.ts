@@ -1207,7 +1207,6 @@ export function toolAccessPolicyService(db: Db) {
         .select()
         .from(principalPermissionGrants)
         .where(and(
-          eq(principalPermissionGrants.companyId, ctx.companyId),
           eq(principalPermissionGrants.principalType, principalType),
           eq(principalPermissionGrants.principalId, principalId),
           eq(principalPermissionGrants.permissionKey, "tools:use"),

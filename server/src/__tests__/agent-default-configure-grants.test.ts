@@ -8,6 +8,7 @@ import { agentService } from "../services/agents.js";
 import { authorizationService } from "../services/authorization.js";
 import { accessService } from "../services/access.js";
 import { agentJoinGrantsFromDefaults } from "../services/invite-grants.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 const describeDatabase = support.supported ? describe : describe.skip;
@@ -67,8 +68,7 @@ describeDatabase("new agent configuration defaults", () => {
       paperclipBuiltInAgent: { key: "reflection-coach", featureKeys: [] },
     });
 
-    const grants = await db.select().from(principalPermissionGrants)
-      .where(eq(principalPermissionGrants.companyId, companyId));
+    const grants = await db.select().from(principalPermissionGrants);
     for (const agent of [standard, peer]) {
       expect(grants.filter((grant) => grant.principalId === agent.id)
         .map((grant) => grant.permissionKey).sort()).toEqual(expectedNewAgentGrantKeys);
@@ -82,12 +82,11 @@ describeDatabase("new agent configuration defaults", () => {
     }
 
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "agent",
       principalId: standard.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     for (const permissionKey of expectedNewAgentGrantKeys) {
       if (permissionKey === "tasks:assign_scope" || permissionKey === "inbox:manage") continue; // These grants require a target scope or the responsible-user inbox path.
@@ -134,8 +133,8 @@ describeDatabase("new agent configuration defaults", () => {
     expect(await db.select().from(principalPermissionGrants)
       .where(eq(principalPermissionGrants.principalId, peer.id))).toEqual([]);
 
-    await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, companyId));
-    await db.delete(companyMemberships).where(eq(companyMemberships.companyId, companyId));
+    await db.delete(principalPermissionGrants);
+    await db.delete(companyMemberships);
     await db.delete(agents).where(eq(agents.companyId, companyId));
     await db.delete(companies).where(eq(companies.id, companyId));
   });
@@ -155,7 +154,6 @@ describeDatabase("new agent configuration defaults", () => {
       { companyId, name: "Pending", role: "engineer", status: "pending_approval", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
     ]).returning();
     await db.insert(principalPermissionGrants).values({
-      companyId,
       principalType: "agent",
       principalId: rows[1]!.id,
       permissionKey: "agents:configure",
@@ -170,13 +168,12 @@ describeDatabase("new agent configuration defaults", () => {
         await agentService(db).update(row.id, { title: "Updated existing agent" });
       }
     }
-    const grants = await db.select().from(principalPermissionGrants)
-      .where(eq(principalPermissionGrants.companyId, companyId));
+    const grants = await db.select().from(principalPermissionGrants);
     expect(grants.map((grant) => grant.principalId).sort()).toEqual([rows[1]!.id]);
     expect(grants.map((grant) => grant.permissionKey)).toEqual(["agents:configure"]);
     expect(grants.find((grant) => grant.principalId === rows[1]!.id)?.scope).toEqual({ agentIds: [rows[0]!.id] });
 
-    await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, companyId));
+    await db.delete(principalPermissionGrants);
     await db.delete(agents).where(eq(agents.companyId, companyId));
     await db.delete(companies).where(eq(companies.id, companyId));
   });
@@ -196,16 +193,14 @@ describeDatabase("new agent configuration defaults", () => {
       adapterConfig: {},
       runtimeConfig: {},
     });
-    expect(await db.select().from(principalPermissionGrants)
-      .where(eq(principalPermissionGrants.companyId, companyId))).toEqual([]);
+    expect(await db.select().from(principalPermissionGrants)).toEqual([]);
 
     const result = await agentService(db).activatePendingApproval(pending.id);
     expect(result?.activated).toBe(true);
-    expect((await db.select().from(principalPermissionGrants)
-      .where(eq(principalPermissionGrants.companyId, companyId)))
+    expect((await db.select().from(principalPermissionGrants))
       .map((grant) => grant.permissionKey).sort()).toEqual(expectedNewAgentGrantKeys);
 
-    await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, companyId));
+    await db.delete(principalPermissionGrants);
     await db.delete(agents).where(eq(agents.companyId, companyId));
     await db.delete(companies).where(eq(companies.id, companyId));
   });
@@ -232,8 +227,8 @@ describeDatabase("new agent configuration defaults", () => {
       .where(eq(principalPermissionGrants.principalId, invited.id));
     expect(grants.map((grant) => grant.permissionKey).sort()).toEqual(expectedNewAgentGrantKeys);
 
-    await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, companyId));
-    await db.delete(companyMemberships).where(eq(companyMemberships.companyId, companyId));
+    await db.delete(principalPermissionGrants);
+    await db.delete(companyMemberships);
     await db.delete(agents).where(eq(agents.companyId, companyId));
     await db.delete(companies).where(eq(companies.id, companyId));
   });

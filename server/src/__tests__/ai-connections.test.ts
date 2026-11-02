@@ -20,6 +20,7 @@ import express from "express";
 import request from "supertest";
 import { aiConnectionRoutes, canInstallSharedAiConnectionForNewAgent, responsibleUserForAiRequest } from "../routes/ai-connections.js";
 import { validateAiApiKey } from "../routes/ai-connections.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
 let db: ReturnType<typeof createDb>;
@@ -41,15 +42,15 @@ beforeAll(async () => {
   service = aiConnectionService(db);
   await db.insert(companies).values([{ id: companyId, name: "AI connection tests", issuePrefix: "AIT" }, { id: otherCompanyId, name: "Other", issuePrefix: "AIO" }]);
   await db.insert(agents).values({ id: agentId, companyId, name: "Nova", adapterType: "claude_local" });
-  await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ companyId, principalId, principalType: "user", status: "active", membershipRole: "member" })));
+  await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
 }, 90000);
 afterAll(async () => { await database?.cleanup(); vi.unstubAllEnvs(); if (home) await rm(home, { recursive: true, force: true }); });
 
 describe("managed AI connections", () => {
   it.each([false, true])("reports the authoritative connection-manager capability for custom grants (manager: %s)", async (manager) => {
     const userId = `custom-manager-${manager}`;
-    await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: userId, status: "active", membershipRole: "member" });
-    if (manager) await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "tools:manage_connections" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
+    if (manager) await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "tools:manage_connections" });
     const app = express();
     app.use((req, _res, next) => {
       req.actor = { type: "board", source: "session", userId, companyIds: [companyId], memberships: [{ companyId, status: "active", membershipRole: "member" }] };
@@ -63,7 +64,7 @@ describe("managed AI connections", () => {
 
   it("probes only the requested authorized grant using its vaulted subscription token", async () => {
     const owner = "usage-probe-owner";
-    await db.insert(companyMemberships).values({ companyId, principalId: owner, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const account = await service.save(companyId, owner, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Usage probe account", loginSessionId: "fixture", agentIds: [], allAgents: true }, "usage-selected-secret");
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ five_hour: { utilization: 42 }, seven_day: { utilization: 15 } })));
     const app = express();
@@ -112,7 +113,7 @@ describe("managed AI connections", () => {
       }
       // Unsupported methods do not resolve or send secrets.
       const owner = "usage-api-owner";
-      await db.insert(companyMemberships).values({ companyId, principalId: owner, principalType: "user", status: "active", membershipRole: "member" });
+      await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       const apiAccount = await create(owner, "Unsupported usage method");
       fetchSpy.mockClear();
       expect(await service.probeUsage(companyId, owner, apiAccount.connectionId)).toMatchObject({ status: "unsupported" });
@@ -129,7 +130,7 @@ describe("managed AI connections", () => {
     const runId = randomUUID();
     const adapterType = provider === "openai" ? "codex_local" : "claude_local";
     const selectedBinding = { provider, method: "api_key", mode: "responsible_user" } as const;
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({ id, companyId, name: "Auth recovery", adapterType, runtimeConfig: { aiConnection: selectedBinding } });
     await db.insert(issues).values({ id: issueId, companyId, title: "Fix provider login", status: "in_progress", assigneeAgentId: id });
     const account = await service.save(companyId, userId, { provider, method: "api_key", ownership: "personal", name: "Recovery account", apiKey: "fixture", agentIds: [id], allAgents: false }, "fixture-recovery-key");
@@ -194,7 +195,7 @@ describe("managed AI connections", () => {
   ] as const)("runs the same %s agent with each responsible user's subscription or API key", async (provider, adapterType, subscriptionEnv, apiEnv) => {
     const subscriptionUser = `${provider}-subscription-user`;
     const apiUser = `${provider}-api-user`;
-    await db.insert(companyMemberships).values([subscriptionUser, apiUser].map(principalId => ({ companyId, principalId, principalType: "user", status: "active", membershipRole: "member" })));
+    await db.insert(companyMemberships).values([subscriptionUser, apiUser].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
     const token = provider === "openai" ? JSON.stringify({ tokens: { access_token: "fixture-subscription", refresh_token: "fixture-refresh", id_token: "fixture-id", account_id: "fixture-account" } }) : "fixture-subscription";
     const subscription = await service.save(companyId, subscriptionUser, { provider, method: "subscription", ownership: "personal", name: "Subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, token);
     const api = await service.save(companyId, apiUser, { provider, method: "api_key", ownership: "personal", name: "API", apiKey: "fixture", allAgents: true, agentIds: [] }, "fixture-api");
@@ -227,7 +228,7 @@ describe("managed AI connections", () => {
 
   it("has one provider default across methods, retains unavailable defaults and honors explicit account methods", async () => {
     const userId = "provider-default-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const api = await create(userId, "Provider API");
     const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Provider subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-provider-subscription");
     expect((await service.select({ ...input, userId })).grant.id).toBe(api.grantId);
@@ -244,7 +245,7 @@ describe("managed AI connections", () => {
 
   it("backfills provider defaults repeatably without deleting old preferences or replacing an unavailable choice", async () => {
     const userId = "provider-default-migration-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const api = await create(userId, "Migration API");
     const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Migration subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-migration-subscription");
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.id, api.grantId));
@@ -261,7 +262,7 @@ describe("managed AI connections", () => {
   });
   it("observes old-server default changes during rolling upgrades without treating new accounts as default changes", async () => {
     const userId = "rolling-upgrade-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const api = await create(userId, "Rolling API");
     const subscription = await service.save(companyId, userId, { provider: "anthropic", method: "subscription", ownership: "personal", name: "Rolling subscription", loginSessionId: "fixture", allAgents: true, agentIds: [] }, "fixture-rolling-subscription");
     expect((await service.select({ ...input, userId })).grant.id).toBe(api.grantId);
@@ -439,7 +440,7 @@ describe("managed AI connections", () => {
   });
   it("runs a same-agent OpenAI subscription child alongside a still-open parent", async () => {
     const userId = "subscription-contention-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const credential = JSON.stringify({ tokens: { access_token: "fixture-access", refresh_token: "fixture-refresh", id_token: "fixture-id", account_id: "fixture-account" } });
     const account = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Contention fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, credential);
     const runInput = {
@@ -483,7 +484,7 @@ describe("managed AI connections", () => {
   });
   it("resolves two concurrent OpenAI subscription write-backs by freshness, not by order", async () => {
     const userId = "concurrent-freshness-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
     await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
@@ -502,7 +503,7 @@ describe("managed AI connections", () => {
   });
   it("resolves two concurrent OpenAI subscription write-backs by freshness in reverse arrival order", async () => {
     const userId = "concurrent-freshness-reverse-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
     await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Reverse freshness fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
@@ -521,7 +522,7 @@ describe("managed AI connections", () => {
   });
   it("resolves two concurrent xAI subscription write-backs by freshness, not by order", async () => {
     const userId = "concurrent-freshness-xai-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const identityKey = "https://auth.x.ai::33333333-3333-3333-3333-333333333333";
     const auth = (marker: string, expiresAtMs: number) => JSON.stringify({ [identityKey]: { key: `key-${marker}`, refresh_token: `refresh-${marker}`, expires_at: new Date(expiresAtMs).toISOString() } });
     const now = Date.now();
@@ -542,7 +543,7 @@ describe("managed AI connections", () => {
   });
   it("discards a credential write-back when the grant is revoked while the run is open", async () => {
     const userId = "revoked-write-back-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
     const saved = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Revocation fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
@@ -563,7 +564,7 @@ describe("managed AI connections", () => {
   });
   it("does not let a stale write-back overwrite an authorized secret rotation that commits while cleanup waits on the credential lock", async () => {
     const userId = "credential-lock-race-user";
-    await db.insert(companyMemberships).values({ companyId, principalId: userId, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: userId, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const auth = (marker: string, hour: number) => JSON.stringify({ tokens: { account_id: "fixture-account", id_token: `id-${marker}`, access_token: `access-${marker}`, refresh_token: `refresh-${marker}` }, last_refresh: `2026-09-10T${hour}:00:00Z` });
     const saved = await service.save(companyId, userId, { provider: "openai", method: "subscription", ownership: "personal", name: "Credential lock race fixture", loginSessionId: "fixture", allAgents: true, agentIds: [] }, auth("start", 10));
     const runInput = { ...input, adapterType: "codex_local", responsibleUserId: userId, binding: { provider: "openai", method: "subscription", mode: "responsible_user" } as const, config: { model: "same-model" } };
@@ -715,7 +716,7 @@ describe("managed AI connections", () => {
   });
   it.each(["anthropic", "openai"] as const)("lets authenticated users connect only their own isolated %s login", async provider => {
     const owner = `self-hosted-${provider}`;
-    await db.insert(companyMemberships).values({ companyId, principalId: owner, principalType: "user", status: "active", membershipRole: "member" });
+    await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     const reader = vi.spyOn(localCredentials, "readVerifiedLocalAiCredential").mockResolvedValue("isolated-fixture-token");
     const app = express();
     app.use(express.json());
@@ -949,7 +950,7 @@ describe("AI connection recovery delivery", () => {
       const recoveringAgentId = randomUUID();
       const issueId = randomUUID();
       const failedRunId = randomUUID();
-      await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: userId, status: "active", membershipRole: "member" });
+      await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
       await db.insert(agents).values({ id: recoveringAgentId, companyId, name: "Recovery agent", status: "active", adapterType: "claude_local", runtimeConfig: { aiConnection: binding } });
       await db.insert(issues).values({ id: issueId, companyId, title: "Restore selected account", status: "in_progress", assigneeAgentId: recoveringAgentId });
       await db.insert(heartbeatRuns).values({ id: failedRunId, companyId, agentId: recoveringAgentId, status: "running", responsibleUserId: userId, contextSnapshot: { issueId } });

@@ -107,6 +107,7 @@ vi.mock("@paperclipai/adapter-claude-local/server", async (importOriginal) => {
 // NOTE: ../services/secrets.js is intentionally NOT mocked — the routes resolve
 // against the real embedded-postgres-backed secret service.
 import { secretService } from "../services/secrets.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -152,14 +153,13 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
       updatedAt: new Date(),
     });
     await db.insert(companyMemberships).values({
-      companyId: COMPANY_ID,
       principalType: "user",
       principalId: "user-1",
       status: "active",
       membershipRole: "owner",
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const { registerServerAdapter } = await import("../adapters/index.js");
     registerServerAdapter(externalAdapter);
   });

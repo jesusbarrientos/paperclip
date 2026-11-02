@@ -47,7 +47,6 @@ export async function resolveInstructionActor(
       .where(
         and(
           eq(agentApiKeys.id, actor.keyId),
-          eq(agentApiKeys.companyId, actor.companyId),
           eq(agentApiKeys.agentId, actor.agentId),
           isNull(agentApiKeys.revokedAt),
         ),
@@ -112,7 +111,6 @@ export async function resolveInstructionActor(
     .innerJoin(authUsers, eq(authUsers.id, companyMemberships.principalId))
     .where(
       and(
-        eq(companyMemberships.companyId, actor.companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, responsibleUserId),
         eq(companyMemberships.status, "active"),

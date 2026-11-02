@@ -42,6 +42,7 @@ import {
 } from "./chat-attachment-reuse.js";
 import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.js";
 import { validateNativeDeliverableEvidence } from "./native-deliverable-feedback.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("native same-conversation chat attachment reuse", () => {
   let temporary: Awaited<
@@ -185,12 +186,11 @@ describe("native same-conversation chat attachment reuse", () => {
       status: "linked",
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const sourceComment = await issueService(db).addComment(
       issueId,

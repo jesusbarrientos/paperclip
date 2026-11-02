@@ -19,15 +19,8 @@ import { Webhook } from "svix";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   createDb,
@@ -93,6 +86,10 @@ describe("AgentMail durable email pipeline", () => {
       updatedAt: new Date(),
     });
   }, 60_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
   afterEach(async () => {
     for (const service of services.splice(0)) await service.shutdown();
     vi.restoreAllMocks();
@@ -211,12 +208,11 @@ describe("AgentMail durable email pipeline", () => {
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalId: "email-board",
       principalType: "user",
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,
@@ -651,8 +647,7 @@ describe("AgentMail durable email pipeline", () => {
     await f.service.queueSend(f.companyId, input, { userId: "email-board" });
     await db
       .update(companyMemberships)
-      .set({ status: "suspended" })
-      .where(eq(companyMemberships.companyId, f.companyId));
+      .set({ status: "suspended" });
     await f.service.tick();
     expect(f.sends).toHaveLength(0);
     expect(
@@ -1121,7 +1116,7 @@ describe("AgentMail durable email pipeline", () => {
     const selectedAgentId = randomUUID();
     await db.insert(agents).values({ id: selectedAgentId, companyId: f.companyId, name: "Final email agent",
       role: "engineer", status: "idle", adapterType: "process", permissions: {} });
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user",
+    await db.insert(principalPermissionGrants).values({ principalType: "user",
       principalId: actor.userId, permissionKey: "tools:manage_connections" });
     expect(await accessService(db).hasPermission(f.companyId, "user", actor.userId, "tools:manage_connections")).toBe(true);
     expect(await accessService(db).hasPermission(f.companyId, "user", actor.userId, "agent_config:update")).toBe(false);

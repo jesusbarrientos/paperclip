@@ -33,6 +33,7 @@ import {
 import { buildHostServices } from "../services/plugin-host-services.js";
 import { heartbeatService } from "../services/heartbeat.js";
 import { drainHeartbeatRunsToQuiescence } from "./helpers/drain-heartbeat-runs.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -811,8 +812,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const viewerUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
-    });
+      principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
+    }).onConflictDoUpdate(membershipUpsert);
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId, companyId, title: "Needs human input", status: "in_review", priority: "medium", assigneeAgentId: agentId,
@@ -834,12 +835,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const humanUserId = randomUUID();
     const issueId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: humanUserId,
       status: "active",
       membershipRole: "owner",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(issues).values({
       id: issueId,
       companyId,
@@ -908,12 +908,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const humanUserId = randomUUID();
     const issueId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: humanUserId,
       status: "active",
       membershipRole: "owner",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(issues).values({
       id: issueId,
       companyId,
@@ -1018,8 +1017,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const viewerUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
-    });
+      principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
+    }).onConflictDoUpdate(membershipUpsert);
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId, companyId, title: "Decision", status: "in_review", priority: "medium", assigneeAgentId: agentId,
@@ -1043,8 +1042,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId } = await seedCompanyAndAgent();
     const operatorUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: operatorUserId, status: "active", membershipRole: "operator",
-    });
+      principalType: "user", principalId: operatorUserId, status: "active", membershipRole: "operator",
+    }).onConflictDoUpdate(membershipUpsert);
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId, companyId, title: "Decision", status: "in_review", priority: "medium",
@@ -1065,12 +1064,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       const { companyId } = await seedCompanyAndAgent();
       const operatorUserId = randomUUID();
       await db.insert(companyMemberships).values({
-        companyId,
         principalType: "user",
         principalId: operatorUserId,
         status: "active",
         membershipRole: "operator",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       const issueId = randomUUID();
       await db.insert(issues).values({
         id: issueId,
@@ -1102,8 +1100,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId, agentId } = await seedCompanyAndAgent();
     const humanUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: humanUserId, status: "active", membershipRole: "owner",
-    });
+      principalType: "user", principalId: humanUserId, status: "active", membershipRole: "owner",
+    }).onConflictDoUpdate(membershipUpsert);
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId, companyId, title: "Decision", status: "in_review", priority: "medium", assigneeAgentId: agentId,
@@ -1152,8 +1150,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId } = await seedCompanyAndAgent();
     const viewerUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
-    });
+      principalType: "user", principalId: viewerUserId, status: "active", membershipRole: "viewer",
+    }).onConflictDoUpdate(membershipUpsert);
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId, companyId, type: "request_board_approval", status: "pending", payload: { title: "Ship it" },
@@ -1171,8 +1169,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId } = await seedCompanyAndAgent();
     const adminUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: adminUserId, status: "active", membershipRole: "admin",
-    });
+      principalType: "user", principalId: adminUserId, status: "active", membershipRole: "admin",
+    }).onConflictDoUpdate(membershipUpsert);
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId, companyId, type: "request_board_approval", status: "pending", payload: { title: "Ship it" },
@@ -1191,8 +1189,8 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     const { companyId } = await seedCompanyAndAgent();
     const humanUserId = randomUUID();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: humanUserId, status: "active", membershipRole: "owner",
-    });
+      principalType: "user", principalId: humanUserId, status: "active", membershipRole: "owner",
+    }).onConflictDoUpdate(membershipUpsert);
     const approvalId = randomUUID();
     await db.insert(approvals).values({
       id: approvalId,

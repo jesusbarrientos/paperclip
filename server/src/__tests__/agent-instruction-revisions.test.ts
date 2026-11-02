@@ -13,6 +13,7 @@ import { instructionBytes, instructionPath, materializeInstructionBytes, readIns
 import { agentInstructionsService, resolveManagedInstructionsRoot } from "../services/agent-instructions.js";
 import type { AuthorizationActor } from "../services/authorization.js";
 import { upsertAgentInstructionsFileSchema } from "@paperclipai/shared";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe("canonical instruction revisions", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -47,12 +48,12 @@ describe("canonical instruction revisions", () => {
       { id: actorId, companyId, name: "Writer" },
     ]);
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: userId, membershipRole: "operator" },
-      { companyId, principalType: "agent", principalId: actorId, membershipRole: "member" },
-    ]);
+      { principalType: "user", principalId: userId, membershipRole: "operator" },
+      { principalType: "agent", principalId: actorId, membershipRole: "member" },
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values([
-      { companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } },
-      { companyId, principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } },
+      { principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } },
+      { principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } },
     ]);
     await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId: actorId, invocationSource: "on_demand", responsibleUserId: userId });
     actor = { type: "agent", companyId, agentId: actorId, runId, source: "agent_jwt" };
@@ -75,7 +76,7 @@ describe("canonical instruction revisions", () => {
       return agentInstructionWorkingCopyService(db).list(companyId, agentId, actor);
     };
     await expect(read()).rejects.toMatchObject({ status: 403 });
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
     await expect(read()).rejects.toMatchObject({ status: 403 });
   });
   it.each(["current", "history", "revision", "diff", "candidates", "write"])("requires the caller's own target-scoped grant for peer %s access", async (operation) => {
@@ -91,7 +92,7 @@ describe("canonical instruction revisions", () => {
     };
     // The responsible user retains permission on the target throughout.
     await expect(access()).rejects.toMatchObject({ status: 403 });
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
+    await db.insert(principalPermissionGrants).values({ principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
     await expect(access()).rejects.toMatchObject({ status: 403 });
     await db.update(principalPermissionGrants).set({ scope: { agentIds: [agentId] } }).where(eq(principalPermissionGrants.principalId, actorId));
     // New saves have no historical revision row; authorized history lookups
@@ -142,7 +143,7 @@ describe("canonical instruction revisions", () => {
     await db.update(heartbeatRuns).set({ responsibleUserId: null }).where(eq(heartbeatRuns.id, runId));
     await expect(save("missing", first.revision.id)).rejects.toMatchObject({ status: 403 });
     await db.update(heartbeatRuns).set({ responsibleUserId: userId }).where(eq(heartbeatRuns.id, runId));
-    await db.update(companyMemberships).set({ status: "suspended" }).where(and(eq(companyMemberships.principalId, userId), eq(companyMemberships.companyId, companyId)));
+    await db.update(companyMemberships).set({ status: "suspended" }).where(eq(companyMemberships.principalId, userId));
     await expect(save("revoked", first.revision.id)).rejects.toMatchObject({ status: 403 });
   });
   it("rechecks user target scope and agent containment, even with shadow authorization enabled", async () => {
@@ -159,10 +160,10 @@ describe("canonical instruction revisions", () => {
   it("keeps suggest-only protected-change consent and explicit configure scope restrictions", async () => {
     const first = await base();
     await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.principalId, actorId));
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "agent", principalId: actorId, permissionKey: "agents:suggest-changes" });
+    await db.insert(principalPermissionGrants).values({ principalType: "agent", principalId: actorId, permissionKey: "agents:suggest-changes" });
     await expect(save("needs approval", first.revision.id)).rejects.toMatchObject({ status: 403 });
     await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.principalId, actorId));
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
+    await db.insert(principalPermissionGrants).values({ principalType: "agent", principalId: actorId, permissionKey: "agents:configure", scope: { agentIds: [actorId] } });
     await expect(save("out of scope", first.revision.id)).rejects.toMatchObject({ status: 403 });
   });
   it("consumes accepted protected-change approval only with a successful CAS commit", async () => {
@@ -171,7 +172,7 @@ describe("canonical instruction revisions", () => {
     await db.insert(heartbeatRuns).values({ id: sourceRunId, companyId, agentId: actorId, status: "succeeded" });
     await db.insert(issues).values({ id: issueId, companyId, title: "Review instructions" });
     await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.principalId, actorId));
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "agent", principalId: actorId, permissionKey: "agents:suggest-changes" });
+    await db.insert(principalPermissionGrants).values({ principalType: "agent", principalId: actorId, permissionKey: "agents:suggest-changes" });
     await db.insert(issueThreadInteractions).values({ id: interactionId, companyId, issueId, kind: "request_confirmation", status: "accepted", sourceRunId, createdByAgentId: actorId,
       payload: { version: 1, prompt: "Apply the instruction change?", detailsMarkdown: "```diff\n+approved\n```", target: { type: "custom", key: `agent:${agentId}:instructions`, revisionId: "proposal" } },
       result: { version: 1, outcome: "accepted" }, resolvedByUserId: userId, resolvedAt: new Date(),
@@ -207,7 +208,7 @@ describe("canonical instruction revisions", () => {
     await expect(service.readRevision({ ...target(), entryFile, revisionId: randomUUID() }, actor)).rejects.toMatchObject({ status: 404 });
     await expect(service.readCurrent({ companyId: randomUUID(), agentId }, actor)).rejects.toMatchObject({ status: 404 });
     const keyId = randomUUID();
-    await db.insert(agentApiKeys).values({ id: keyId, companyId, agentId: actorId, name: "test", keyHash: randomUUID(), responsibleUserId: userId, revokedAt: new Date() });
+    await db.insert(agentApiKeys).values({ id: keyId, agentId: actorId, name: "test", keyHash: randomUUID(), responsibleUserId: userId, revokedAt: new Date() });
     await expect(service.commit({ ...target(), entryFile, content: "key", baseRevisionId: first.revision.id, source: "api" }, { ...actor, keyId })).rejects.toMatchObject({ status: 403 });
     await expect(db.insert(agentInstructionHeads).values({ companyId: randomUUID(), agentId, entryFile, revisionId: first.revision.id })).rejects.toThrow();
   });

@@ -1544,7 +1544,7 @@ async function inspectVerifiedSeedDatabase(
           eq(companyMemberships.status, "active"),
         ),
       )
-      .leftJoin(companies, eq(companies.id, companyMemberships.companyId))
+      .leftJoin(companies, sql`true`)
       .leftJoin(issues, eq(issues.companyId, companies.id));
 
     const admin = await db
@@ -1568,7 +1568,6 @@ async function inspectVerifiedSeedDatabase(
       )
       .where(and(
         expected ? eq(authUsers.id, expected.adminUserId) : undefined,
-        requiredCompanyId ? eq(companyMemberships.companyId, requiredCompanyId) : undefined,
         requiresCredentialAccount
           ? and(
               sql`length(trim(${authAccounts.providerId})) > 0`,

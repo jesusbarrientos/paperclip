@@ -8,6 +8,7 @@ import { accessRoutes } from "../routes/access.js";
 import { errorHandler } from "../middleware/index.js";
 
 vi.mock("../services/index.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
   accessService: () => ({
     isInstanceAdmin: vi.fn(),
     canUser: vi.fn(),
@@ -99,7 +100,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
     await db.insert(invites).values([
       {
         id: inviteOneId,
-        companyId,
         inviteType: "company_join",
         tokenHash: "invite-token-1",
         allowedJoinTypes: "human",
@@ -110,7 +110,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
       },
       {
         id: inviteTwoId,
-        companyId,
         inviteType: "company_join",
         tokenHash: "invite-token-2",
         allowedJoinTypes: "human",
@@ -121,7 +120,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
       },
       {
         id: inviteThreeId,
-        companyId,
         inviteType: "company_join",
         tokenHash: "invite-token-3",
         allowedJoinTypes: "human",
@@ -135,7 +133,6 @@ describeEmbeddedPostgres("GET /companies/:companyId/invites", () => {
     await db.insert(joinRequests).values({
       id: randomUUID(),
       inviteId: inviteThreeId,
-      companyId,
       requestType: "human",
       status: "pending_approval",
       requestIp: "127.0.0.1",

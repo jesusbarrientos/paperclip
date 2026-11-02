@@ -26,6 +26,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const track = vi.fn();
 const isRegisteredEventName = vi.fn(() => true);
@@ -62,12 +63,11 @@ async function createCompany(db: Db) {
     .returning()
     .then((rows) => rows[0]!);
   await db.insert(companyMemberships).values({
-    companyId: company.id,
     principalType: "user",
     principalId: actor.actorId,
     status: "active",
     membershipRole: "admin",
-  });
+  }).onConflictDoUpdate(membershipUpsert);
   return company;
 }
 

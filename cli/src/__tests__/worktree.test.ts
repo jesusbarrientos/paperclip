@@ -164,7 +164,6 @@ async function seedValidWorktreeSource(
     requireBoardApprovalForNewAgents: false,
   });
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     status: "active",

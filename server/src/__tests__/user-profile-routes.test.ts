@@ -17,6 +17,8 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
+
 let errorHandler: typeof import("../middleware/index.js").errorHandler;
 let userProfileRoutes: typeof import("../routes/user-profiles.js").userProfileRoutes;
 
@@ -73,14 +75,13 @@ describeEmbeddedPostgres("GET /companies/:companyId/users/:userSlug/profile", ()
       updatedAt: now,
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "owner",
       createdAt: now,
       updatedAt: now,
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,

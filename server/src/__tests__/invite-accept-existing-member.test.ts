@@ -14,6 +14,7 @@ const accessServiceMock = vi.hoisted(() => ({
 const logActivityMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/index.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
   accessService: () => accessServiceMock,
   agentService: () => ({
     getById: vi.fn(),
@@ -381,7 +382,6 @@ describe("POST /invites/:token/accept", () => {
     expect(insertedValues).toEqual([
       expect.objectContaining({
         inviteId: "invite-1",
-        companyId: "company-1",
         requestType: "human",
         status: "pending_approval",
         requestingUserId: "invitee-user",

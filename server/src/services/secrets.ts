@@ -3906,7 +3906,6 @@ export function secretService(db: Db | DbTransaction) {
           .select({ principalId: companyMemberships.principalId })
           .from(companyMemberships)
           .where(and(
-            eq(companyMemberships.companyId, companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.status, "active"),
           )),

@@ -864,7 +864,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
         await sql.unsafe(`
           INSERT INTO "company_memberships" (
             "id",
-            "company_id",
             "principal_type",
             "principal_id",
             "status",
@@ -874,7 +873,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
           )
           VALUES (
             '00000000-0000-0000-0000-000000000121',
-            '00000000-0000-0000-0000-000000000120',
             'user',
             'owner-user',
             'active',
@@ -1387,7 +1385,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
         await sql.unsafe(`
           INSERT INTO "company_memberships" (
             "id",
-            "company_id",
             "principal_type",
             "principal_id",
             "status",
@@ -1397,7 +1394,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
           )
           VALUES (
             '00000000-0000-0000-0000-000000000131',
-            '00000000-0000-0000-0000-000000000130',
             'user',
             'owner-user',
             'active',

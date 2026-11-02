@@ -12,6 +12,7 @@ import { prepareManagedAiRuntime, managedAiSessionFingerprintConfig } from "../s
 import { localAiLoginService } from "../services/local-ai-login.js";
 import { readVerifiedLocalAiCredential } from "../services/local-ai-credentials.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
 let db: ReturnType<typeof createDb>;
@@ -23,7 +24,7 @@ beforeAll(async () => {
   database = await startEmbeddedPostgresTestDatabase("ai-legacy-audit-db-");
   db = createDb(database.connectionString);
   await db.insert(companies).values({ id: companyId, name: "Audit", issuePrefix: "AUD" });
-  await db.insert(companyMemberships).values({ companyId, principalId: owner, principalType: "user", status: "active", membershipRole: "owner" });
+  await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "owner" }).onConflictDoUpdate(membershipUpsert);
   await db.insert(environments).values({ name: "Local audit", driver: "local" }).onConflictDoNothing();
   await db.insert(agents).values({ id: agentId, companyId, name: "Unadopted legacy agent", adapterType: "claude_local" });
 }, 90000);

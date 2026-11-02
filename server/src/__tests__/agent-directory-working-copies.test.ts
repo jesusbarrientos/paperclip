@@ -21,6 +21,7 @@ import { remoteTerminationReceipt } from "../services/remote-execution-terminati
 import { AgentDirectoryReuseInvalidatedError, agentDirectoryWorkingCopyService } from "../services/agent-directory-working-copies.js";
 import { withDirectoryMergeLock } from "@paperclipai/adapter-utils/workspace-restore-merge";
 import { heartbeatRunEvents } from "@paperclipai/db";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 describe("persistent agent directories", () => {
   let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -66,10 +67,10 @@ describe("persistent agent directories", () => {
     root = resolveManagedInstructionsRoot({ ...target(), id: agentId, name: "Target", adapterConfig: {} });
     await db.insert(agents).values({ id: agentId, companyId, name: "Target", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } });
     await db.insert(companyMemberships).values([
-      { companyId, principalType: "user", principalId: userId, membershipRole: "operator" },
-      { companyId, principalType: "agent", principalId: agentId, membershipRole: "member" },
-    ]);
-    await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
+      { principalType: "user", principalId: userId, membershipRole: "operator" },
+      { principalType: "agent", principalId: agentId, membershipRole: "member" },
+    ]).onConflictDoUpdate(membershipUpsert);
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:configure", scope: { agentIds: [agentId] } });
     await fs.mkdir(path.dirname(path.join(root, entryFile)), { recursive: true });
     await fs.writeFile(path.join(root, entryFile), initial);
   });
@@ -564,8 +565,8 @@ describe("persistent agent directories", () => {
   it("rechecks authorization even for an unchanged warm checkpoint", async () => {
     const copy = await run({ warm: true });
     await copies.checkpointWarm({ companyId, runId: copy.runId });
-    await db.delete(principalPermissionGrants).where(eq(principalPermissionGrants.companyId, companyId));
-    await db.update(companyMemberships).set({ membershipRole: "member" }).where(eq(companyMemberships.companyId, companyId));
+    await db.delete(principalPermissionGrants);
+    await db.update(companyMemberships).set({ membershipRole: "member" });
     expect((await copies.checkpointWarm({ companyId, runId: copy.runId }))?.errorCode).toBe("AGENT_FILES_CHECKPOINT_UNSTABLE");
     expect(await copies.canReuseWarm(companyId, agentId, copy.runId)).toBe(false);
     expect((await copies.collectStopped({ companyId, runId: copy.runId }))?.state).toBe("unavailable");
@@ -863,8 +864,8 @@ describe("persistent agent directories", () => {
     agentId = randomUUID();
     root = resolveManagedInstructionsRoot({ ...target(), id: agentId, name: "Other", adapterConfig: {} });
     await db.insert(agents).values({ id: agentId, companyId, name: "Other", adapterConfig: { instructionsBundleMode: "managed", instructionsRootPath: root, instructionsEntryFile: entryFile } });
-    await db.insert(companyMemberships).values({ companyId, principalType: "agent", principalId: agentId, membershipRole: "member" });
-    await db.update(principalPermissionGrants).set({ scope: { agentIds: [firstAgent, agentId] } }).where(eq(principalPermissionGrants.companyId, companyId));
+    await db.insert(companyMemberships).values({ principalType: "agent", principalId: agentId, membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
+    await db.update(principalPermissionGrants).set({ scope: { agentIds: [firstAgent, agentId] } });
     await fs.mkdir(path.dirname(path.join(root, entryFile)), { recursive: true }); await fs.writeFile(path.join(root, entryFile), initial);
     const other = await run();
     await db.update(agentInstructionWorkingCopies).set({ state: "unavailable", processStoppedAt: new Date() }).where(eq(agentInstructionWorkingCopies.runId, other.runId));

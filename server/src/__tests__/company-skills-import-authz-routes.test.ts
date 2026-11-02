@@ -24,6 +24,7 @@ import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { actorMiddleware } from "../middleware/auth.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { companySkillRoutes } from "../routes/company-skills.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -143,22 +144,19 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
 
     await db.insert(companyMemberships).values([
       {
-        companyId,
         principalType: "agent",
         principalId: agentId,
         status: "active",
         membershipRole: "member",
       },
       {
-        companyId,
         principalType: "user",
         principalId: responsibleUserId,
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId,
       principalType: "agent",
       principalId: agentId,
       permissionKey: "skills:create",

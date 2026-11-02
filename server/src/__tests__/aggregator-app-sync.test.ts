@@ -10,6 +10,7 @@ import { secretService } from "../services/secrets.js";
 import { toolAccessRoutes } from "../routes/tool-access.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 // Optional reuse of the explicitly disposable browser-test cluster on hosts with limited PostgreSQL startup resources.
 const acceptanceDatabaseUrl = process.env.PAPERCLIP_AGGREGATOR_TEST_DATABASE_URL;
@@ -27,7 +28,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
   async function fixture(provider: "arcade" | "executor" = "executor") {
     const [company] = await db.insert(companies).values({ name: "Aggregator sync test", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
     const userId = randomUUID();
-    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: userId, membershipRole: "admin", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const [application] = await db.insert(toolApplications).values({ companyId: company.id, applicationKey: randomUUID(), name: provider, type: "mcp_http", metadata: { sourceTemplateKey: provider } }).returning();
     const [connection] = await db.insert(toolConnections).values({ companyId: company.id, applicationId: application.id, uid: randomUUID(), name: `${provider} gateway`, transport: "mcp_remote", authKind: "none", credentialPolicy: "shared", status: "active", enabled: true, config: { sourceTemplateKey: provider, url: provider === "arcade" ? "https://api.arcade.dev/mcp/test" : "https://executor.example/mcp", managementUrl: "https://executor.example/team/integrations" } }).returning();
     await db.insert(connectionGrants).values({ companyId: company.id, connectionId: connection.id, kind: "organization", status: "active", isDefault: true });
@@ -131,7 +132,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
   it("rejects optional sync configuration by ordinary members and agents", async () => {
     const f = await fixture("arcade");
     const memberId = randomUUID();
-    await db.insert(companyMemberships).values({ companyId: f.company.id, principalType: "user", principalId: memberId, membershipRole: "member", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: memberId, membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const app = express(); app.use(express.json());
     app.use((req, _res, next) => { req.actor = req.headers["x-test-agent"] ? { type: "agent", agentId: randomUUID(), companyId: f.company.id } : { type: "board", userId: memberId, source: "session", isInstanceAdmin: false, companyIds: [f.company.id] }; next(); });
     app.use("/api", toolAccessRoutes(db)); app.use(errorHandler);

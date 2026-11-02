@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   companySecretBindings,
@@ -44,12 +45,11 @@ async function createCompanyWithOwner(db: ReturnType<typeof createDb>) {
   const owner = await db
     .insert(companyMemberships)
     .values({
-      companyId: company.id,
       principalType: "user",
       principalId: `owner-${randomUUID()}`,
       status: "active",
       membershipRole: "owner",
-    })
+    }).onConflictDoUpdate(membershipUpsert)
     .returning()
     .then((rows) => rows[0]!);
 
@@ -64,6 +64,10 @@ describeEmbeddedPostgres("access service", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-access-service-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   afterEach(async () => {
     await db.delete(toolAccessAuditEvents);
@@ -130,16 +134,14 @@ describeEmbeddedPostgres("access service", () => {
     const member = await db
       .insert(companyMemberships)
       .values({
-        companyId: company.id,
         principalType: "user",
         principalId: `member-${randomUUID()}`,
         status: "active",
         membershipRole: "operator",
-      })
+      }).onConflictDoUpdate(membershipUpsert)
       .returning()
       .then((rows) => rows[0]!);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: member.principalId,
       permissionKey: "tasks:assign",
@@ -212,12 +214,11 @@ describeEmbeddedPostgres("access service", () => {
     const admin = await db
       .insert(companyMemberships)
       .values({
-        companyId: company.id,
         principalType: "user",
         principalId: `admin-${randomUUID()}`,
         status: "active",
         membershipRole: "admin",
-      })
+      }).onConflictDoUpdate(membershipUpsert)
       .returning()
       .then((rows) => rows[0]!);
 
@@ -228,12 +229,11 @@ describeEmbeddedPostgres("access service", () => {
     const operator = await db
       .insert(companyMemberships)
       .values({
-        companyId: company.id,
         principalType: "user",
         principalId: `operator-${randomUUID()}`,
         status: "active",
         membershipRole: "operator",
-      })
+      }).onConflictDoUpdate(membershipUpsert)
       .returning()
       .then((rows) => rows[0]!);
     await db.insert(instanceUserRoles).values({
@@ -249,12 +249,11 @@ describeEmbeddedPostgres("access service", () => {
   it("sweeps personal grants when instance-level company access is removed", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
       companyId: company.id,
       name: "Instance access delegated agent",
@@ -310,12 +309,11 @@ describeEmbeddedPostgres("access service", () => {
   it("revokes personal connection access and destroys user-scoped secrets when membership is archived", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
       companyId: company.id,
       name: "Delegated agent",
@@ -397,20 +395,18 @@ describeEmbeddedPostgres("access service", () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const [departing, surviving] = await db.insert(companyMemberships).values([
       {
-        companyId: company.id,
         principalType: "user" as const,
         principalId: `departing-${randomUUID()}`,
         status: "active" as const,
         membershipRole: "member" as const,
       },
       {
-        companyId: company.id,
         principalType: "user" as const,
         principalId: `surviving-${randomUUID()}`,
         status: "active" as const,
         membershipRole: "member" as const,
       },
-    ]).returning();
+    ]).onConflictDoUpdate(membershipUpsert).returning();
     const application = await db.insert(toolApplications).values({
       companyId: company.id,
       applicationKey: `shared-personal-${randomUUID()}`,
@@ -482,12 +478,11 @@ describeEmbeddedPostgres("access service", () => {
   it("keeps a mixed connection active when an unaffected organization credential survives", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const departing = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `departing-mixed-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
       companyId: company.id,
       applicationKey: `mixed-${randomUUID()}`,
@@ -572,12 +567,11 @@ describeEmbeddedPostgres("access service", () => {
   it("keeps a sole organization audience dormant until its member is reactivated", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const departing = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `departing-org-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
       companyId: company.id,
       applicationKey: `shared-org-${randomUUID()}`,
@@ -662,12 +656,11 @@ describeEmbeddedPostgres("access service", () => {
   it("revokes delegated personal connection access when membership is suspended", async () => {
     const { company } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
       companyId: company.id,
       name: "Delegated agent",
@@ -731,12 +724,11 @@ describeEmbeddedPostgres("access service", () => {
   it("preserves personal grant secrets used by surviving declarations and bindings", async () => {
     const { company } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const application = await db.insert(toolApplications).values({
       companyId: company.id,
       applicationKey: `app-${randomUUID()}`,
@@ -843,12 +835,11 @@ describeEmbeddedPostgres("access service", () => {
   it("preserves unrelated user-scoped secrets when membership is suspended", async () => {
     const { company } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const definition = await db.insert(userSecretDefinitions).values({
       companyId: company.id,
       key: `oauth-${randomUUID()}`,
@@ -887,13 +878,12 @@ describeEmbeddedPostgres("access service", () => {
       .insert(companyMemberships)
       .values(
         roles.map((role) => ({
-          companyId: company.id,
           principalType: "user" as const,
           principalId: `${role}-${randomUUID()}`,
           status: "active" as const,
           membershipRole: role,
         })),
-      )
+      ).onConflictDoUpdate(membershipUpsert)
       .returning();
 
     await access.setPrincipalGrants(
@@ -930,34 +920,30 @@ describeEmbeddedPostgres("access service", () => {
       .insert(companyMemberships)
       .values([
         {
-          companyId: company.id,
           principalType: "user",
           principalId: `admin-${randomUUID()}`,
           status: "active",
           membershipRole: "admin",
         },
         {
-          companyId: company.id,
           principalType: "user",
           principalId: `operator-${randomUUID()}`,
           status: "active",
           membershipRole: "operator",
         },
         {
-          companyId: company.id,
           principalType: "user",
           principalId: `viewer-${randomUUID()}`,
           status: "active",
           membershipRole: "viewer",
         },
         {
-          companyId: company.id,
           principalType: "user",
           principalId: `legacy-${randomUUID()}`,
           status: "active",
           membershipRole: null,
         },
-      ])
+      ]).onConflictDoUpdate(membershipUpsert)
       .returning();
     const admin = humanRows[0]!;
     const operator = humanRows[1]!;
@@ -965,7 +951,6 @@ describeEmbeddedPostgres("access service", () => {
     const legacyMember = humanRows[3]!;
 
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: owner.principalId,
       permissionKey: "environments:manage",
@@ -988,7 +973,6 @@ describeEmbeddedPostgres("access service", () => {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, company.id),
           eq(principalPermissionGrants.principalId, owner.principalId),
           eq(principalPermissionGrants.permissionKey, "environments:manage"),
         ),
@@ -1065,47 +1049,10 @@ describeEmbeddedPostgres("access service", () => {
     expect(memberships.some((membership) => membership.principalId === terminatedAgent.id)).toBe(false);
   });
 
-  it("copies active user memberships with role-default grants for safe company imports", async () => {
-    const source = await createCompanyWithOwner(db);
-    const target = await createCompanyWithOwner(db);
-    const admin = await db
-      .insert(companyMemberships)
-      .values({
-        companyId: source.company.id,
-        principalType: "user",
-        principalId: `admin-${randomUUID()}`,
-        status: "active",
-        membershipRole: "admin",
-      })
-      .returning()
-      .then((rows) => rows[0]!);
-
-    const access = accessService(db);
-    await access.copyActiveUserMemberships(source.company.id, target.company.id);
-
-    const copiedOwnerGrants = await access.listPrincipalGrants(
-      target.company.id,
-      "user",
-      source.owner.principalId,
-    );
-    const copiedAdminGrants = await access.listPrincipalGrants(
-      target.company.id,
-      "user",
-      admin.principalId,
-    );
-    expect(copiedOwnerGrants.map((grant) => grant.permissionKey)).toEqual(
-      grantsForHumanRole("owner").map((grant) => grant.permissionKey).sort(),
-    );
-    expect(copiedAdminGrants.map((grant) => grant.permissionKey)).toEqual(
-      grantsForHumanRole("admin").map((grant) => grant.permissionKey).sort(),
-    );
-  });
-
   it("preserves explicit scoped environment grants when backfilling owner and admin defaults", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const scopedGrant = { environmentId: "env-1" };
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: owner.principalId,
       permissionKey: "environments:manage",
@@ -1115,7 +1062,6 @@ describeEmbeddedPostgres("access service", () => {
 
     await db.execute(sql.raw(`
       INSERT INTO "principal_permission_grants" (
-        "company_id",
         "principal_type",
         "principal_id",
         "permission_key",
@@ -1125,7 +1071,6 @@ describeEmbeddedPostgres("access service", () => {
         "updated_at"
       )
       SELECT
-        "company_id",
         'user',
         "principal_id",
         'environments:manage',
@@ -1138,7 +1083,6 @@ describeEmbeddedPostgres("access service", () => {
         AND "status" = 'active'
         AND "membership_role" IN ('owner', 'admin')
       ON CONFLICT (
-        "company_id",
         "principal_type",
         "principal_id",
         "permission_key"
@@ -1150,7 +1094,6 @@ describeEmbeddedPostgres("access service", () => {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, company.id),
           eq(principalPermissionGrants.principalId, owner.principalId),
           eq(principalPermissionGrants.permissionKey, "environments:manage"),
         ),

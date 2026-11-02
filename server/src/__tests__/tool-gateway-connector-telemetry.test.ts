@@ -29,6 +29,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 // Proposal wrappers drop unregistered names inside the real client, so the
 // integration assertions use a client double that reports the proposed event
@@ -502,12 +503,11 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
   it("labels connection-test executions as setup_test", async () => {
     const f = await fixture();
     await db.insert(companyMemberships).values({
-      companyId: f.company.id,
       principalType: "user",
       principalId: "board-user",
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const testCall = await f.gateway.executeTestCall({
       companyId: f.company.id,
       connectionId: f.remoteTool.connection.id,

@@ -10,6 +10,7 @@ import { startRunnerApiTestServer } from "../../__tests__/helpers/runner-api-ser
 import { companySkillPolicyService } from "../company-skill-policy.js";
 import { companySkillService } from "../company-skills.js";
 import { activityService } from "../activity.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("runner create_skill through the real skill API", () => {
   let server: Awaited<ReturnType<typeof startRunnerApiTestServer>>;
@@ -33,7 +34,7 @@ describe("runner create_skill through the real skill API", () => {
 
   async function fixture(options: Parameters<typeof server.fixture>[0] = {}) {
     const result = await server.fixture(options);
-    await server.db.insert(companyMemberships).values({ companyId: result.companyId, principalType: "agent", principalId: result.agentId, status: "active", membershipRole: "member" });
+    await server.db.insert(companyMemberships).values({ principalType: "agent", principalId: result.agentId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     return result;
   }
 

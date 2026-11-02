@@ -19,6 +19,7 @@ import { secretService } from "../services/secrets.js";
 import { aiConnectionRouterService } from "../services/ai-connection-router.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { toolAccessService } from "../services/tool-access.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
 let db: ReturnType<typeof createDb>;
@@ -46,8 +47,8 @@ async function fixture(provider: "anthropic" | "openai", method: "api_key" | "su
   const binding = { provider, method, mode: "responsible_user" } as const;
   const adapterType = provider === "anthropic" ? "claude_local" : "codex_local";
   await db.insert(companies).values({ id: companyId, name: "Hiring connection test", issuePrefix: `H${companyId.slice(0, 7)}`, defaultResponsibleUserId: userId });
-  await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: userId, membershipRole: "owner", status: "active" });
-  await db.insert(principalPermissionGrants).values({ companyId, principalType: "user", principalId: userId, permissionKey: "agents:create" });
+  await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);
+  await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:create" });
   await db.insert(agents).values({ id: agentId, companyId, name: "Manager", role: "ceo", adapterType, runtimeConfig: { aiConnection: binding } });
   const [run] = await db.insert(heartbeatRuns).values({ companyId, agentId, status: "running", responsibleUserId: userId }).returning();
   const app = express();
@@ -167,7 +168,7 @@ describe("agent-created hires use managed AI connections", () => {
   it("rejects a saved pool binding when no member is installed for that agent", async () => {
     const f = await fixture("openai");
     const p = await poolFixture(f);
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
     await db.delete(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, f.account.connectionId));
     const response = await request(f.app).patch(`/api/agents/${f.agentId}`).send({ runtimeConfig: { aiConnection: p.binding } });
     expect(response.status, JSON.stringify(response.body)).toBe(422);
@@ -179,7 +180,7 @@ describe("agent-created hires use managed AI connections", () => {
   it("does not install a restricted shared connection through pool membership", async () => {
     const f = await fixture("openai");
     const otherOwner = `other-${f.companyId}`;
-    await db.insert(companyMemberships).values({ companyId: f.companyId, principalType: "user", principalId: otherOwner, membershipRole: "member", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: otherOwner, membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const account = await aiConnectionService(db).save(f.companyId, otherOwner, { provider: "openai", method: "api_key", ownership: "shared", name: "Shared credential, restricted installation", apiKey: "fixture", agentIds: [f.agentId], allAgents: false }, "fixture");
     await toolAccessService(db).replaceConnectionGrantMembers(account.connectionId, account.grantId, [f.userId], { userId: otherOwner });
     const member: AiConnectionPoolMember = { id: randomUUID(), binding: { ...account, provider: "openai", method: "api_key", mode: "shared" }, profile: { provider: "codex", model: "gpt-5.6-sol" } };
@@ -200,7 +201,7 @@ describe("agent-created hires use managed AI connections", () => {
       extra.push({ id: randomUUID(), binding: { ...account, provider: "anthropic", method: "api_key", mode: "delegated" }, profile: { provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5" } });
     }
     const p = await poolFixture(f, extra);
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
     await db.update(agents).set({ runtimeConfig: { aiConnection: p.binding } }).where(eq(agents.id, f.agentId));
     const response = await request(f.app).patch(`/api/agents/${f.agentId}`).send({ adapterType: "claude_local", adapterConfig: { model: "claude-sonnet-5" } });
     expect(response.status, JSON.stringify(response.body)).toBe(compatible ? 200 : 422);
@@ -212,7 +213,7 @@ describe("agent-created hires use managed AI connections", () => {
   for (const operation of ["test", "save"] as const) {
     it.each([401, 403, 429, 503, null])(`${operation} changes API-key health only for a provider rejection (status: %s)`, async (status) => {
       const f = await fixture("anthropic", "api_key");
-      await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
+      await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
       const original = getServerAdapter(f.adapterType);
       registerServerAdapter({ ...original, testEnvironment: async () => ({ adapterType: f.adapterType, status: "pass", checks: [], testedAt: new Date().toISOString() }) });
       const network = vi.spyOn(globalThis, "fetch");
@@ -231,7 +232,7 @@ describe("agent-created hires use managed AI connections", () => {
 
   it.each(["test", "save"] as const)("%s marks a hello-test authentication rejection as needing attention and reconnect repairs the same default", async (operation) => {
     const f = await fixture("anthropic", "subscription");
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
     const original = getServerAdapter(f.adapterType);
     registerServerAdapter({ ...original, testEnvironment: async () => ({
       adapterType: f.adapterType, status: "fail", testedAt: new Date().toISOString(),
@@ -270,7 +271,7 @@ describe("agent-created hires use managed AI connections", () => {
 
   it.each([false, true])("a failed environment test preserves connection health for a runtime failure or a newer reconnect (reconnected: %s)", async (reconnected) => {
     const f = await fixture("anthropic", "subscription");
-    await db.insert(principalPermissionGrants).values({ companyId: f.companyId, principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
+    await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: f.userId, permissionKey: "agents:configure" });
     const original = getServerAdapter(f.adapterType);
     registerServerAdapter({ ...original, testEnvironment: async () => {
       if (reconnected) await aiConnectionService(db).save(f.companyId, f.userId, {

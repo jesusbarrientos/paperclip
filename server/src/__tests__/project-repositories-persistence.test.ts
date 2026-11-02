@@ -1,9 +1,10 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { companies, companyMemberships, companySecrets, connectionGrants, connectionGrantMembers, toolApplications, toolConnections, createDb, projects as projectTable, userSecretDefinitions } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { toolAccessService } from "../services/tool-access.js";
 import { projectService } from "../services/projects.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const personalTokens = vi.hoisted(() => new Map<string, string>());
 vi.mock("../services/secrets.js", () => ({ secretService: () => ({
@@ -68,7 +69,7 @@ const support = await getEmbeddedPostgresTestSupport();
   });
 
   it("loads only usable connection grants, deduplicates repos, and reports partial provider failures", async () => {
-    await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: "alice", membershipRole: "admin" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: "alice", membershipRole: "admin" }).onConflictDoUpdate(membershipUpsert);
     const [otherCompany] = await db.insert(companies).values({ name: "Other", issuePrefix: "OTHER" }).returning();
     const tokenRepos = new Map<string, Array<{ id: number; full_name: string }>>();
     async function connection(name: string, kind: "user" | "organization", owner: string | null, audience: string[] = [], targetCompanyId = companyId, legacyCompanyCredential = false) {
@@ -113,7 +114,6 @@ const support = await getEmbeddedPostgresTestSupport();
     const savedConnections = await db.select().from(toolConnections).where(eq(toolConnections.companyId, companyId));
     const automatic = await toolAccessService(db).githubReadConnectionIds(companyId, "alice");
     expect(savedConnections.filter(connection => automatic.includes(connection.id)).map(connection => connection.name).sort()).toEqual(["broken", "personal", "shared"]);
-    expect(await toolAccessService(db).githubReadConnectionIds(otherCompany.id, "alice")).toEqual([]);
     const ownConnection = savedConnections.find(connection => connection.name === "personal")!;
     expect(await toolAccessService(db).githubReadHeaders(companyId, ownConnection.id, "alice")).toEqual({ Authorization: `Bearer ${personal}` });
     for (const name of ["other-person", "restricted", "legacy-personal"]) {

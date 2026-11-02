@@ -17,6 +17,7 @@ import {
   principalPermissionGrants,
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const support = await getEmbeddedPostgresTestSupport();
 const describePostgres = support.supported ? describe : describe.skip;
@@ -184,12 +185,11 @@ describePostgres("agent action audit routes", () => {
     const { company } = await seed();
     await seedActorOnlyRows(company.id);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: "reader",
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const app = await createApp(db, {
       type: "board",
       userId: "reader",
@@ -235,12 +235,11 @@ describePostgres("agent action audit routes", () => {
   it("rejects the full filter set for a basic all-actors reader", async () => {
     const { company, agent, issue, run } = await seed();
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: "reader",
       status: "active",
       membershipRole: "viewer",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const app = await createApp(db, {
       type: "board",
       userId: "reader",
@@ -513,10 +512,10 @@ describePostgres("agent action audit routes", () => {
   it("allows a signed-in board user with the explicit permission", async () => {
     const { company } = await seed();
     await db.insert(companyMemberships).values({
-      companyId: company.id, principalType: "user", principalId: "reader", status: "active", membershipRole: "viewer",
-    });
+      principalType: "user", principalId: "reader", status: "active", membershipRole: "viewer",
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id, principalType: "user", principalId: "reader", permissionKey: "audit:view_agent_actions", scope: null, grantedByUserId: null,
+      principalType: "user", principalId: "reader", permissionKey: "audit:view_agent_actions", scope: null, grantedByUserId: null,
     });
     const response = await request(await createApp(db, {
       type: "board", userId: "reader", companyIds: [company.id], source: "session", isInstanceAdmin: false,

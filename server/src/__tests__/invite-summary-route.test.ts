@@ -10,6 +10,9 @@ function registerModuleMocks() {
   vi.doMock("../storage/index.js", () => ({
     getStorageService: () => mockStorage,
   }));
+  vi.doMock("../services/organization.js", () => ({
+    organizationService: () => ({ findId: async () => "company-1" }),
+  }));
 }
 
 function createSelectChain(rows: unknown[]) {
@@ -79,6 +82,7 @@ describe("GET /invites/:token", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.doUnmock("../storage/index.js");
+    vi.doUnmock("../services/organization.js");
     vi.doUnmock("../routes/access.js");
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();

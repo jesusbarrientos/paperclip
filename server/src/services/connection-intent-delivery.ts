@@ -130,7 +130,7 @@ export function connectionIntentDeliveryService(db: Db, heartbeat: Pick<Heartbea
     const userId = interaction.addresseeUserId;
     if (userId !== "local-board") {
       const [membership] = await db.select().from(companyMemberships).where(and(
-        eq(companyMemberships.companyId, claimed.companyId), eq(companyMemberships.principalType, "user"),
+        eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId ?? ""), eq(companyMemberships.status, "active"),
       )).limit(1);
       if (!membership?.membershipRole || membership.membershipRole === "viewer") {

@@ -6,7 +6,8 @@ import { createRuntimeToolsToken } from "../runtime-tools-token.js";
 import { errorHandler } from "../middleware/index.js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   companies,
@@ -65,6 +66,10 @@ const support = await getEmbeddedPostgresTestSupport();
       );
       db = createDb(database.connectionString);
     }, 30_000);
+
+    beforeEach(async () => {
+      await resetOrganizationState(db);
+    });
     afterAll(async () => {
       await database?.cleanup();
       vi.unstubAllEnvs();
@@ -98,13 +103,12 @@ const support = await getEmbeddedPostgresTestSupport();
       });
       await db.insert(companyMemberships).values(
         ["A", "B"].map((principalId) => ({
-          companyId,
           principalType: "user",
           principalId,
           status: "active",
           membershipRole: "member",
         })),
-      );
+      ).onConflictDoUpdate(membershipUpsert);
       await initializeRunIdentity(db, {
         companyId,
         runId,
@@ -243,15 +247,13 @@ const support = await getEmbeddedPostgresTestSupport();
       await switchTo(input, "A");
       await db
         .update(companyMemberships)
-        .set({ status: "inactive" })
-        .where(eq(companyMemberships.companyId, input.companyId));
+        .set({ status: "inactive" });
       expect((await resolveGitHubOperationCredentials(db, input)).status).toBe(
         "unavailable",
       );
       await db
         .update(companyMemberships)
-        .set({ status: "active" })
-        .where(eq(companyMemberships.companyId, input.companyId));
+        .set({ status: "active" });
       const differentAccount = await grant(input, "A");
       await db
         .update(connectionGrants)

@@ -2,15 +2,8 @@ import * as fs from "node:fs/promises";
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   agents,
@@ -430,16 +423,14 @@ async function grantBoardUser(
     "owner" | "admin" | "operator" | "member" | "viewer" = "operator",
 ) {
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     status: "active",
     membershipRole,
-  });
+  }).onConflictDoUpdate(membershipUpsert);
   if (permissionKeys.length > 0) {
     await db.insert(principalPermissionGrants).values(
       permissionKeys.map((permissionKey) => ({
-        companyId,
         principalType: "user",
         principalId: userId,
         permissionKey,
@@ -478,7 +469,6 @@ async function createIssueAndRun(
   await db
     .insert(companyMemberships)
     .values({
-      companyId,
       principalType: "user",
       principalId: "user-for-run",
       status: "active",
@@ -822,6 +812,10 @@ describeEmbeddedPostgres("tool access service", () => {
     await instanceSettingsService(db).updateExperimental({ enableMemoryConnectors: true });
   }, 20_000);
 
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
+
   afterEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
@@ -951,10 +945,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     const revoked = await request(app)
       .post(
@@ -1030,7 +1021,6 @@ describeEmbeddedPostgres("tool access service", () => {
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, company.id),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, "user-for-run"),
             ),
@@ -1043,7 +1033,6 @@ describeEmbeddedPostgres("tool access service", () => {
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(
             and(
-              eq(companyMemberships.companyId, company.id),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, "user-for-run"),
             ),
@@ -1634,8 +1623,7 @@ describeEmbeddedPostgres("tool access service", () => {
       await tx.execute(sql`
         SELECT "id"
         FROM "company_memberships"
-        WHERE "company_id" = ${company.id}
-          AND "principal_type" = 'user'
+        WHERE "principal_type" = 'user'
           AND "principal_id" = 'alice'
         FOR UPDATE
       `);
@@ -1653,8 +1641,7 @@ describeEmbeddedPostgres("tool access service", () => {
       await tx.execute(sql`
         UPDATE "company_memberships"
         SET "status" = 'suspended', "updated_at" = now()
-        WHERE "company_id" = ${company.id}
-          AND "principal_type" = 'user'
+        WHERE "principal_type" = 'user'
           AND "principal_id" = 'alice'
       `);
     });
@@ -1691,10 +1678,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ status: "active" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "alice"),
-        ),
+        eq(companyMemberships.principalId, "alice"),
       );
     await db
       .update(connectionGrants)
@@ -1765,10 +1749,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     const inactiveOwner = await request(app)
       .post(`/api/agents/me/connections/${connection.id}/token`)
@@ -1818,10 +1799,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     const inactiveAudienceMember = await request(app)
       .post(`/api/agents/me/connections/${connection.id}/token`)
@@ -1833,10 +1811,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ status: "active" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
 
     await db
@@ -1871,7 +1846,6 @@ describeEmbeddedPostgres("tool access service", () => {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, company.id),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, "departing-user"),
           ),
@@ -2812,12 +2786,11 @@ describeEmbeddedPostgres("tool access service", () => {
       ],
     };
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const app = createRouteApp(db, actor);
 
     await request(app)
@@ -2825,7 +2798,6 @@ describeEmbeddedPostgres("tool access service", () => {
       .expect(403);
 
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       permissionKey: "tools:admin",
@@ -3377,7 +3349,6 @@ describeEmbeddedPostgres("tool access service", () => {
       })
       .returning();
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       permissionKey: "tasks:assign_scope",
@@ -6109,10 +6080,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "board-user"),
-        ),
+        eq(companyMemberships.principalId, "board-user"),
       );
     await expect(
       service.completeVercelConnectCallback({ state: stateRow!.state, actor }),
@@ -6123,10 +6091,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "operator" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "board-user"),
-        ),
+        eq(companyMemberships.principalId, "board-user"),
       );
     await service.startOAuth(company.id, connected.connectionId, {
       redirectUri: "http://127.0.0.1:3100/api/tools/oauth/callback",
@@ -7467,10 +7432,7 @@ describeEmbeddedPostgres("tool access service", () => {
           .update(companyMemberships)
           .set({ membershipRole: "operator" })
           .where(
-            and(
-              eq(companyMemberships.companyId, company.id),
-              eq(companyMemberships.principalId, userId),
-            ),
+            eq(companyMemberships.principalId, userId),
           );
         await expect(
           service.completePaperclipCloudConnectorCallback({
@@ -7480,7 +7442,6 @@ describeEmbeddedPostgres("tool access service", () => {
           }),
         ).rejects.toMatchObject({ status: 403 });
         await db.insert(principalPermissionGrants).values({
-          companyId: company.id,
           principalType: "user",
           principalId: userId,
           permissionKey: "tools:manage_connections",
@@ -8943,7 +8904,6 @@ describeEmbeddedPostgres("tool access service", () => {
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, company.id),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, userId),
             ),
@@ -8959,7 +8919,6 @@ describeEmbeddedPostgres("tool access service", () => {
           })
           .where(
             and(
-              eq(companyMemberships.companyId, company.id),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, userId),
             ),
@@ -9340,10 +9299,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     await expect(
       service.startAuthorizationForAgent({
@@ -9360,10 +9316,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "member" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     const retry = await service.startAuthorizationForAgent({
       companyId: company.id,
@@ -9378,10 +9331,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "viewer" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     await expect(
       service.completeOAuthCallback({
@@ -9409,10 +9359,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ membershipRole: "member" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     const suspendedRetry = await service.startAuthorizationForAgent({
       companyId: company.id,
@@ -9427,10 +9374,7 @@ describeEmbeddedPostgres("tool access service", () => {
       .update(companyMemberships)
       .set({ status: "suspended" })
       .where(
-        and(
-          eq(companyMemberships.companyId, company.id),
-          eq(companyMemberships.principalId, "user-for-run"),
-        ),
+        eq(companyMemberships.principalId, "user-for-run"),
       );
     await expect(
       service.completeOAuthCallback({
@@ -10947,7 +10891,6 @@ describeEmbeddedPostgres("tool access service", () => {
       .delete(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, company.id),
           eq(principalPermissionGrants.principalType, "user"),
           eq(principalPermissionGrants.principalId, "oauth-operator"),
           eq(
@@ -10961,7 +10904,6 @@ describeEmbeddedPostgres("tool access service", () => {
       .query({ state, code: "oauth-code" })
       .expect(403);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: "oauth-operator",
       permissionKey: "tools:manage_connections",
@@ -16262,12 +16204,11 @@ describeEmbeddedPostgres("tool access service", () => {
     const service = createTestToolAccessService(db);
     const userId = `runtime-operator-${randomUUID()}`;
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const actor = boardSessionActor(company.id, "operator", userId);
     const app = createRouteApp(db, actor);
     const connection = await service.createConnection(company.id, {
@@ -16295,7 +16236,6 @@ describeEmbeddedPostgres("tool access service", () => {
       .expect(403);
 
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: userId,
       permissionKey: "tools:manage_runtime",

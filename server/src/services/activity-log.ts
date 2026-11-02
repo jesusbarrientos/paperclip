@@ -131,7 +131,6 @@ export async function resolveResponsibleUserIdForActivity(db: Db, input: LogActi
       .select({ responsibleUserId: agentApiKeys.responsibleUserId })
       .from(agentApiKeys)
       .where(and(
-        eq(agentApiKeys.companyId, input.companyId),
         eq(agentApiKeys.id, agentApiKeyId),
         ...(agentId && isUuidLike(agentId) ? [eq(agentApiKeys.agentId, agentId)] : []),
       ))

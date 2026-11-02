@@ -14,6 +14,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -194,12 +195,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
       ])
       .returning();
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: actorAgent!.id,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
 
     const services = buildHostServices(db, pluginId, "permissions-extension", createEventBusStub());
     const updatedPolicy = await services.authorization.updatePolicy({

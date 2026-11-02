@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import {
   agents,
   aiProviderDefaults,
@@ -41,6 +41,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -111,12 +112,11 @@ describeEmbeddedPostgres("connectionIntentService", () => {
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "responsible-user",
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(goals).values({
       id: goalId,
       companyId,
@@ -421,12 +421,11 @@ describeEmbeddedPostgres("connectionIntentService", () => {
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companyMemberships).values({
-      companyId: raceCompanyId,
       principalType: "user",
       principalId: raceUserId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(goals).values({
       id: raceGoalId,
       companyId: raceCompanyId,
@@ -575,7 +574,6 @@ describeEmbeddedPostgres("connectionIntentService", () => {
           .select({ id: companyMemberships.id })
           .from(companyMemberships)
           .where(and(
-            eq(companyMemberships.companyId, raceClaims.company_id),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, raceClaims.responsible_user_id),
           ))
@@ -586,7 +584,6 @@ describeEmbeddedPostgres("connectionIntentService", () => {
           .update(companyMemberships)
           .set({ membershipRole: "viewer", updatedAt: new Date() })
           .where(and(
-            eq(companyMemberships.companyId, raceClaims.company_id),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, raceClaims.responsible_user_id),
           ));
@@ -877,7 +874,7 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     const [company] = await db.insert(companies).values({ name: "Grant fixture", issuePrefix: `G${randomUUID().slice(0, 7)}` }).returning();
     const [agent] = await db.insert(agents).values({ companyId: company.id, name: "Default agent", role: "general", adapterType: "process" }).returning();
     const [otherAgent] = await db.insert(agents).values({ companyId: company.id, name: "Other agent", role: "general", adapterType: "process" }).returning();
-    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: "grant-user", membershipRole: "owner", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: "grant-user", membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const [issue] = await db.insert(issues).values({ companyId: company.id, title: "Connect Circleback", status: "in_progress", assigneeAgentId: agent.id }).returning();
     const [run] = await db.insert(heartbeatRuns).values({ companyId: company.id, agentId: agent.id, status: "running", responsibleUserId: "grant-user", contextSnapshot: { issueId: issue.id } }).returning();
     const [application] = await db.insert(toolApplications).values({ companyId: company.id, applicationKey: randomUUID(), name: "Composio", type: "mcp_http", metadata: { sourceTemplateKey: "composio" } }).returning();

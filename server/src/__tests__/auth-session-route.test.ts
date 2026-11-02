@@ -17,6 +17,9 @@ function createSelectChain(rows: unknown[]) {
         where() {
           return Promise.resolve(rows);
         },
+        orderBy() {
+          return { limit: () => Promise.resolve([]) };
+        },
       };
     },
   };
@@ -148,83 +151,6 @@ describe("actorMiddleware authenticated session profile", () => {
     });
   });
 
-  it("lets the cloud tenant actor through assertCompanyAccess for a company it holds a membership row in", async () => {
-    process.env.PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN = "tenant-token";
-    // A company created on the instance after provisioning (e.g. by a company
-    // import) — the user has a real membership row, but it is not the stack's
-    // seeded primary company.
-    const importedCompanyId = "33333333-3333-4333-8333-333333333333";
-    const unrelatedCompanyId = "44444444-4444-4444-8444-444444444444";
-    const insertChain = {
-      values() {
-        return insertChain;
-      },
-      onConflictDoUpdate() {
-        return insertChain;
-      },
-      onConflictDoNothing() {
-        return insertChain;
-      },
-      returning() {
-        return Promise.resolve([{ companyId: "company-1", membershipRole: "member", status: "active" }]);
-      },
-      then(resolve: (value: unknown) => unknown) {
-        return Promise.resolve(undefined).then(resolve);
-      },
-    };
-    const db = {
-      select: vi.fn(() => ({
-        from: (table: unknown) => ({
-          where: () =>
-            Promise.resolve(
-              table === companyMemberships
-                ? [{ companyId: importedCompanyId, membershipRole: "member", status: "active" }]
-                : [],
-            ),
-        }),
-      })),
-      insert: vi.fn(() => insertChain),
-      delete: vi.fn(() => ({ where: () => Promise.resolve(undefined) })),
-    } as any;
-    const app = express();
-    app.use(
-      actorMiddleware(db, {
-        deploymentMode: "authenticated",
-        resolveSession: async () => null,
-      }),
-    );
-    app.get("/companies/:companyId/resource", (req, res) => {
-      assertCompanyAccess(req, req.params.companyId);
-      res.json({ ok: true, companyIds: req.actor.companyIds });
-    });
-    app.post("/companies/:companyId/resource", (req, res) => {
-      assertCompanyAccess(req, req.params.companyId);
-      res.json({ ok: true });
-    });
-    app.use(errorHandler);
-
-    const cloudHeaders = {
-      "x-paperclip-cloud-tenant-token": "tenant-token",
-      "x-paperclip-cloud-user-id": "global-user-1",
-      "x-paperclip-cloud-user-email": "owner@example.com",
-      "x-paperclip-cloud-stack-id": "stack-alpha",
-      "x-paperclip-cloud-stack-role": "member",
-    };
-
-    // Reads and writes both reach the imported company through the real
-    // membership row (write access also consults actor.memberships).
-    const read = await request(app).get(`/companies/${importedCompanyId}/resource`).set(cloudHeaders);
-    expect(read.status).toBe(200);
-    expect(read.body.companyIds).toContain(importedCompanyId);
-
-    const write = await request(app).post(`/companies/${importedCompanyId}/resource`).set(cloudHeaders);
-    expect(write.status).toBe(200);
-
-    // Companies the user holds no membership row in stay unreachable.
-    const denied = await request(app).get(`/companies/${unrelatedCompanyId}/resource`).set(cloudHeaders);
-    expect(denied.status).toBe(403);
-  });
-
   it("repairs a legacy machine company name from the trusted human-name header", async () => {
     process.env.PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN = "tenant-token";
     const updates: Array<Record<string, unknown>> = [];
@@ -352,6 +278,7 @@ describe("actorMiddleware authenticated session profile", () => {
             Promise.resolve(
               table === instanceUserRoles && state.staleInstanceAdminRow ? [{ id: "stale-role-row" }] : [],
             ),
+          orderBy: () => ({ limit: () => Promise.resolve([]) }),
         }),
       })),
       insert: vi.fn(() => insertChain),

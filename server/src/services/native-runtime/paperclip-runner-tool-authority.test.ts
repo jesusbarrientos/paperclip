@@ -26,6 +26,7 @@ import { createAssignedMcpTools } from "./assigned-mcp-tools.js";
 import type { ToolGatewayService } from "../tool-gateway.js";
 import { READ_CURRENT_WAKE_COMMENTS_TOOL_NAME } from "./current-wake-comments.js";
 import { CAPABILITY_SEMANTIC_TOOL_CATALOG, runnerCodexDynamicToolsFit } from "../../vendor/paperclip-runner/index.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 describe("PaperclipRunnerToolAuthority", () => {
   const credentialDocumentBody = "Use a secret manager for credential handling.\nAuthorization: Bearer intentional-document-credential";
@@ -1285,7 +1286,7 @@ describe("PaperclipRunnerToolAuthority", () => {
     const runId = "00000000-0000-4000-8000-000000000121";
     for (const userId of ["person-a", "person-b"]) {
       await db.insert(authUsers).values({ id: userId, name: userId, email: `${userId}@example.test`, createdAt: new Date(), updatedAt: new Date() });
-      await db.insert(companyMemberships).values({ companyId, principalType: "user", principalId: userId, status: "active", membershipRole: "member" });
+      await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);
     }
     await db.insert(issues).values({ id: issueId, companyId, title: "Identity delegation",
       status: "in_progress", assigneeAgentId: agentId });

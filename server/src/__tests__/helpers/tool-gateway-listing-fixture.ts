@@ -163,7 +163,6 @@ export async function createListingFixture(
   ]);
   // A grant for another connection: the listing reads it, but it allows nothing here.
   await db.insert(principalPermissionGrants).values({
-    companyId: company.id,
     principalType: "agent",
     principalId: agent.id,
     permissionKey: "tools:use",

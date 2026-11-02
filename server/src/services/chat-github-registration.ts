@@ -76,7 +76,6 @@ export function githubChatRegistrationService(
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, endpoint.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, userId),
           eq(companyMemberships.status, "active"),
@@ -187,7 +186,6 @@ export function githubChatRegistrationService(
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, session.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, session.userId),
             eq(companyMemberships.status, "active"),

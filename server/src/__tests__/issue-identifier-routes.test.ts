@@ -11,6 +11,7 @@ import {
 import { errorHandler } from "../middleware/index.js";
 import { issueRoutes } from "../routes/issues.js";
 import { ensureHumanRoleDefaultGrants } from "../services/principal-access-compatibility.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -57,15 +58,13 @@ describeEmbeddedPostgres("issue identifier routes", () => {
 
   async function seedCloudTenantMember(companyId: string) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
       principalId: "cloud-user-1",
       membershipRole: "owner",
       grantedByUserId: null,

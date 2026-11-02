@@ -53,6 +53,7 @@ import { issueRoutes } from "../routes/issues.js";
 import { issueService } from "../services/issues.js";
 import { heartbeatService } from "../services/heartbeat.js";
 import { LOW_TRUST_QUARANTINED_BODY } from "../services/source-trust.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported
@@ -929,7 +930,7 @@ describeEmbeddedPostgres(
     it("allows the human-requested run through HTTP while rejecting attribution-only authority", async () => {
       const fixture = await seedLowTrustFixture(db);
       await db.insert(authUsers).values({ id: "board-user", name: "Owner", email: "owner@example.test", createdAt: new Date(), updatedAt: new Date() });
-      await db.insert(companyMemberships).values({ companyId: fixture.company.id, principalType: "user", principalId: "board-user", membershipRole: "owner", status: "active" });
+      await db.insert(companyMemberships).values({ principalType: "user", principalId: "board-user", membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);
       // The fixture already occupies the agent's sole execution slot. Let the
       // real board route enqueue work, then bind its queued run for HTTP checks.
       await db.update(agents).set({ runtimeConfig: { heartbeat: { wakeOnDemand: true, maxConcurrentRuns: 1 } } })
@@ -989,7 +990,7 @@ describeEmbeddedPostgres(
     it("retains a board backlog assignment and rejects plugin-attributed wakes with forged board payloads", async () => {
       const fixture = await seedLowTrustFixture(db);
       await db.insert(authUsers).values({ id: "board-user", name: "Owner", email: "owner@example.test", createdAt: new Date(), updatedAt: new Date() });
-      await db.insert(companyMemberships).values({ companyId: fixture.company.id, principalType: "user", principalId: "board-user", membershipRole: "owner", status: "active" });
+      await db.insert(companyMemberships).values({ principalType: "user", principalId: "board-user", membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);
       await db.update(agents).set({ runtimeConfig: { heartbeat: { wakeOnDemand: true, maxConcurrentRuns: 1 } } })
         .where(eq(agents.id, fixture.agents.lowTrust.id));
       const board = createApp(db, boardActor(fixture));
@@ -1406,22 +1407,19 @@ describeEmbeddedPostgres(
     it("restricts low-trust self inspection without changing standard-agent visibility", async () => {
       const fixture = await seedLowTrustFixture(db);
       await db.insert(companyMemberships).values({
-        companyId: fixture.company.id,
         principalType: "agent",
         principalId: fixture.agents.lowTrust.id,
         status: "active",
         membershipRole: "member",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       await db.insert(principalPermissionGrants).values([
         {
-          companyId: fixture.company.id,
           principalType: "agent",
           principalId: fixture.agents.lowTrust.id,
           permissionKey: "agents:configure",
           grantedByUserId: null,
         },
         {
-          companyId: fixture.company.id,
           principalType: "agent",
           principalId: fixture.agents.lowTrust.id,
           permissionKey: "skills:create",

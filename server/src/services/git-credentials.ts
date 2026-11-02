@@ -308,9 +308,7 @@ export async function resolveManagedGitHubIdentitySelection(
   grant?: typeof connectionGrants.$inferSelect;
   error?: string;
 }> {
-  const connections = await db.select().from(toolConnections).where(and(
-    eq(toolConnections.companyId, companyId),
-  ));
+  const connections = await db.select().from(toolConnections).where(eq(toolConnections.companyId, companyId));
   const githubConnections = connections.filter((connection) => {
     const config = connection.config && typeof connection.config === "object" ? connection.config as Record<string, unknown> : {};
     const transportConfig = connection.transportConfig && typeof connection.transportConfig === "object"
@@ -480,7 +478,6 @@ export async function resolveManagedGitHubCredential(
     let grant = selection.grant!;
     if (grant.kind === "user" && grant.subjectUserId) {
       const [membership] = await db.select({ id: companyMemberships.id, role: companyMemberships.membershipRole }).from(companyMemberships).where(and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, grant.subjectUserId),
         eq(companyMemberships.status, "active"),

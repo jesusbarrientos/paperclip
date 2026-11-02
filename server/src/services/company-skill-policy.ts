@@ -142,7 +142,6 @@ export function companySkillPolicyService(db: Db) {
       .select({ permissionKey: principalPermissionGrants.permissionKey })
       .from(principalPermissionGrants)
       .where(and(
-        eq(principalPermissionGrants.companyId, companyId),
         eq(principalPermissionGrants.principalType, principalType),
         eq(principalPermissionGrants.principalId, principal.id),
         inArray(principalPermissionGrants.permissionKey, ["skills:create", "skills:suggest-changes"]),

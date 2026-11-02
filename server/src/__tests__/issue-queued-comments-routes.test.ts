@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agentRuntimeState,
   agentWakeupRequests,
@@ -61,6 +62,10 @@ describeEmbeddedPostgres("issue queued-comment routes", () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-queued-comments-");
     db = createDb(tempDb.connectionString);
   }, 30_000);
+
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
 
   const testProcesses = new Map<string, ChildProcess>();
 
@@ -125,20 +130,18 @@ describeEmbeddedPostgres("issue queued-comment routes", () => {
     });
     await db.insert(companyMemberships).values([
       {
-        companyId,
         principalType: "user",
         principalId: "queue-owner",
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId,
         principalType: "user",
         principalId: "other-operator",
         status: "active",
         membershipRole: "operator",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     await db.insert(agentWakeupRequests).values({
       id: wakeId,
       companyId,

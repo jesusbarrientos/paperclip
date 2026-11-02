@@ -109,7 +109,6 @@ export function connectionIntentService(db: Db) {
       })
       .from(companyMemberships)
       .where(and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId),
       ))
@@ -138,7 +137,6 @@ export function connectionIntentService(db: Db) {
       })
       .from(companyMemberships)
       .where(and(
-        eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, userId),
       ))
@@ -202,7 +200,6 @@ export function connectionIntentService(db: Db) {
         status: companyMemberships.status,
         membershipRole: companyMemberships.membershipRole,
       }).from(companyMemberships).where(and(
-        eq(companyMemberships.companyId, run.companyId),
         eq(companyMemberships.principalType, "user"),
         eq(companyMemberships.principalId, run.responsibleUserId!),
       )).then((rows) => rows[0] ?? null),

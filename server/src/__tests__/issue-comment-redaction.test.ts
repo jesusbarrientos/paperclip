@@ -37,6 +37,7 @@ import { buildPaperclipWakePayload } from "../services/heartbeat.js";
 import { issueReferenceService } from "../services/issue-references.js";
 import { issueService } from "../services/issues.js";
 import type { StorageService } from "../storage/types.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const externalTestDatabaseUrl = process.env.PAPERCLIP_TEST_DATABASE_URL;
 const embeddedPostgresSupport = externalTestDatabaseUrl
@@ -105,13 +106,12 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
       priority: "medium",
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "board-user-1",
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     return { companyId, issueId };
   }
 

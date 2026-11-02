@@ -25,6 +25,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -105,27 +106,24 @@ describeEmbeddedPostgres("stalled review decision routes", () => {
     ]);
     await db.insert(companyMemberships).values([
       {
-        companyId,
         principalType: "user",
         principalId: memberUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId,
         principalType: "user",
         principalId: peerUserId,
         status: "active",
         membershipRole: "operator",
       },
       {
-        companyId,
         principalType: "user",
         principalId: viewerUserId,
         status: "active",
         membershipRole: "viewer",
       },
-    ]);
+    ]).onConflictDoUpdate(membershipUpsert);
     return { companyId, assigneeAgentId, peerAgentId, memberUserId, peerUserId, viewerUserId };
   }
 

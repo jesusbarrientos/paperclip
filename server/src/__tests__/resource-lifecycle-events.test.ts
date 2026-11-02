@@ -102,7 +102,7 @@ describePostgres("Resource lifecycle events", () => {
   it("records every pause/resume cycle and termination in resource order, without duplicate hooks", async () => {
     const agent = await createAgent();
     const service = agentService(db);
-    await db.insert(agentApiKeys).values({ agentId: agent.id, companyId, name: "Lifecycle key", keyHash: "fixture-hash" });
+    await db.insert(agentApiKeys).values({ agentId: agent.id, name: "Lifecycle key", keyHash: "fixture-hash" });
     await Promise.all(Array.from({ length: 4 }, () => service.pause(agent.id)));
     await Promise.all(Array.from({ length: 4 }, () => service.resume(agent.id)));
     await service.update(agent.id, { status: "paused" });
@@ -141,7 +141,7 @@ describePostgres("Resource lifecycle events", () => {
     const agent = await createAgent();
     const paused = await createAgent();
     await agentService(db).pause(paused.id);
-    await db.insert(agentApiKeys).values({ agentId: agent.id, companyId, name: "Retained key", keyHash: "fixture-retained-hash" });
+    await db.insert(agentApiKeys).values({ agentId: agent.id, name: "Retained key", keyHash: "fixture-retained-hash" });
     const before = await events();
     await db.execute(sql`ALTER TABLE resource_lifecycle_events ADD CONSTRAINT fixture_reject_hook CHECK (false) NOT VALID`);
     try {

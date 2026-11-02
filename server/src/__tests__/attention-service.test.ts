@@ -410,7 +410,6 @@ describeEmbeddedPostgres("attention service", () => {
     const inviteId = randomUUID();
     await db.insert(invites).values({
       id: inviteId,
-      companyId,
       tokenHash: `hash-${inviteId}`,
       allowedJoinTypes: "both",
       expiresAt: new Date("2026-07-10T00:00:00.000Z"),
@@ -418,7 +417,6 @@ describeEmbeddedPostgres("attention service", () => {
     await db.insert(joinRequests).values({
       id: randomUUID(),
       inviteId,
-      companyId,
       requestType: "human",
       status: "pending_approval",
       requestIp: "127.0.0.1",

@@ -19,6 +19,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 vi.hoisted(() => {
   process.env.PAPERCLIP_HOME = "/tmp/paperclip-test-home";
@@ -73,12 +74,11 @@ async function createCompanyWithOwner(db: Db) {
   const owner = await db
     .insert(companyMemberships)
     .values({
-      companyId: company.id,
       principalType: "user",
       principalId: `owner-${randomUUID()}`,
       status: "active",
       membershipRole: "owner",
-    })
+    }).onConflictDoUpdate(membershipUpsert)
     .returning()
     .then((rows) => rows[0]!);
   return { company, owner };
@@ -138,17 +138,15 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
     const member = await db
       .insert(companyMemberships)
       .values({
-        companyId: company.id,
         principalType: "user",
         principalId: `admin-${randomUUID()}`,
         status: "active",
         membershipRole: "admin",
-      })
+      }).onConflictDoUpdate(membershipUpsert)
       .returning()
       .then((rows) => rows[0]!);
     const customScope = { projectIds: ["project-1"] };
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "user",
       principalId: member.principalId,
       permissionKey: "tasks:assign_scope",
@@ -168,7 +166,6 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, company.id),
           eq(principalPermissionGrants.principalType, "user"),
           eq(principalPermissionGrants.principalId, member.principalId),
         ),
@@ -184,12 +181,11 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
   it("sweeps personal connection access when the member route suspends a user", async () => {
     const { company, owner } = await createCompanyWithOwner(db);
     const member = await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: `member-${randomUUID()}`,
       status: "active",
       membershipRole: "member",
-    }).returning().then((rows) => rows[0]!);
+    }).onConflictDoUpdate(membershipUpsert).returning().then((rows) => rows[0]!);
     const agent = await db.insert(agents).values({
       companyId: company.id,
       name: "Delegated route agent",

@@ -109,7 +109,6 @@ describeEmbeddedPostgres("board claim", () => {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, company.id),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, userId),
           ),

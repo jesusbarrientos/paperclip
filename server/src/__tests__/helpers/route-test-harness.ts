@@ -89,7 +89,6 @@ export async function seedCompanyWithBoardAccess(db: Db, name: string): Promise<
     requireBoardApprovalForNewAgents: false,
   });
   await db.insert(companyMemberships).values({
-    companyId,
     principalType: "user",
     principalId: userId,
     status: "active",
@@ -97,7 +96,6 @@ export async function seedCompanyWithBoardAccess(db: Db, name: string): Promise<
     updatedAt: new Date(),
   });
   await ensureHumanRoleDefaultGrants(db, {
-    companyId,
     principalId: userId,
     membershipRole: "owner",
     grantedByUserId: null,

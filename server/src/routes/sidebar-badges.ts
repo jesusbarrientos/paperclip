@@ -54,7 +54,7 @@ export function sidebarBadgeRoutes(db: Db) {
             createdAt: joinRequests.createdAt,
           })
           .from(joinRequests)
-          .where(and(eq(joinRequests.companyId, companyId), eq(joinRequests.status, "pending_approval")))
+          .where(eq(joinRequests.status, "pending_approval"))
       ).map(({ id, updatedAt, createdAt }) => ({
         id,
         updatedAt,

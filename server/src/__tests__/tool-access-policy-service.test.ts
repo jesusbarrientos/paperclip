@@ -487,7 +487,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const { application, connection, catalogEntry } = await createTool(db, company.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",
@@ -826,7 +825,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const { connection } = await createTool(db, company.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",
@@ -858,7 +856,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const { connection } = await createTool(db, company.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",
@@ -890,7 +887,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const { connection } = await createTool(db, company.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",
@@ -926,7 +922,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const { connection } = await createTool(db, company.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",
@@ -1603,7 +1598,6 @@ describeEmbeddedPostgres("tool access policy service", () => {
     const agent = await createAgent(db, company.id);
     const run = await createRun(db, company.id, agent.id);
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
       principalType: "agent",
       principalId: agent.id,
       permissionKey: "tools:use",

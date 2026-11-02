@@ -18,6 +18,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 vi.hoisted(() => {
   process.env.PAPERCLIP_HOME = "/tmp/paperclip-test-home";
@@ -111,12 +112,11 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
       },
     ]);
     await db.insert(companyMemberships).values({
-      companyId: company.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
       membershipRole: "member",
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     const [sourceIssue, issue] = await db.insert(issues).values([
       {
         companyId: company.id,

@@ -17,6 +17,7 @@ import {
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { secretService } from "../services/secrets.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -83,14 +84,13 @@ describeEmbeddedPostgres("secretService resolveAdapterConfigForRuntime — userS
     membershipRole: "owner" | "member" | "viewer" = "owner",
   ) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole,
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
   }
 
   // The honest audit consumer test-environment uses when no environment is selected.

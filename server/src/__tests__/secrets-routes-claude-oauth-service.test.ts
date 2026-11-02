@@ -9,7 +9,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   companies,
@@ -54,6 +55,10 @@ describeEmbeddedPostgres("secretService Claude Code OAuth helper and compare-and
     db = createDb(started.connectionString);
   });
 
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
+
   afterEach(async () => {
     await db.delete(activityLog);
     await db.delete(secretAccessEvents);
@@ -91,14 +96,13 @@ describeEmbeddedPostgres("secretService Claude Code OAuth helper and compare-and
 
   async function seedCompanyMember(companyId: string, userId: string) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "owner",
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
   }
 
   async function countVersions(secretId: string) {

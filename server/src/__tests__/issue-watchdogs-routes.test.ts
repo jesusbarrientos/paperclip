@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
   agentRuntimeState,
@@ -73,6 +74,10 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     db = createDb(tempDb.connectionString);
   }, 20_000);
 
+  beforeEach(async () => {
+    await resetOrganizationState(db);
+  });
+
   afterEach(async () => {
     mockAdapterExecute.mockClear();
     runningProcesses.clear();
@@ -122,15 +127,13 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
 
   async function seedCloudTenantMember(companyId: string) {
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
       principalId: "cloud-user-1",
       membershipRole: "owner",
       grantedByUserId: null,

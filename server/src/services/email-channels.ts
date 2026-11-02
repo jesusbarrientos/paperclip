@@ -490,7 +490,6 @@ export function emailChannelService(db: Db, options: EmailChannelOptions) {
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, endpoint.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, actor.userId),
             eq(companyMemberships.status, "active"),

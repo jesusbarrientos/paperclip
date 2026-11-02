@@ -8,7 +8,8 @@ import { errorHandler } from "../middleware/index.js";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
+import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
   approvals,
@@ -57,6 +58,10 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       temp = await startEmbeddedPostgresTestDatabase("paperclip-browser-use-");
       db = createDb(temp.connectionString);
     }, 30000);
+
+    beforeEach(async () => {
+      await resetOrganizationState(db);
+    });
     afterAll(async () => {
       await temp?.cleanup();
       if (originalApiUrl === undefined) delete process.env.PAPERCLIP_API_URL;
@@ -71,12 +76,11 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         })
         .returning();
       await db.insert(companyMemberships).values({
-        companyId: company.id,
         principalType: "user",
         principalId: actor.actorId,
         membershipRole: "admin",
         status: "active",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       const providerSession = randomUUID(),
         providerBrowser = randomUUID();
       let providerRun = randomUUID();
@@ -1110,8 +1114,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
       mode = "board";
       await db
         .update(companyMemberships)
-        .set({ membershipRole: "viewer" })
-        .where(eq(companyMemberships.companyId, f.company.id));
+        .set({ membershipRole: "viewer" });
       expect((await http(app).get(path)).status).toBe(403);
       expect((await http(app).get(listPath)).body).toEqual([]);
       expect((await http(app).post(controlPath).send({ action: "keep_open" })).status).toBe(403);
@@ -1200,12 +1203,11 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
         ),
       ).toHaveProperty("url");
       await db.insert(companyMemberships).values({
-        companyId: f.company.id,
         principalType: "user",
         principalId: "other-reviewer",
         membershipRole: "admin",
         status: "active",
-      });
+      }).onConflictDoUpdate(membershipUpsert);
       await expect(
         f.service.viewer(
           f.company.id,

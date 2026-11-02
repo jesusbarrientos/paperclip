@@ -55,6 +55,7 @@ import {
   registerRunnerPrpAuthority,
   setupRunnerPrpWebSocketServer,
 } from "../../realtime/runner-prp-ws.js";
+import { membershipUpsert } from "../../__tests__/helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -127,8 +128,8 @@ describeEmbeddedPostgres("native question bridge", () => {
       createdAt: new Date(), updatedAt: new Date(),
     }).onConflictDoNothing();
     await db.insert(companyMemberships).values({
-      companyId, principalType: "user", principalId: "operator-1", status: "active", membershipRole: "member",
-    });
+      principalType: "user", principalId: "operator-1", status: "active", membershipRole: "member",
+    }).onConflictDoUpdate(membershipUpsert);
     await db.insert(agents).values({
       id: agentId,
       companyId,

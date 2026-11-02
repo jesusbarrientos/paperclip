@@ -3911,7 +3911,6 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         })
         .from(principalPermissionGrants)
         .where(and(
-          eq(principalPermissionGrants.companyId, companyId),
           eq(principalPermissionGrants.principalType, "agent"),
           inArray(principalPermissionGrants.principalId, agentRows.map((agent) => agent.id)),
         ))
@@ -5327,18 +5326,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           ? (sourceManifest.company?.feedbackDataSharingTermsVersion ?? null)
           : null,
       });
-      if (mode === "agent_safe" && options?.sourceCompanyId) {
-        await access.copyActiveUserMemberships(options.sourceCompanyId, created.id);
-      } else {
-        const ownerPrincipalId = actorUserId ?? "board";
-        await access.ensureMembership(created.id, "user", ownerPrincipalId, "owner", "active");
-        await access.ensureRoleDefaultGrants(
-          created.id,
-          ownerPrincipalId,
-          "owner",
-          actorUserId ?? null,
-        );
-      }
+      const ownerPrincipalId = actorUserId ?? "board";
+      await access.ensureMembership(created.id, "user", ownerPrincipalId, "owner", "active");
+      await access.ensureRoleDefaultGrants(
+        created.id,
+        ownerPrincipalId,
+        "owner",
+        actorUserId ?? null,
+      );
       targetCompany = created;
       companyAction = "created";
     } else {

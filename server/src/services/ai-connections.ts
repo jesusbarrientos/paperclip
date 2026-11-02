@@ -60,7 +60,6 @@ export function aiConnectionService(db: Db) {
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, userId),
               eq(companyMemberships.status, "active"),
@@ -116,7 +115,6 @@ export function aiConnectionService(db: Db) {
             companyMemberships,
             and(
               eq(companyMemberships.principalId, authUsers.id),
-              eq(companyMemberships.companyId, companyId),
               eq(companyMemberships.principalType, "user"),
             ),
           ),

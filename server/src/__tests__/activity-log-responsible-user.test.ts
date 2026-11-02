@@ -208,7 +208,6 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
     });
     await db.insert(agentApiKeys).values({
       id: agentApiKeyId,
-      companyId,
       agentId,
       name: "test",
       keyHash: `hash-${agentApiKeyId}`,

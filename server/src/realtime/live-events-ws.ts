@@ -4,11 +4,12 @@ import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentApiKeys, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@paperclipai/db";
 import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
 import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { organizationService } from "../services/organization.js";
 
 interface WsSocket {
   readyState: number;
@@ -173,14 +174,14 @@ async function authorizeUpgrade(
     const userId = session?.user?.id;
     if (!userId) return null;
 
-    const [roleRow, memberships] = await Promise.all([
+    const [roleRow, memberships, organizationId] = await Promise.all([
       db
         .select({ id: instanceUserRoles.id })
         .from(instanceUserRoles)
         .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
         .then((rows) => rows[0] ?? null),
       db
-        .select({ companyId: companyMemberships.companyId })
+        .select({ id: companyMemberships.id })
         .from(companyMemberships)
         .where(
           and(
@@ -189,9 +190,10 @@ async function authorizeUpgrade(
             eq(companyMemberships.status, "active"),
           ),
         ),
+      organizationService(db).findId(),
     ]);
 
-    const hasCompanyMembership = memberships.some((row) => row.companyId === companyId);
+    const hasCompanyMembership = memberships.length > 0 && organizationId === companyId;
     if (!roleRow && !hasCompanyMembership) return null;
 
     return {
@@ -208,7 +210,13 @@ async function authorizeUpgrade(
     .where(and(eq(agentApiKeys.keyHash, tokenHash), isNull(agentApiKeys.revokedAt)))
     .then((rows) => rows[0] ?? null);
 
-  if (!key || key.companyId !== companyId) {
+  if (!key) return null;
+  const keyAgent = await db
+    .select({ companyId: agents.companyId })
+    .from(agents)
+    .where(eq(agents.id, key.agentId))
+    .then((rows) => rows[0] ?? null);
+  if (!keyAgent || keyAgent.companyId !== companyId) {
     return null;
   }
 

@@ -10,6 +10,7 @@ import {
 import { errorHandler } from "../middleware/index.js";
 import { issueRoutes } from "../routes/issues.js";
 import type { StorageService } from "../storage/types.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -63,13 +64,12 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(companyMemberships).values({
-      companyId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
-    });
+    }).onConflictDoUpdate(membershipUpsert);
   }, 20_000);
 
   afterAll(async () => {

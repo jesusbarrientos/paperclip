@@ -16,6 +16,8 @@ import { canonicalNativeRuntimeContextDigest, parseNativeRuntimeContext } from "
 import { nativeRuntimeContextFixture } from "../services/native-runtime/runtime-context.test-fixture.js";
 import { execute as executeProcess } from "../adapters/process/execute.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
+import { membershipUpsert } from "./helpers/reset-organization.js";
+
 const support = await getEmbeddedPostgresTestSupport();
 const paragraph = "Use the release handbook before changing a deployment. Cite the relevant release checklist.";
 async function createRunFixture(db: ReturnType<typeof createDb>) {
@@ -230,10 +232,10 @@ async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>, compa
     await db.update(toolConnections).set({ credentialPolicy: "per_user" }).where(eq(toolConnections.id, f.connection.id));
     await db.update(connectionGrants).set({ kind: "user", subjectUserId: "instruction-owner", isDefault: false }).where(eq(connectionGrants.connectionId, f.connection.id));
     expect(await f.resolve()).toBeNull();
-    await db.insert(companyMemberships).values({ companyId: f.company.id, principalType: "user", principalId: "instruction-owner", membershipRole: "member", status: "active" });
+    await db.insert(companyMemberships).values({ principalType: "user", principalId: "instruction-owner", membershipRole: "member", status: "active" }).onConflictDoUpdate(membershipUpsert);
     await db.update(heartbeatRuns).set({ responsibleUserId: "instruction-owner" }).where(eq(heartbeatRuns.id, f.run.id));
     expect(await f.resolve()).not.toBeNull();
-    await db.update(companyMemberships).set({ status: "inactive" }).where(eq(companyMemberships.companyId, f.company.id));
+    await db.update(companyMemberships).set({ status: "inactive" });
     expect(await f.resolve()).toBeNull();
   });
 });

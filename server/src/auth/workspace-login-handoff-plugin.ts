@@ -128,7 +128,6 @@ export function workspaceLoginHandoffPlugin(deps: {
                   .from(companyMemberships)
                   .where(
                     and(
-                      eq(companyMemberships.companyId, companyId),
                       eq(companyMemberships.principalType, "user"),
                       eq(companyMemberships.principalId, userId),
                       eq(companyMemberships.status, "active"),

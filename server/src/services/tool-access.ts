@@ -3029,7 +3029,7 @@ async function gitHubReadGrantAccess(db: Db, companyId: string, connectionId: st
   if (!connection || !connection.enabled || connection.status !== "active" || asRecord(connection.config).sourceTemplateKey !== "github") {
     throw forbidden("GitHub connection is unavailable. Choose a connection you can use.");
   }
-  const [membership] = userId ? await db.select().from(companyMemberships).where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.principalId, userId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.status, "active"))) : [];
+  const [membership] = userId ? await db.select().from(companyMemberships).where(and(eq(companyMemberships.principalId, userId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.status, "active"))) : [];
   if (!localTrusted && (!membership || membership.membershipRole === "viewer")) throw forbidden("GitHub access requires an active company member.");
   const grants = await db.select().from(connectionGrants).where(and(eq(connectionGrants.companyId, companyId), eq(connectionGrants.connectionId, connectionId)));
   const members = await db.select().from(connectionGrantMembers).where(eq(connectionGrantMembers.companyId, companyId));
@@ -4305,7 +4305,6 @@ export function toolAccessService(
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, run.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, responsibleUserId),
         ),
@@ -4350,7 +4349,6 @@ export function toolAccessService(
       .from(companyMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, input.companyId),
           eq(companyMemberships.principalType, "user"),
           eq(companyMemberships.principalId, input.responsibleUserId),
         ),
@@ -12399,7 +12397,6 @@ export function toolAccessService(
             .from(companyMemberships)
             .where(
               and(
-                eq(companyMemberships.companyId, companyId),
                 eq(companyMemberships.principalType, "user"),
                 eq(companyMemberships.principalId, actorUserId),
                 eq(companyMemberships.status, "active"),
@@ -12420,7 +12417,6 @@ export function toolAccessService(
               .from(principalPermissionGrants)
               .where(
                 and(
-                  eq(principalPermissionGrants.companyId, companyId),
                   eq(principalPermissionGrants.principalType, "user"),
                   eq(principalPermissionGrants.principalId, actorUserId),
                   eq(
@@ -15332,7 +15328,6 @@ export function toolAccessService(
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, connection.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, authorizingUserId),
             eq(companyMemberships.status, "active"),
@@ -15359,7 +15354,6 @@ export function toolAccessService(
               .from(principalPermissionGrants)
               .where(
                 and(
-                  eq(principalPermissionGrants.companyId, connection.companyId),
                   eq(principalPermissionGrants.principalType, "user"),
                   eq(principalPermissionGrants.principalId, authorizingUserId),
                   eq(
@@ -15720,7 +15714,6 @@ export function toolAccessService(
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, connection.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, stateRow.subjectUserId),
             eq(companyMemberships.status, "active"),
@@ -16005,7 +15998,6 @@ export function toolAccessService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, connection.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, stateRow.subjectUserId!),
               eq(companyMemberships.status, "active"),
@@ -16292,7 +16284,6 @@ export function toolAccessService(
         .from(companyMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, connection.companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.principalId, organizationActorUserId),
             eq(companyMemberships.status, "active"),
@@ -16318,7 +16309,6 @@ export function toolAccessService(
             .from(principalPermissionGrants)
             .where(
               and(
-                eq(principalPermissionGrants.companyId, connection.companyId),
                 eq(principalPermissionGrants.principalType, "user"),
                 eq(
                   principalPermissionGrants.principalId,
@@ -17635,7 +17625,6 @@ export function toolAccessService(
               .from(companyMemberships)
               .where(
                 and(
-                  eq(companyMemberships.companyId, companyId),
                   eq(companyMemberships.principalType, "user"),
                   eq(companyMemberships.principalId, userId),
                   eq(companyMemberships.status, "active"),
@@ -17986,7 +17975,6 @@ export function toolAccessService(
         .leftJoin(authUsers, eq(authUsers.id, companyMemberships.principalId))
         .where(
           and(
-            eq(companyMemberships.companyId, companyId),
             eq(companyMemberships.principalType, "user"),
             eq(companyMemberships.status, "active"),
           ),
@@ -18090,7 +18078,6 @@ export function toolAccessService(
             .from(companyMemberships)
             .where(
               and(
-                eq(companyMemberships.companyId, connection.companyId),
                 eq(companyMemberships.principalType, "user"),
                 inArray(companyMemberships.principalId, membershipUserIds),
               ),
@@ -18190,7 +18177,6 @@ export function toolAccessService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, connection.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, ownerUserId),
               eq(companyMemberships.status, "active"),
@@ -20084,7 +20070,6 @@ export function toolAccessService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, connection.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, actingUserId),
               eq(companyMemberships.status, "active"),
@@ -20188,7 +20173,6 @@ export function toolAccessService(
           .from(companyMemberships)
           .where(
             and(
-              eq(companyMemberships.companyId, connection.companyId),
               eq(companyMemberships.principalType, "user"),
               eq(companyMemberships.principalId, grant.subjectUserId),
               eq(companyMemberships.status, "active"),
@@ -20221,7 +20205,6 @@ export function toolAccessService(
               .from(companyMemberships)
               .where(
                 and(
-                  eq(companyMemberships.companyId, connection.companyId),
                   eq(companyMemberships.principalType, "user"),
                   eq(companyMemberships.principalId, actingUserId),
                   eq(companyMemberships.status, "active"),

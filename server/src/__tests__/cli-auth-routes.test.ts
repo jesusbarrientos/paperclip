@@ -29,6 +29,7 @@ const mockBoardAuthService = vi.hoisted(() => ({
 const mockLogActivity = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/index.js", () => ({
+  organizationService: () => ({ findId: async () => "company-1" }),
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
   boardAuthService: () => mockBoardAuthService,
@@ -41,6 +42,7 @@ function registerModuleMocks() {
   vi.doMock("../routes/authz.js", async () => vi.importActual("../routes/authz.js"));
 
   vi.doMock("../services/index.js", () => ({
+    organizationService: () => ({ findId: async () => "company-1" }),
     accessService: () => mockAccessService,
     agentService: () => mockAgentService,
     boardAuthService: () => mockBoardAuthService,

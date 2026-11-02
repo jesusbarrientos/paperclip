@@ -80,10 +80,7 @@ async function resolveCompanyUser(db: Db, companyId: string, rawSlug: string): P
     .from(companyMemberships)
     .leftJoin(authUsers, eq(authUsers.id, companyMemberships.principalId))
     .where(
-      and(
-        eq(companyMemberships.companyId, companyId),
-        eq(companyMemberships.principalType, "user"),
-      ),
+      eq(companyMemberships.principalType, "user"),
     )
     .orderBy(desc(companyMemberships.updatedAt))
     .limit(200);
