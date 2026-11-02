@@ -39,7 +39,6 @@ export type HealthStatus = {
   /** The unclaimed Cloud app is ready; this response did not probe SQL. */
   warmStandby?: boolean;
   features?: {
-    companyDeletionEnabled?: boolean;
   };
   serverInfo?: ServerInfoSnapshot;
   devServer?: DevServerHealthStatus;

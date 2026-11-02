@@ -77,7 +77,6 @@ function createApp(actorType: "board" | "none") {
       deploymentMode: "authenticated",
       deploymentExposure: "private",
       authReady: true,
-      companyDeletionEnabled: true,
     }),
   );
   return app;

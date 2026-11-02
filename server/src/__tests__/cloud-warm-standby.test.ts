@@ -14,7 +14,6 @@ const healthOptions = {
   deploymentMode: "authenticated" as const,
   deploymentExposure: "public" as const,
   authReady: true,
-  companyDeletionEnabled: false,
   runtimeEnv: { PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN: "test-token" },
 };
 afterEach(() => vi.useRealTimers());

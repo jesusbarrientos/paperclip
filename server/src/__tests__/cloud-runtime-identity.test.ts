@@ -170,7 +170,6 @@ describeEmbeddedPostgres("Cloud runtime identity", () => {
       deploymentMode: "authenticated",
       deploymentExposure: "public",
       authReady: true,
-      companyDeletionEnabled: false,
     }));
 
     const response = await request(app)
@@ -192,7 +191,7 @@ describeEmbeddedPostgres("Cloud runtime identity", () => {
     const execute = vi.spyOn(db, "execute");
     const health = healthRoutes(db, {
       deploymentMode: "authenticated", deploymentExposure: "public",
-      authReady: true, companyDeletionEnabled: false, isWarmStandby: isStandby,
+      authReady: true, isWarmStandby: isStandby,
     });
     const app = express();
     app.use(cloudRuntimeIdentityMiddleware(db));

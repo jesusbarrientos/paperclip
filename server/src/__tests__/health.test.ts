@@ -53,7 +53,6 @@ function createApp(
       deploymentMode: "local_trusted",
       deploymentExposure: "private",
       authReady: true,
-      companyDeletionEnabled: true,
       serverInfo,
       databaseBackupHealth,
       runtimeEnv,
@@ -341,7 +340,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
         databaseBackupHealth: {
           enabled: true,
@@ -405,7 +403,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
       }),
     );
@@ -444,7 +441,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
       }),
     );
@@ -487,7 +483,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
       }),
     );
@@ -505,7 +500,6 @@ describe("GET /health", () => {
       bootstrapStatus: "ready",
       bootstrapInviteActive: false,
       features: {
-        companyDeletionEnabled: false,
       },
       serverInfo: testServerInfo,
     });
@@ -532,7 +526,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
       }),
     );
@@ -569,7 +562,6 @@ describe("GET /health", () => {
         deploymentMode: "authenticated",
         deploymentExposure: "public",
         authReady: true,
-        companyDeletionEnabled: false,
         serverInfo: testServerInfo,
       }),
     );

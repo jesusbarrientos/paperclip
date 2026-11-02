@@ -87,7 +87,6 @@ describe("GET /health dev-server supervisor access", () => {
           deploymentMode: "authenticated",
           deploymentExposure: "private",
           authReady: true,
-          companyDeletionEnabled: true,
           // Pin server info so the commit field is deterministic (null)
           // instead of picking up the checkout's real git metadata.
           serverInfo: {
@@ -256,7 +255,6 @@ describe("POST /health/dev-server/restart", () => {
           deploymentMode: "authenticated",
           deploymentExposure: "private",
           authReady: true,
-          companyDeletionEnabled: true,
         }),
       );
 
