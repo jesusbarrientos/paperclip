@@ -1,5 +1,5 @@
 import { asc, count } from "drizzle-orm";
-import { companies, type Db } from "@paperclipai/db";
+import { organizations, type Db } from "@paperclipai/db";
 import { conflict, notFound } from "../errors.js";
 
 export class MultipleOrganizationsError extends Error {
@@ -15,9 +15,9 @@ export class MultipleOrganizationsError extends Error {
 export function organizationService(db: Pick<Db, "select">) {
   const findId = async (): Promise<string | null> => {
     const row = await db
-      .select({ id: companies.id })
-      .from(companies)
-      .orderBy(asc(companies.createdAt))
+      .select({ id: organizations.id })
+      .from(organizations)
+      .orderBy(asc(organizations.createdAt))
       .limit(1)
       .then((rows) => rows[0] ?? null);
     return row?.id ?? null;
@@ -32,7 +32,7 @@ export function organizationService(db: Pick<Db, "select">) {
     },
 
     count: async (): Promise<number> => {
-      const [row] = await db.select({ value: count() }).from(companies);
+      const [row] = await db.select({ value: count() }).from(organizations);
       return Number(row?.value ?? 0);
     },
   };

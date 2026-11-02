@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecretVersions,
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("agent service secret binding sync", () => {
     await db.delete(companySecrets);
     await db.delete(companySecretProviderConfigs);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("agent service secret binding sync", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

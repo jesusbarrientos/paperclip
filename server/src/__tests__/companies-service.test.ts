@@ -8,7 +8,7 @@ import {
   agentWakeupRequests,
   builtInManagedResources,
   cases,
-  companies,
+  organizations,
   companySkillVersions,
   companySkills,
   companyMemberships,
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("companyService", () => {
     await db.delete(companyMemberships);
     await db.delete(cases);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -80,7 +80,7 @@ describeEmbeddedPostgres("companyService", () => {
   });
 
   it("refuses to create a second organization on the instance", async () => {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Existing Org",
       issuePrefix: "EXI",
     });
@@ -90,7 +90,7 @@ describeEmbeddedPostgres("companyService", () => {
       details: { code: "organization_exists" },
     });
 
-    const rows = await db.select({ name: companies.name }).from(companies);
+    const rows = await db.select({ name: organizations.name }).from(organizations);
     expect(rows.map((row) => row.name)).toEqual(["Existing Org"]);
   });
 
@@ -154,7 +154,7 @@ describeEmbeddedPostgres("companyService", () => {
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Archive Test Co",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -312,7 +312,7 @@ describeEmbeddedPostgres("companyService", () => {
     const manualPausedAgentId = randomUUID();
     const pendingAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Reactivate Test Co",
       status: "archived",
@@ -413,7 +413,7 @@ describeEmbeddedPostgres("companyService", () => {
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Update Archive Test Co",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -514,7 +514,7 @@ describeEmbeddedPostgres("companyService", () => {
     const archivedPausedAgentId = randomUUID();
     const manualPausedAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Indirect Reactivate Test Co",
       status: "paused",
@@ -576,7 +576,7 @@ describeEmbeddedPostgres("companyService", () => {
     const companyId = randomUUID();
     const terminatedAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Empty Reactivate Co",
       status: "archived",
@@ -615,7 +615,7 @@ describeEmbeddedPostgres("companyService", () => {
     const companyId = randomUUID();
     const manualPausedAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Plain Unpause Co",
       status: "paused",
@@ -664,7 +664,7 @@ describeEmbeddedPostgres("companyService", () => {
     const runWakeupId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Orphan Wakeup Co",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -735,7 +735,7 @@ describeEmbeddedPostgres("companyService", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Idempotent Archive Test Co",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -771,7 +771,7 @@ describeEmbeddedPostgres("companyService", () => {
   it("rings the Cloud lifecycle doorbell exactly on archived-boundary transitions", async () => {
     notifyCloudSpy.mockClear();
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Doorbell Test Co",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -805,7 +805,7 @@ describeEmbeddedPostgres("companyService", () => {
     const idleAgentId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paused To Archived Test Co",
       status: "paused",
@@ -888,9 +888,9 @@ describeEmbeddedPostgres("companyService", () => {
 
     async function seedCompanyWithWork(name: string, issuePrefix: string) {
       const [company] = await db
-        .insert(companies)
+        .insert(organizations)
         .values({ name, issuePrefix })
-        .returning({ id: companies.id });
+        .returning({ id: organizations.id });
       await db.insert(issues).values([
         { title: "First", issueNumber: 1, identifier: `${issuePrefix}-1` },
         { title: "Second", issueNumber: 12, identifier: `${issuePrefix}-12` },
@@ -997,9 +997,9 @@ describeEmbeddedPostgres("companyService", () => {
       ]);
 
       const [company] = await db
-        .select({ issuePrefix: companies.issuePrefix })
-        .from(companies)
-        .where(eq(companies.id, companyId));
+        .select({ issuePrefix: organizations.issuePrefix })
+        .from(organizations)
+        .where(eq(organizations.id, companyId));
       const prefix = company!.issuePrefix;
       expect(["NOR", "ZEN"]).toContain(prefix);
       await expect(readIdentifiers()).resolves.toEqual({
@@ -1022,9 +1022,9 @@ describeEmbeddedPostgres("companyService", () => {
       ]);
 
       const [company] = await db
-        .select({ name: companies.name, issuePrefix: companies.issuePrefix })
-        .from(companies)
-        .where(eq(companies.id, companyId));
+        .select({ name: organizations.name, issuePrefix: organizations.issuePrefix })
+        .from(organizations)
+        .where(eq(organizations.id, companyId));
       // Whichever update commits last, the prefix derives from the name that
       // survived, and the identifiers sit on that prefix.
       expect(company!.issuePrefix.startsWith(deriveIssuePrefixBase(company!.name))).toBe(true);

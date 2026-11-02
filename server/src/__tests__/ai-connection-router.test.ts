@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, eq } from "drizzle-orm";
-import { createDb, companies, agents, companyMemberships, connectionGrants, plugins, aiConnectionRouterCursors, aiConnectionTaskPins, toolConnections, companySecrets, heartbeatRuns, issues } from "@paperclipai/db";
+import { createDb, organizations, agents, companyMemberships, connectionGrants, plugins, aiConnectionRouterCursors, aiConnectionTaskPins, toolConnections, companySecrets, heartbeatRuns, issues } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "@paperclipai/db/test-embedded-postgres";
 import type { AiConnectionPoolMember, AiConnectionRouterRequest, AiConnectionRouterResult, PaperclipPluginManifestV1 } from "@paperclipai/shared";
 import { aiConnectionRouterService, AiConnectionPoolExhausted, poolMemberRuntimeConfig, applyAiConnectionRouterTaskSettings } from "../services/ai-connection-router.js";
@@ -48,7 +48,7 @@ beforeAll(async () => {
   home = await mkdtemp(path.join(os.tmpdir(), "paperclip-router-tests-"));
   vi.stubEnv("PAPERCLIP_HOME", home); vi.stubEnv("PAPERCLIP_INSTANCE_ID", "router-fixture");
   database = await startEmbeddedPostgresTestDatabase("paperclip-router-db-"); db = createDb(database.connectionString);
-  await db.insert(companies).values({ name: "Router fixture", issuePrefix: "RTF" });
+  await db.insert(organizations).values({ name: "Router fixture", issuePrefix: "RTF" });
   await db.insert(agents).values([agentId, secondAgentId].map(id => ({ id, name: "Router agent", adapterType: "paperclip_runner" })));
   await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
   await db.insert(plugins).values({ id: pluginId, pluginKey, packageName: pluginKey, version: "0.1.0", manifestJson: manifest, status: "ready" });

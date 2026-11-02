@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   documents,
   issueComments,
@@ -41,7 +41,7 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     await db.delete(issueDocuments);
     await db.delete(documents);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -58,7 +58,7 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     const documentId = randomUUID();
     const issueDocumentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("issueReferenceService", () => {
     const documentId = randomUUID();
     const issueDocumentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip Backfill",
       issuePrefix: `B${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -193,7 +193,7 @@ describeEmbeddedPostgres("issueReferenceService", () => {
       key: "plan",
     });
 
-    await refs.syncAllForCompany();
+    await refs.syncAll();
 
     const summary = await refs.listIssueReferenceSummary(sourceIssueId);
 

@@ -3,7 +3,7 @@ import express from "express";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, agents, companies, companyMemberships, createDb, heartbeatRuns, issues, principalPermissionGrants } from "@paperclipai/db";
+import { activityLog, agents, organizations, companyMemberships, createDb, heartbeatRuns, issues, principalPermissionGrants } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -46,7 +46,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.delete(agents);
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -100,7 +100,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const assignedIssueId = randomUUID();
     const unassignedIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     const sourceRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -240,7 +240,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -300,7 +300,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -361,7 +361,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const resolverRunId = randomUUID();
     const sourceRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -429,7 +429,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const companyId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -464,7 +464,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     let computeCount = 0;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -505,7 +505,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     let computeCount = 0;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -551,7 +551,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     let computeCount = 0;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -590,7 +590,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const companyId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -620,7 +620,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const issueId = randomUUID();
     const stormEvents: unknown[] = [];
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -673,7 +673,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const assignedIssueId = randomUUID();
     const otherIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -730,7 +730,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
 
   it("returns 422 for malformed assigneeAgentId filters", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
@@ -761,7 +761,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const grandchildRunId = randomUUID();
     const hiddenRunId = randomUUID();
 
-    await db.insert(companies).values([
+    await db.insert(organizations).values([
       {
         id: companyId,
         name: "Paperclip",
@@ -879,7 +879,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     const childIssueId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),

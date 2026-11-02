@@ -7,7 +7,7 @@ import {
   toolActionDeliveries,
   agents,
   approvals,
-  companies,
+  organizations,
   companySecretBindings,
   companySecrets,
   companyMemberships,
@@ -64,7 +64,7 @@ function createTestToolGatewayService(db: ReturnType<typeof createDb>, options: 
 }
 
 async function createRunFixture(db: ReturnType<typeof createDb>) {
-  const company = await db.insert(companies).values({
+  const company = await db.insert(organizations).values({
     name: `Gateway ${randomUUID()}`,
     issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
   }).returning().then((rows) => rows[0]!);
@@ -191,7 +191,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
     await db.delete(issues);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -939,7 +939,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
   });
 
   it("explains how to recover when an approval-required session has no task", async () => {
-    const company = await db.insert(companies).values({
+    const company = await db.insert(organizations).values({
       name: `Gateway ${randomUUID()}`,
       issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);
@@ -1768,7 +1768,7 @@ describeEmbeddedPostgres("tool gateway service", () => {
   });
 
   it("fails clearly when remote MCP elicitation has no issue interaction path", async () => {
-    const company = await db.insert(companies).values({
+    const company = await db.insert(organizations).values({
       name: `Gateway ${randomUUID()}`,
       issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);

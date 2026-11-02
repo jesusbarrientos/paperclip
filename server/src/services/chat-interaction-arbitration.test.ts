@@ -6,7 +6,7 @@ import {
   chatConversations,
   chatEndpoints,
   chatPublications,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -39,7 +39,7 @@ describe("provider-owned interaction arbitration", () => {
     const runId = randomUUID();
     const interactionId = randomUUID();
     await db
-      .insert(companies)
+      .insert(organizations)
       .values({
         id: companyId,
         name: "Arbitration",

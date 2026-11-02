@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { activityLog, announcementDismissals, announcementPublications, companies, createDb, startEmbeddedPostgresTestDatabase, type EmbeddedPostgresTestDatabase } from "@paperclipai/db";
+import { activityLog, announcementDismissals, announcementPublications, organizations, createDb, startEmbeddedPostgresTestDatabase, type EmbeddedPostgresTestDatabase } from "@paperclipai/db";
 import { announcementRoutes } from "../routes/announcements.js";
 import { announcementService } from "../services/announcements.js";
 import { errorHandler } from "../middleware/error-handler.js";
@@ -26,7 +26,7 @@ describe("announcement routes and durable dismissals", () => {
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-announcements-");
     db = createDb(database.connectionString);
-    await db.insert(companies).values({ id: organizationId, name: "Test", issuePrefix: "ANN" });
+    await db.insert(organizations).values({ id: organizationId, name: "Test", issuePrefix: "ANN" });
   }, 90_000);
   beforeEach(async () => { await db.delete(announcementDismissals); await db.delete(announcementPublications); await db.delete(activityLog); });
   afterAll(async () => { await database?.cleanup(); }, 30_000);

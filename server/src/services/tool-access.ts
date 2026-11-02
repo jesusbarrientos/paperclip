@@ -48,7 +48,7 @@ import {
   connectionGrants,
   connectionTokenIssuances,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecrets,

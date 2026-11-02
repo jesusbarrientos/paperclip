@@ -1,6 +1,6 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, companyOnboardingSeeds, goals, issues, projects } from "@paperclipai/db";
+import { agents, onboardingSeeds, goals, issues, projects } from "@paperclipai/db";
 import type { ApplyOnboardingSeed } from "@paperclipai/shared";
 import { writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { findActiveServerAdapter } from "../adapters/registry.js";
@@ -106,7 +106,7 @@ export function onboardingSeedService(db: Db) {
   async function readRecord(dbx: Db) {
     return dbx
       .select()
-      .from(companyOnboardingSeeds)
+      .from(onboardingSeeds)
       .limit(1)
       .then((rows) => rows[0] ?? null);
   }
@@ -333,10 +333,10 @@ export function onboardingSeedService(db: Db) {
       updatedAt: now,
     };
     await dbx
-      .insert(companyOnboardingSeeds)
+      .insert(onboardingSeeds)
       .values(values)
       .onConflictDoUpdate({
-        target: companyOnboardingSeeds.companyId,
+        target: onboardingSeeds.singletonKey,
         set: {
           revision: values.revision,
           mission: values.mission,

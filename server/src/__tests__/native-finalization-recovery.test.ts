@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -42,7 +42,7 @@ describe("P6-16/P6-25/P6-28 native finalization recovery", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-recovery-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ name: "Native recovery", issuePrefix: "NRC" });
+    await db.insert(organizations).values({ name: "Native recovery", issuePrefix: "NRC" });
     await db.insert(agents).values({
       id: agentId,
       name: "Recovery agent",
@@ -343,7 +343,7 @@ describe("retained native cleanup discovery", () => {
     );
     db = createDb(temporary.connectionString);
     await db
-      .insert(companies)
+      .insert(organizations)
       .values({ id: companyId, name: "Cleanup sweep", issuePrefix: "NCS" });
     await db
       .insert(agents)

@@ -8,7 +8,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   decisionEffectExecutions,
@@ -51,7 +51,7 @@ describePg("decisionService", () => {
     const companyId = randomUUID(); agentId = randomUUID(); originIssueId = randomUUID(); targetIssueId = randomUUID(); runId = randomUUID();
     originResponsibleUserId = `origin-${randomUUID()}`; decidedByUserId = `decider-${randomUUID()}`; wakes = [];
     const now = new Date();
-    await db.insert(companies).values({ id: companyId, name: "Decisions", issuePrefix: `D${companyId.slice(0, 6)}`, requireBoardApprovalForNewAgents: false });
+    await db.insert(organizations).values({ id: companyId, name: "Decisions", issuePrefix: `D${companyId.slice(0, 6)}`, requireBoardApprovalForNewAgents: false });
     await db.insert(authUsers).values([
       { id: originResponsibleUserId, name: "Origin", email: `${originResponsibleUserId}@example.test`, createdAt: now, updatedAt: now },
       { id: decidedByUserId, name: "Decider", email: `${decidedByUserId}@example.test`, createdAt: now, updatedAt: now },
@@ -73,7 +73,7 @@ describePg("decisionService", () => {
     delete process.env.PAPERCLIP_DECISIONS_RECOVERY_GRACE_MS;
     delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
     await db.delete(decisionEffectExecutions); await db.delete(decisionTargetIssues); await db.delete(decisions); await db.delete(decisionRetention); await db.delete(activityLog);
-    await db.delete(issueComments); await db.delete(issueRelations); await db.delete(heartbeatRuns); await db.delete(issues); await db.delete(agents); await db.delete(companyMemberships); await db.delete(authUsers); await db.delete(companies);
+    await db.delete(issueComments); await db.delete(issueRelations); await db.delete(heartbeatRuns); await db.delete(issues); await db.delete(agents); await db.delete(companyMemberships); await db.delete(authUsers); await db.delete(organizations);
   });
   afterAll(async () => tempDb?.cleanup());
 

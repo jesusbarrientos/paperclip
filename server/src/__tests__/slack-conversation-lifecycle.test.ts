@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog, agents, agentWakeupRequests, approvals, chatConversations, chatEndpoints,
-  chatMessageLinks, chatPublications, companies, createDb, heartbeatRuns, issueApprovals,
+  chatMessageLinks, chatPublications, organizations, createDb, heartbeatRuns, issueApprovals,
   issueComments, issueRelations, issueThreadInteractions, issues, nativeRunFinalizations,
   toolApplications, toolConnections,
 } from "@paperclipai/db";
@@ -29,7 +29,7 @@ const support = await getEmbeddedPostgresTestSupport();
     database = await startEmbeddedPostgresTestDatabase("paperclip-slack-idle-");
     db = createDb(database.connectionString);
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Slack", issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: "Slack", issuePrefix: companyId.slice(0, 8) });
   }, 90000);
   afterAll(async () => {
     await db?.$client.end({ timeout: 0 });

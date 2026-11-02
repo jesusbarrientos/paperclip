@@ -5,7 +5,7 @@ import {
   agents,
   agentRuntimeState,
   agentTaskSessions,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -40,7 +40,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     await db.delete(agentRuntimeState);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -52,7 +52,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     const agentId = randomUUID();
     const runId = randomUUID();
     const config = { cwd: "/tmp/runner-conversion", instructionsFilePath: "/tmp/runner-conversion/AGENTS.md", env: { TEST_KEY: { type: "plain", value: "kept" } } };
-    await db.insert(companies).values({ id: companyId, name: "Conversion", issuePrefix: `T${companyId.slice(0, 6).toUpperCase()}` });
+    await db.insert(organizations).values({ id: companyId, name: "Conversion", issuePrefix: `T${companyId.slice(0, 6).toUpperCase()}` });
     await db.insert(agents).values({ id: agentId, name: "Claude QA", role: "engineer", adapterType: "claude_local", adapterConfig: config });
     await db.insert(heartbeatRuns).values({ id: runId, agentId, invocationSource: "on_demand", status: "succeeded", resultJson: { summary: "history stays" } });
     await db.insert(agentTaskSessions).values({ agentId, adapterType: "claude_local", taskKey: "issue:test", sessionDisplayId: "old-session", lastRunId: runId });
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     const runId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -180,7 +180,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     const agentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -210,7 +210,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     const pendingAgentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

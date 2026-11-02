@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
 } from "@paperclipai/db";
@@ -33,7 +33,7 @@ describeEmbeddedPostgres("cross-issue influence limit PostgreSQL serialization",
     await db.delete(activityLog);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("cross-issue influence limit PostgreSQL serialization",
     const sourceIssueId = randomUUID();
     const targetIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `C${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -50,7 +50,7 @@ describeEmbeddedPostgres("dashboard service", () => {
   afterEach(async () => {
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     const otherTaskRunId = randomUUID();
     const tasklessRunId = randomUUID();
 
-    await db.insert(companies).values({ name: "Dashboard cards", issuePrefix: "CARDS" });
+    await db.insert(organizations).values({ name: "Dashboard cards", issuePrefix: "CARDS" });
     await db.insert(agents).values(
       { id: agentId, name: "Builder", role: "engineer", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} },
     );
@@ -90,7 +90,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     const today = utcDay(0);
     const weekAgo = utcDay(-7);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TDASH",
       requireBoardApprovalForNewAgents: false,
@@ -170,7 +170,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     const agentId = randomUUID();
     const day = utcDay(-2);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

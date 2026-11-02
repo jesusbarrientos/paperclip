@@ -5,7 +5,7 @@ import {
   agentSessionGoalActions,
   agentTaskSessions,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -42,7 +42,7 @@ describeEmbeddedPostgres("runner goal service", () => {
     await db.delete(issues);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("runner goal service", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Goal Test Company",
       issuePrefix: `G${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

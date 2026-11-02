@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import {
   adapterAuthSessions,
-  companies,
+  organizations,
   createDb,
   environments,
   getEmbeddedPostgresTestSupport,
@@ -1298,7 +1298,7 @@ describeEmbeddedPostgres("durable setup-token cleanup store (embedded postgres)"
   afterEach(async () => {
     await db.delete(adapterAuthSessions);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

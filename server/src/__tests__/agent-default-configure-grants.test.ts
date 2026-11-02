@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, companies, companyMemberships, createDb, principalPermissionGrants } from "@paperclipai/db";
+import { agents, organizations, companyMemberships, createDb, principalPermissionGrants } from "@paperclipai/db";
 import { LOW_TRUST_REVIEW_PRESET, type PermissionKey } from "@paperclipai/shared";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentService } from "../services/agents.js";
@@ -43,7 +43,7 @@ describeDatabase("new agent configuration defaults", () => {
   });
 
   it("grants standard new agents direct peer configuration, but keeps restricted agents narrow", async () => {
-    await db.insert(companies).values({ name: "Agent permission defaults", issuePrefix: "PD" });
+    await db.insert(organizations).values({ name: "Agent permission defaults", issuePrefix: "PD" });
     const create = (name: string, permissions: Record<string, unknown> = {}, metadata?: Record<string, unknown>) =>
       agentService(db).create({
         name,
@@ -128,11 +128,11 @@ describeDatabase("new agent configuration defaults", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   it("keeps existing agents and their scoped grants unchanged during ordinary updates", async () => {
-    await db.insert(companies).values({ name: "Existing permission defaults", issuePrefix: "PE" });
+    await db.insert(organizations).values({ name: "Existing permission defaults", issuePrefix: "PE" });
     const rows = await db.insert(agents).values([
       { name: "Existing", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
       { name: "Scoped", role: "engineer", permissions: {}, adapterType: "process", adapterConfig: {}, runtimeConfig: {} },
@@ -162,11 +162,11 @@ describeDatabase("new agent configuration defaults", () => {
 
     await db.delete(principalPermissionGrants);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   it("adds the default grant when a standard pending hire is approved", async () => {
-    await db.insert(companies).values({ name: "Pending permission default", issuePrefix: "PP" });
+    await db.insert(organizations).values({ name: "Pending permission default", issuePrefix: "PP" });
     const pending = await agentService(db).create({
       name: "Pending hire",
       status: "pending_approval",
@@ -184,11 +184,11 @@ describeDatabase("new agent configuration defaults", () => {
 
     await db.delete(principalPermissionGrants);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   it("keeps configuration access when invitation approval replaces a new agent's grants", async () => {
-    await db.insert(companies).values({ name: "Invited permission default", issuePrefix: "PI" });
+    await db.insert(organizations).values({ name: "Invited permission default", issuePrefix: "PI" });
     const invited = await agentService(db).create({
       name: "Invited agent",
       role: "engineer",
@@ -207,6 +207,6 @@ describeDatabase("new agent configuration defaults", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 });

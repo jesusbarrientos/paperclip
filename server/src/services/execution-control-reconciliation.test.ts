@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, completionContracts, createDb, heartbeatRuns, issues, issueRecoveryActions, issueThreadInteractions, nativeRunResults, statusDecisions, workAssessments } from "@paperclipai/db";
+import { agents, organizations, completionContracts, createDb, heartbeatRuns, issues, issueRecoveryActions, issueThreadInteractions, nativeRunResults, statusDecisions, workAssessments } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -41,7 +41,7 @@ describeEmbeddedPostgres("reconcileAbandonedExecutionControl reports a genuine f
     const runId = randomUUID();
     const pastDeadline = new Date(Date.now() - 60_000);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Execution Control Reconciliation",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -138,7 +138,7 @@ describeEmbeddedPostgres("native review execution reconciliation admission", () 
     const decisionId = randomUUID();
     const interactionId = randomUUID();
     const now = new Date();
-    await db.insert(companies).values({ id: companyId, name: "Reviewer recovery", issuePrefix: admitted ? "RRA" : "RRN" });
+    await db.insert(organizations).values({ id: companyId, name: "Reviewer recovery", issuePrefix: admitted ? "RRA" : "RRN" });
     await db.insert(agents).values([
       { id: workerId, name: "Worker", adapterType: "codex_local", status: "idle" },
       { id: reviewerId, name: "Reviewer", adapterType: "codex_local", status: "running" },

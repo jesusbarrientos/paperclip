@@ -12,7 +12,7 @@ import {
   agentTaskSessions,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   documentRevisions,
@@ -155,7 +155,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   await instanceSettingsService(db).updateExperimental({
     enableIsolatedWorkspaces: true,
   });
-  await db.insert(companies).values({
+  await db.insert(organizations).values({
     id: companyId,
     name: "Acme",
     issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -301,7 +301,7 @@ describeEmbeddedPostgres("heartbeat workspace finalization branch guard", () => 
     await db.delete(executionWorkspaces);
     await db.delete(environments);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

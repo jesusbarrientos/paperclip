@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   agents,
   assets,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -69,7 +69,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     await db.delete(issues);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("artifactReviewDocumentService", () => {
     const originalFilename = options.originalFilename === undefined ? "report.md" : options.originalFilename;
     const objectKey = `issues/${issueId}/${assetId}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

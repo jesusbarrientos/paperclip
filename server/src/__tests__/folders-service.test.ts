@@ -4,7 +4,7 @@ import {
   folderSlugSchema,
 } from "@paperclipai/shared";
 import {
-  companies,
+  organizations,
   companySkills,
   createDb,
   folders,
@@ -32,7 +32,7 @@ describeEmbeddedPostgres("folder service", () => {
     await db.delete(companySkills);
     await db.delete(routines);
     await db.delete(folders);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -40,7 +40,7 @@ describeEmbeddedPostgres("folder service", () => {
   });
 
   async function seedOrganization() {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TEST",
       requireBoardApprovalForNewAgents: false,

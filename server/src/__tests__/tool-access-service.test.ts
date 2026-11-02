@@ -8,7 +8,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   connectionGrantMembers,
@@ -186,7 +186,7 @@ function createToolGatewayService(
 
 async function createCompany(db: ReturnType<typeof createDb>) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Tool Access CRUD ${randomUUID()}`,
       issuePrefix: `TC${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -814,7 +814,7 @@ describeEmbeddedPostgres("tool access service", () => {
     await db.delete(agents);
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 

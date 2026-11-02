@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   createDb,
-  companies,
+  organizations,
   agents,
   activityLog,
   costEvents,
@@ -414,7 +414,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     await db.delete(issues);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -425,7 +425,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -467,7 +467,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const agentId = randomUUID();
     const projectId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -542,7 +542,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const harnessIssueId = randomUUID();
     const siblingIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -684,7 +684,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const harnessIssueId = randomUUID();
     const siblingIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -852,7 +852,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
   it("aggregates finance event sums above int32 without raising Postgres integer overflow", async () => {
     const companyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

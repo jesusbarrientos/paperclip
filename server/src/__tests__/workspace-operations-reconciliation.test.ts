@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   projects,
@@ -92,7 +92,7 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     await db.delete(workspaceOperations);
     await db.delete(executionWorkspaces);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -109,7 +109,7 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     const staleOperationId = randomUUID();
     const unrelatedOperationId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Workspace operation reconciliation",
       issuePrefix: `W${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,
@@ -204,7 +204,7 @@ describeEmbeddedPostgres("workspace operation reconciliation", () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const executionWorkspaceId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Workspace repair diagnostics",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,

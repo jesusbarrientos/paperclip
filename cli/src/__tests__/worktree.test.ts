@@ -12,7 +12,7 @@ import {
   agents,
   authAccounts,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   closeRegisteredClients,
@@ -156,7 +156,7 @@ async function seedValidWorktreeSource(
     userId,
     role: "instance_admin",
   });
-  await db.insert(companies).values({
+  await db.insert(organizations).values({
     id: companyId,
     name: "Seed Source",
     issuePrefix: "SEED",
@@ -1193,7 +1193,7 @@ describe("worktree helpers", () => {
     const runtimeServiceId = randomUUID();
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: "WTQ",
@@ -2462,7 +2462,7 @@ describeEmbeddedPostgres("pauseSeededScheduledRoutines", () => {
     const disabledScheduleRoutineId = randomUUID();
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

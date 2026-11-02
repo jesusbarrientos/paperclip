@@ -69,7 +69,7 @@ import {
   completionContracts,
   companySecretBindings,
   companySecrets,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRunEvents,
@@ -1101,7 +1101,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     fixtureCompanies.add(organizationId);
     const assignedAgentId = randomUUID();
     const replacementAgentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: organizationId,
       name: `Chat Test ${organizationId.slice(0, 8)}`,
       issuePrefix: `C${organizationId.replace(/-/g, "").toUpperCase()}`,
@@ -2638,7 +2638,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const publicOrigin = vi.spyOn(cloudRuntimeIdentity, "runtimePublicOrigin").mockReturnValue("https://current-vanity.example");
       onTestFinished(() => publicOrigin.mockRestore());
       const f = await reviewBotFixture();
-      const [company] = await db.select().from(companies).where(eq(companies.id, f.organizationId));
+      const [company] = await db.select().from(organizations).where(eq(organizations.id, f.organizationId));
       const head = "b".repeat(40);
       const event = githubAutomaticReviewEvent({
         action: "opened", installation: { id: 2468 },
@@ -2675,7 +2675,7 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
       const publicOrigin = vi.spyOn(cloudRuntimeIdentity, "runtimePublicOrigin").mockReturnValue("https://current-vanity.example");
       onTestFinished(() => publicOrigin.mockRestore());
       const f = await reviewBotFixture();
-      const [company] = await db.select().from(companies).where(eq(companies.id, f.organizationId));
+      const [company] = await db.select().from(organizations).where(eq(organizations.id, f.organizationId));
       const thread = makeThread({
         channelId: "paperclipai/paperclip",
         id: "github:paperclipai/paperclip:91",
@@ -25436,9 +25436,9 @@ describeEmbeddedPostgres("chat channel control-plane integration", () => {
     const heartbeat = heartbeatService(db);
     try {
       await db
-        .update(companies)
+        .update(organizations)
         .set({ defaultResponsibleUserId: "owner-user" })
-        .where(eq(companies.id, fixture.organizationId));
+        .where(eq(organizations.id, fixture.organizationId));
       await db
         .update(agents)
         .set({

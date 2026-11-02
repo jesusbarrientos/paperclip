@@ -4,7 +4,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { companies, companySkills, createDb, folders } from "@paperclipai/db";
+import { organizations, companySkills, createDb, folders } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -91,7 +91,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
 
   async function createCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -133,7 +133,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   afterEach(async () => {
     await db.delete(companySkills);
     await db.delete(folders);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
     vi.clearAllMocks();

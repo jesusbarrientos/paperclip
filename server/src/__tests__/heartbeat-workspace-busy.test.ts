@@ -10,7 +10,7 @@ import {
   agentWakeupRequests,
   activityLog,
   budgetPolicies,
-  companies,
+  organizations,
   companySkills,
   createDb,
   environments,
@@ -171,7 +171,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     await db.delete(agents);
     await db.delete(environments);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   }
 
   async function waitForRunToLeaveActiveStates(runId: string, timeoutMs = 10_000) {
@@ -243,7 +243,7 @@ describeEmbeddedPostgres("shared-workspace run serialization", () => {
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const now = new Date();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

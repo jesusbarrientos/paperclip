@@ -12,7 +12,7 @@ import {
   companySecrets,
   companySecretVersions,
   companyMemberships,
-  companies,
+  organizations,
   connectionGrantMembers,
   connectionGrantDelegations,
   connectionGrants,
@@ -74,7 +74,7 @@ type ToolGatewayServiceOptions = NonNullable<Parameters<typeof createToolGateway
 
 async function createCompany(db: Db) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Gateway ${randomUUID()}`,
       issuePrefix: `TG${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -561,7 +561,7 @@ describeEmbeddedPostgres("tool gateway acceptance", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   }
 
   afterEach(deleteGatewayState);

@@ -4,7 +4,7 @@ import {
   agents,
   approvals,
   assets,
-  companies,
+  organizations,
   decisionBundles,
   decisionQueueItems,
   decisionQueues,
@@ -778,8 +778,8 @@ function budgetObservedPercent(amountObserved: number, amountLimit: number) {
 
 async function companyPrefix(db: Db) {
   const row = await db
-    .select({ issuePrefix: companies.issuePrefix })
-    .from(companies)
+    .select({ issuePrefix: organizations.issuePrefix })
+    .from(organizations)
     .limit(1)
     .then((rows) => rows[0] ?? null);
   return row?.issuePrefix ?? "PAP";

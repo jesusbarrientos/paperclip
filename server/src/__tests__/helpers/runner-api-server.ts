@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { agents, authUsers, companies, companyMemberships, createDb, heartbeatRuns, issues, projects, projectWorkspaces, activityLog, issueComments, assets, goals, approvals, documents, documentRevisions, issueDocuments, issueRelations, issueThreadInteractions, connectionIntentDeliveries, toolApplications, toolConnections, toolConnectionInstalls, connectionGrants, toolCatalogEntries, toolProfiles, toolProfileBindings } from "@paperclipai/db";
+import { agents, authUsers, organizations, companyMemberships, createDb, heartbeatRuns, issues, projects, projectWorkspaces, activityLog, issueComments, assets, goals, approvals, documents, documentRevisions, issueDocuments, issueRelations, issueThreadInteractions, connectionIntentDeliveries, toolApplications, toolConnections, toolConnectionInstalls, connectionGrants, toolCatalogEntries, toolProfiles, toolProfileBindings } from "@paperclipai/db";
 import { documentService } from "../../services/documents.js";
 import { connectionIntentService } from "../../services/connection-intents.js";
 import { initializeRunIdentity } from "../../services/run-identity.js";
@@ -85,7 +85,7 @@ export async function startRunnerApiTestServer(options: {
       const responsibleUserId = options.connectionScenario || options.conversation ? id("responsible-user") : null;
       const workspace = await mkdtemp(join(root, "workspace-"));
       await writeFile(join(workspace, "sample.txt"), "API escape hatch fixture\n");
-      await db.insert(companies).values([
+      await db.insert(organizations).values([
         // The organization is the oldest company, so each fixture predates the previous one.
         { id: companyId, createdAt: new Date(Date.UTC(2000, 0, 1) - ++fixtureCount * 1000), name: "API eval", issueCounter: 2, issuePrefix: "E" + companyId.replaceAll("-", "").slice(0, 8) },
         { id: foreignCompanyId, name: "Isolated foreign company", issuePrefix: "O" + foreignCompanyId.replaceAll("-", "").slice(0, 8) },

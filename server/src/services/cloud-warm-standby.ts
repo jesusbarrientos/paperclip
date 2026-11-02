@@ -1,4 +1,4 @@
-import { companies, type Db } from "@paperclipai/db";
+import { organizations, type Db } from "@paperclipai/db";
 import { isCloudManagedInstance } from "./cloud-instance.js";
 import { getCloudRuntimeIdentity } from "./cloud-runtime-identity.js";
 
@@ -26,7 +26,7 @@ export async function createCloudWarmStandby(
 
   // Protect existing tenants if an operator accidentally sets the marker.
   // Fail startup on a read error; never infer emptiness from an unavailable DB.
-  const existing = await db.select({ id: companies.id }).from(companies).limit(1);
+  const existing = await db.select({ id: organizations.id }).from(organizations).limit(1);
   if (existing.length > 0) return () => false;
 
   let standby = true;

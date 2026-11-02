@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companyTransferRuns } from "@paperclipai/db";
+import { transferRuns } from "@paperclipai/db";
 
 // Durable run ledger for chunked company transfers. A run tracks one export
 // publish or import apply of a transfer container. Progress is recorded per
@@ -107,7 +107,7 @@ export interface ResumeOrCreateTransferRunResult {
   alreadyCompleted: boolean;
 }
 
-function rowFromRecord(record: typeof companyTransferRuns.$inferSelect): CompanyTransferRunRow {
+function rowFromRecord(record: typeof transferRuns.$inferSelect): CompanyTransferRunRow {
   return {
     ...record,
     direction: record.direction as CompanyTransferDirection,
@@ -120,8 +120,8 @@ function rowFromRecord(record: typeof companyTransferRuns.$inferSelect): Company
 async function getRun(db: Db, runId: string): Promise<CompanyTransferRunRow | null> {
   const [record] = await db
     .select()
-    .from(companyTransferRuns)
-    .where(eq(companyTransferRuns.id, runId))
+    .from(transferRuns)
+    .where(eq(transferRuns.id, runId))
     .limit(1);
   return record ? rowFromRecord(record) : null;
 }
@@ -154,23 +154,23 @@ export const companyTransferRunService = {
       await txDb.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
       const matches = await txDb
         .select()
-        .from(companyTransferRuns)
+        .from(transferRuns)
         .where(
           and(
-            eq(companyTransferRuns.idempotencyKey, input.idempotencyKey),
-            eq(companyTransferRuns.direction, input.direction),
-            eq(companyTransferRuns.actorKey, input.actorKey),
-            inArray(companyTransferRuns.status, [...RESUMABLE_STATUSES, "applying", "completed"]),
+            eq(transferRuns.idempotencyKey, input.idempotencyKey),
+            eq(transferRuns.direction, input.direction),
+            eq(transferRuns.actorKey, input.actorKey),
+            inArray(transferRuns.status, [...RESUMABLE_STATUSES, "applying", "completed"]),
           ),
         )
-        .orderBy(desc(companyTransferRuns.createdAt))
+        .orderBy(desc(transferRuns.createdAt))
         .limit(1);
       const existing = matches[0] ? rowFromRecord(matches[0]) : null;
       if (existing) {
         return { run: existing, resumed: true, alreadyCompleted: existing.status === "completed" };
       }
       const [created] = await txDb
-        .insert(companyTransferRuns)
+        .insert(transferRuns)
         .values({
           direction: input.direction,
           actorKey: input.actorKey,
@@ -198,7 +198,7 @@ export const companyTransferRunService = {
     const chunkCount = counts?.chunkCount ?? index?.chunks.length ?? 0;
     const blobCount = counts?.blobCount ?? index?.blobs.length ?? 0;
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({
         manifest,
         manifestSha256,
@@ -206,7 +206,7 @@ export const companyTransferRunService = {
         blobCount,
         updatedAt: new Date(),
       })
-      .where(eq(companyTransferRuns.id, runId));
+      .where(eq(transferRuns.id, runId));
   },
 
   /**
@@ -220,29 +220,29 @@ export const companyTransferRunService = {
    */
   async claimApply(db: Db, runId: string): Promise<boolean> {
     const claimed = await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "applying", error: null, updatedAt: new Date() })
       .where(
-        and(eq(companyTransferRuns.id, runId), inArray(companyTransferRuns.status, RESUMABLE_STATUSES)),
+        and(eq(transferRuns.id, runId), inArray(transferRuns.status, RESUMABLE_STATUSES)),
       )
-      .returning({ id: companyTransferRuns.id });
+      .returning({ id: transferRuns.id });
     return claimed.length > 0;
   },
 
   async start(db: Db, runId: string): Promise<void> {
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "running", error: null, startedAt: new Date(), finishedAt: null, updatedAt: new Date() })
       .where(
-        and(eq(companyTransferRuns.id, runId), inArray(companyTransferRuns.status, RESUMABLE_STATUSES)),
+        and(eq(transferRuns.id, runId), inArray(transferRuns.status, RESUMABLE_STATUSES)),
       );
   },
 
   async attachCompany(db: Db, runId: string): Promise<void> {
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ updatedAt: new Date() })
-      .where(eq(companyTransferRuns.id, runId));
+      .where(eq(transferRuns.id, runId));
   },
 
   /**
@@ -256,15 +256,15 @@ export const companyTransferRunService = {
   async completePart(db: Db, runId: string, partName: string): Promise<boolean> {
     const partJson = JSON.stringify([partName]);
     const updated = await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({
-        completedParts: sql`case when ${companyTransferRuns.completedParts} @> ${partJson}::jsonb then ${companyTransferRuns.completedParts} else ${companyTransferRuns.completedParts} || ${partJson}::jsonb end`,
+        completedParts: sql`case when ${transferRuns.completedParts} @> ${partJson}::jsonb then ${transferRuns.completedParts} else ${transferRuns.completedParts} || ${partJson}::jsonb end`,
         updatedAt: new Date(),
       })
       .where(
-        and(eq(companyTransferRuns.id, runId), inArray(companyTransferRuns.status, PART_UPLOAD_STATUSES)),
+        and(eq(transferRuns.id, runId), inArray(transferRuns.status, PART_UPLOAD_STATUSES)),
       )
-      .returning({ id: companyTransferRuns.id });
+      .returning({ id: transferRuns.id });
     return updated.length > 0;
   },
 
@@ -283,9 +283,9 @@ export const companyTransferRunService = {
 
   async complete(db: Db, runId: string): Promise<void> {
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "completed", error: null, finishedAt: new Date(), updatedAt: new Date() })
-      .where(eq(companyTransferRuns.id, runId));
+      .where(eq(transferRuns.id, runId));
   },
 
   /**
@@ -304,16 +304,16 @@ export const companyTransferRunService = {
    */
   async cancelIfIdle(db: Db, runId: string, idleSince: Date, error: string): Promise<boolean> {
     const claimed = await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "cancelled", error, finishedAt: new Date(), updatedAt: new Date() })
       .where(
         and(
-          eq(companyTransferRuns.id, runId),
-          inArray(companyTransferRuns.status, PART_UPLOAD_STATUSES),
-          lt(companyTransferRuns.updatedAt, idleSince),
+          eq(transferRuns.id, runId),
+          inArray(transferRuns.status, PART_UPLOAD_STATUSES),
+          lt(transferRuns.updatedAt, idleSince),
         ),
       )
-      .returning({ id: companyTransferRuns.id });
+      .returning({ id: transferRuns.id });
     return claimed.length > 0;
   },
 
@@ -327,10 +327,10 @@ export const companyTransferRunService = {
    */
   async releaseApplyClaim(db: Db, runId: string, error: string): Promise<boolean> {
     const released = await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "failed", error, finishedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(companyTransferRuns.id, runId), eq(companyTransferRuns.status, "applying")))
-      .returning({ id: companyTransferRuns.id });
+      .where(and(eq(transferRuns.id, runId), eq(transferRuns.status, "applying")))
+      .returning({ id: transferRuns.id });
     return released.length > 0;
   },
 
@@ -344,29 +344,29 @@ export const companyTransferRunService = {
    */
   async recoverStrandedApplyingRuns(db: Db): Promise<string[]> {
     const recovered = await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({
         status: "failed",
         error: "apply interrupted by a restart — verify whether the import completed before retrying",
         finishedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(companyTransferRuns.status, "applying"))
-      .returning({ id: companyTransferRuns.id });
+      .where(eq(transferRuns.status, "applying"))
+      .returning({ id: transferRuns.id });
     return recovered.map((row) => row.id);
   },
 
   async fail(db: Db, runId: string, error: string): Promise<void> {
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "failed", error, finishedAt: new Date(), updatedAt: new Date() })
-      .where(eq(companyTransferRuns.id, runId));
+      .where(eq(transferRuns.id, runId));
   },
 
   async cancel(db: Db, runId: string): Promise<void> {
     await db
-      .update(companyTransferRuns)
+      .update(transferRuns)
       .set({ status: "cancelled", finishedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(companyTransferRuns.id, runId), inArray(companyTransferRuns.status, RESUMABLE_STATUSES)));
+      .where(and(eq(transferRuns.id, runId), inArray(transferRuns.status, RESUMABLE_STATUSES)));
   },
 };

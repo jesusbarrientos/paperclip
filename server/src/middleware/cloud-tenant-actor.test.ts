@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Request } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { authUsers, companies, companyMemberships, instanceSettings, instanceUserRoles } from "@paperclipai/db";
+import { authUsers, organizations, companyMemberships, instanceSettings, instanceUserRoles } from "@paperclipai/db";
 import { cloudActorHeaderSourceFromHeaders, resolveCloudTenantActor } from "./auth.js";
 
 // Minimal fake Drizzle Db: records every table passed to .insert() / .delete() and
@@ -155,7 +155,7 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     const { db, insertedTables } = createFakeDb();
     await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
     expect(insertedTables).toContain(authUsers);
-    expect(insertedTables).toContain(companies);
+    expect(insertedTables).toContain(organizations);
     expect(insertedTables).toContain(companyMemberships);
   });
 

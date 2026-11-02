@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companies, documents, externalObjectMentions, externalObjects, issueComments, issueDocuments, issues, plugins } from "@paperclipai/db";
+import { organizations, documents, externalObjectMentions, externalObjects, issueComments, issueDocuments, issues, plugins } from "@paperclipai/db";
 import {
   formatExternalObjectMentionSourceLabel,
   type ExternalObjectCanonicalUrl,
@@ -1021,9 +1021,9 @@ export function externalObjectService(
   async function refreshDueObjectsForActiveCompanies(limitPerCompany = 50, now = new Date()) {
     if (!(await isEnabled())) return { companies: 0, checked: 0, refreshed: 0 };
     const activeCompanies = await db
-      .select({ id: companies.id })
-      .from(companies)
-      .where(eq(companies.status, "active"));
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.status, "active"));
     let checked = 0;
     let refreshed = 0;
     for (const company of activeCompanies) {

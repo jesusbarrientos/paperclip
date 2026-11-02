@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  companies,
+  organizations,
   createDb,
   activityLog,
   externalObjectMentions,
@@ -355,7 +355,7 @@ describeEmbeddedPostgres("externalObjectService", () => {
     await db.delete(issueComments);
     await db.delete(issues);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
     vi.restoreAllMocks();
   });
 
@@ -365,8 +365,8 @@ describeEmbeddedPostgres("externalObjectService", () => {
 
   async function createIssue() {
     const issueId = randomUUID();
-    if ((await db.select().from(companies)).length === 0) {
-      await db.insert(companies).values({ name: "Paperclip", issuePrefix: "EXT", requireBoardApprovalForNewAgents: false });
+    if ((await db.select().from(organizations)).length === 0) {
+      await db.insert(organizations).values({ name: "Paperclip", issuePrefix: "EXT", requireBoardApprovalForNewAgents: false });
     }
     await db.insert(issues).values({
       id: issueId,
@@ -696,11 +696,11 @@ describeEmbeddedPostgres("externalObjectService", () => {
     await svc.syncIssue(active.issueId);
     const due = new Date(Date.now() + 1_000);
 
-    await db.update(companies).set({ status: "paused" });
+    await db.update(organizations).set({ status: "paused" });
     expect(await svc.refreshDueObjectsForActiveCompanies(50, due)).toEqual({ companies: 0, checked: 0, refreshed: 0 });
     expect(resolve).not.toHaveBeenCalled();
 
-    await db.update(companies).set({ status: "active" });
+    await db.update(organizations).set({ status: "active" });
     expect(await svc.refreshDueObjectsForActiveCompanies(50, due)).toEqual({ companies: 1, checked: 1, refreshed: 1 });
     expect(resolve).toHaveBeenCalledTimes(1);
     const [object] = await db.select().from(externalObjects);

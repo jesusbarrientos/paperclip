@@ -19,7 +19,7 @@ import {
   chatExternalPrincipals,
   chatPublications,
   chatTeamsFileTransfers,
-  companies,
+  organizations,
   createDb,
   getEmbeddedPostgresTestSupport,
   issueAttachments,
@@ -122,7 +122,7 @@ suite(
         byteSize: bytes.length,
         filename: originalFilename ?? `attachment-${attachmentId}`,
       };
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Teams transfer fixture",
         issuePrefix: `T${companyId.slice(0, 7)}`,

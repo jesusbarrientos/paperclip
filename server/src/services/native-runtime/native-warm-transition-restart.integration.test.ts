@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -329,7 +329,7 @@ generated(
           "control-plane",
           "control-plane-state.json",
         );
-        await db.insert(companies).values({
+        await db.insert(organizations).values({
           id: companyId,
           name: "Generated warm admission",
           issuePrefix: "WARM",
@@ -810,7 +810,7 @@ generated(
               .delete(heartbeatRuns);
             await db.delete(issues);
             await db.delete(agents);
-            await db.delete(companies).where(eq(companies.id, companyId));
+            await db.delete(organizations).where(eq(organizations.id, companyId));
           }
         } catch (cleanupError) {
           throw primaryError

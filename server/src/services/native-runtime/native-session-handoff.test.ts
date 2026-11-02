@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, createDb, documents, heartbeatRunEvents, heartbeatRuns, issueComments, issueDocuments, issues, issueThreadInteractions } from "@paperclipai/db";
+import { agents, organizations, createDb, documents, heartbeatRunEvents, heartbeatRuns, issueComments, issueDocuments, issues, issueThreadInteractions } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { buildNativeSessionHandoff, createNativeSessionHandoffLoader, NATIVE_HANDOFF_MAX_BYTES, renderNativeSessionHandoff } from "./native-session-handoff.js";
 import { buildNativeExecutionInput } from "./native-execution-input.js";
@@ -45,7 +45,7 @@ const support = await getEmbeddedPostgresTestSupport();
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-native-handoff-");
     db = createDb(database.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Handoff", issuePrefix: "HAND" });
+    await db.insert(organizations).values({ id: companyId, name: "Handoff", issuePrefix: "HAND" });
     await db.insert(agents).values({ id: agentId, name: "Dickens", role: "general", adapterType: "paperclip_runner" });
     await db.insert(issues).values({ id: issueId, title: "Chat", status: "in_progress", assigneeAgentId: agentId,
       conversationAgentId: agentId, conversationUserId: "user", conversationState: "active", conversationSessionGeneration: 2 });

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("summary slot service", () => {
     await db.delete(projects);
     await db.delete(activityLog);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("summary slot service", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

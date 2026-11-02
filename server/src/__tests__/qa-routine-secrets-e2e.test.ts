@@ -20,7 +20,7 @@ import { eq, and } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   companySecretBindings,
   companySecrets,
   companySecretVersions,
@@ -72,7 +72,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     await db.delete(companySecrets);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -86,7 +86,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     const companyId = randomUUID();
     const executorAgentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "QA Co",
       issuePrefix,

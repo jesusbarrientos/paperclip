@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRunEvents,
@@ -506,7 +506,7 @@ const recoveryFakeCodex = resolve(
       await mkdir(home);
       await mkdir(workspace);
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           name: "Cleanup topology",
           issuePrefix: "NCT",
@@ -778,7 +778,7 @@ const recoveryFakeCodex = resolve(
         HOME: sourceHome,
         CODEX_HOME: sourceHome,
       };
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         name: "Damaged recovery",
         issuePrefix: "DNR",
       });
@@ -1202,7 +1202,7 @@ const recoveryFakeCodex = resolve(
       try {
         const otherAgent = randomUUID(),
           otherIssue = randomUUID();
-        await db.insert(companies).values({ name: "Session recovery", issuePrefix: "NRS" });
+        await db.insert(organizations).values({ name: "Session recovery", issuePrefix: "NRS" });
         await db.insert(agents).values([
           { id: agentId, name: "Native runner" },
           { id: otherAgent, name: "Other agent" },

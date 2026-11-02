@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -67,7 +67,7 @@ describeEmbeddedPostgres("activity service", () => {
     await db.delete(issues);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -77,7 +77,7 @@ describeEmbeddedPostgres("activity service", () => {
   it.each(["standard", "planning", "ask"] as const)("LCA-05 persists explicit %s mode across wording edits and uses it in ledger backfill", async (workMode) => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Mode fixture", issuePrefix: `M${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Mode fixture", issuePrefix: `M${companyId.slice(0, 6)}` });
     await db.insert(agents).values({ id: agentId, name: "Writer", role: "engineer", status: "idle", adapterType: "codex_local" });
     const service = issueService(db);
     const task = await service.create({ title: "Making a plan", description: "Create a report and research proposal.", status: "in_progress", assigneeAgentId: agentId, ...(workMode === "standard" ? {} : { workMode }) });
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("activity service", () => {
   it("limits company activity lists", async () => {
     const companyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -152,7 +152,7 @@ describeEmbeddedPostgres("activity service", () => {
     const issueId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -255,7 +255,7 @@ describeEmbeddedPostgres("activity service", () => {
     const runId = randomUUID();
     const completedAt = new Date("2026-04-18T20:04:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -344,7 +344,7 @@ describeEmbeddedPostgres("activity service", () => {
     const revisionId = randomUUID();
     const createdAt = new Date("2026-04-18T20:08:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -459,7 +459,7 @@ describeEmbeddedPostgres("activity service", () => {
     const revisionId = randomUUID();
     const createdAt = new Date("2026-04-18T20:12:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

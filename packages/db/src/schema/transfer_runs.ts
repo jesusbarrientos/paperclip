@@ -1,19 +1,15 @@
 import { pgTable, uuid, text, integer, jsonb, timestamp, index } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 
-// Durable ledger for chunked company transfers (export publishes and import
+// Durable ledger for chunked organization transfers (export publishes and import
 // applies). One row per run; `completedParts` records every container part
 // (chunk or blob name) that has been fully processed and verified, so an
 // interrupted run resumes from the parts it already finished instead of
 // restarting. `idempotencyKey` is the transfer manifest's content-derived key:
 // a retried publish/apply of identical content finds its prior run.
-export const companyTransferRuns = pgTable(
+export const transferRuns = pgTable(
   "company_transfer_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // Null while an import targeting a new company has not created it yet;
-    // set as soon as the destination company exists.
-    companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
     direction: text("direction").notNull(), // "export" | "import"
     status: text("status").notNull().default("pending"), // pending | running | applying | completed | failed | cancelled
     // The actor the run belongs to (board session / API key identity); run
@@ -39,7 +35,6 @@ export const companyTransferRuns = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyIdx: index("company_transfer_runs_company_idx").on(table.companyId),
     idempotencyDirectionIdx: index("company_transfer_runs_idempotency_direction_idx").on(
       table.idempotencyKey,
       table.direction,

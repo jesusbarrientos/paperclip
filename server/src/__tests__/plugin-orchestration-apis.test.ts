@@ -10,7 +10,7 @@ import {
   agents,
   approvals,
   assets,
-  companies,
+  organizations,
   companyMemberships,
   costEvents,
   createDb,
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await db.delete(plugins);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -126,7 +126,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
 
   async function seedCompanyAndAgent() {
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TEST",
       requireBoardApprovalForNewAgents: false,

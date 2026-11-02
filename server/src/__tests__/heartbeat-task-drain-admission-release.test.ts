@@ -6,7 +6,7 @@ import {
   agents,
   agentRuntimeState,
   agentWakeupRequests,
-  companies,
+  organizations,
   companySkills,
   createDb,
   heartbeatRunEvents,
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
     await db.delete(agentRuntimeState);
     await db.delete(agents);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -80,7 +80,7 @@ describeEmbeddedPostgres("heartbeat task-drain admission release", () => {
     const agentId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

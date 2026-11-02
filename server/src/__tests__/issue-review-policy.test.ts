@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, agents, companies, createDb, issues, type Db } from "@paperclipai/db";
+import { activityLog, agents, organizations, createDb, issues, type Db } from "@paperclipai/db";
 import { HttpError } from "../errors.js";
 import {
   assertIssueReviewVerdictActorAllowed,
@@ -27,7 +27,7 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     await db.delete(activityLog);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -39,7 +39,7 @@ describeEmbeddedPostgres("issue review verdict policy", () => {
     const requesterAgentId = randomUUID();
     const peerAgentId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Review Policy Company",
       issuePrefix: "RPC",

@@ -12,7 +12,7 @@ import {
   agentWakeupRequests,
   agents,
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   createDb,
@@ -112,7 +112,7 @@ describeEmbeddedPostgres("issue queued-comment routes", () => {
     const runId = randomUUID();
     const wakeId = randomUUID();
     const commentIds = [randomUUID(), randomUUID()];
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Queue Test Company",
       issuePrefix: "QUE",

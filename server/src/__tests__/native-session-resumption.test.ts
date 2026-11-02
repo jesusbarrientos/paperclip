@@ -8,7 +8,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   executionWorkspaces,
@@ -105,7 +105,7 @@ describe("P6-25 pre-result native session recovery", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-resume-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ name: "Native resume", issuePrefix: "NRR" });
+    await db.insert(organizations).values({ name: "Native resume", issuePrefix: "NRR" });
     await db.insert(agents).values({
       id: agentId,
       name: "Native resume agent",
@@ -770,7 +770,7 @@ describe.each(["unchanged", "newer_active", "stale_idle"] as const)(
       await instanceSettingsService(db).updateExperimental({
         enableNativeRunner: newerRequest,
       });
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Native same-run recovery",
         issuePrefix: "NRR",

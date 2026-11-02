@@ -7,7 +7,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -62,7 +62,7 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
       () => db.delete(issues),
       () => db.delete(companyMemberships),
       () => db.delete(agents),
-      () => db.delete(companies),
+      () => db.delete(organizations),
     ];
     for (const cleanup of cleanups) await cleanup().catch(() => undefined);
   });
@@ -152,7 +152,7 @@ describeEmbeddedPostgres("cross-issue interaction resolution cap (routes + postg
     const companyId = randomUUID();
     const agentId = randomUUID();
     const userId = `${prefix.toLowerCase()}-operator`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `${prefix} Company`,
       issuePrefix: prefix,

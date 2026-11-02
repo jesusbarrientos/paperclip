@@ -6,7 +6,7 @@ import {
   agents,
   agentRuntimeState,
   agentWakeupRequests,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   createDb,
@@ -118,7 +118,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     await db.delete(agents);
     await db.delete(companySkills);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -130,7 +130,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     const ownerUserId = `owner-${randomUUID()}`;
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -453,7 +453,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Creator-only",
       issuePrefix: `C${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -499,7 +499,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
   it("fails dispatch before creating a run when no responsible user can be resolved", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Ownerless",
       issuePrefix: `O${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

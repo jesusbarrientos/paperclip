@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -67,7 +67,7 @@ describe.each(["slack", "discord"] as const)("reviewed %s execution binding", (p
     );
     db = createDb(temporary.connectionString);
     await db
-      .insert(companies)
+      .insert(organizations)
       .values({
         id: companyId,
         name: "Reviewed chat",

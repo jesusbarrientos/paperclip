@@ -13,7 +13,7 @@ import {
 } from "@paperclipai/adapter-utils/ssh";
 import {
   agents,
-  companies,
+  organizations,
   companySecretVersions,
   companySecrets,
   createDb,
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     await db.delete(environments);
     await db.delete(companySecretVersions);
     await db.delete(companySecrets);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -92,7 +92,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     const now = new Date();
     let config = input.config;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       status: "active",

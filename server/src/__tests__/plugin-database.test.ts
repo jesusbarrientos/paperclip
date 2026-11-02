@@ -5,7 +5,7 @@ import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   issueRelations,
   issues,
@@ -353,7 +353,7 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     await db.delete(plugins);
     await db.delete(issueRelations);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all(packageRoots.map((root) => rm(root, { recursive: true, force: true })));
     packageRoots = [];
   });
@@ -554,7 +554,7 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     const pluginId = await installPluginRecord(pluginManifest);
     const companyId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "TST",

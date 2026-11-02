@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueComments,
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("stale issue execution lock routes", () => {
     await db.delete(issues);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("stale issue execution lock routes", () => {
     const failedRunId = randomUUID();
     const currentRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

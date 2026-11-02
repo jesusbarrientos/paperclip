@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { agentApiKeys, agents, budgetPolicies, companies, costEvents, createDb, projects, resourceLifecycleEvents, type Db } from "@paperclipai/db";
+import { agentApiKeys, agents, budgetPolicies, organizations, costEvents, createDb, projects, resourceLifecycleEvents, type Db } from "@paperclipai/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentService } from "../services/agents.js";
@@ -25,7 +25,7 @@ describePostgres("Resource lifecycle events", () => {
     vi.stubEnv("PAPERCLIP_MANAGED_CONFIG", undefined);
     vi.stubEnv("PAPERCLIP_CLOUD_TENANT_SERVER_TOKEN", undefined);
     await db.execute(sql`TRUNCATE resource_lifecycle_events, agents, projects, approvals, budget_policies, cost_events, companies CASCADE`);
-    await db.insert(companies).values({ name: "Lifecycle fixture", issuePrefix: "LIFE" });
+    await db.insert(organizations).values({ name: "Lifecycle fixture", issuePrefix: "LIFE" });
   });
   afterEach(() => { vi.unstubAllEnvs(); });
 

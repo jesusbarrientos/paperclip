@@ -8,7 +8,7 @@ import {
   activityLog,
   adapterAuthSessions,
   agents,
-  companies,
+  organizations,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecretVersions,
@@ -249,7 +249,7 @@ describeEmbeddedPostgres("agent service Claude OAuth binding claim", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(agents);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -270,7 +270,7 @@ describeEmbeddedPostgres("agent service Claude OAuth binding claim", () => {
   async function seedScope(): Promise<Scope> {
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

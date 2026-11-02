@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, heartbeatRuns, agentWakeupRequests, issues, projects } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns, agentWakeupRequests, issues, projects } from "@paperclipai/db";
 import { LOW_TRUST_REVIEW_PRESET } from "@paperclipai/shared";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { createPostgresWatchdogAdapter } from "../modules/active-run-watchdog/adapters/postgres.js";
@@ -24,7 +24,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   async function seed() {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: companyId, issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: companyId, issuePrefix: companyId.slice(0, 8) });
     const [project] = await db.insert(projects).values({ name: "Contained intake" }).returning();
     const [agent] = await db.insert(agents).values({
       name: "Contained agent", role: "engineer", adapterType: "paperclip_runner",

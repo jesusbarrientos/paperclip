@@ -48,7 +48,7 @@ import {
   approvals,
   activityLog,
   chatConversations,
-  companies,
+  organizations,
   heartbeatRunWatchdogDecisions,
   heartbeatRuns,
   issueAttachments,
@@ -2189,8 +2189,8 @@ export function recoveryService(
 
   async function getCompanyIssuePrefix() {
     return db
-      .select({ issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0]?.issuePrefix ?? "PAP");
   }

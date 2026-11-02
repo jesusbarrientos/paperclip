@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { desc, eq } from "drizzle-orm";
 import {
   activityLog,
-  companies,
+  organizations,
   createDb,
   environmentCustomImageSetupSessions,
   environmentCustomImageTemplates,
@@ -162,7 +162,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     await db.delete(environmentCustomImageTemplates);
     await db.delete(plugins);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   async function seed() {
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values(
+    await db.insert(organizations).values(
       { id: companyId, name: "Acme", issuePrefix: `A${companyId.slice(0, 4)}` },
     );
     await db.insert(environments).values({
@@ -775,7 +775,7 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
     await db.delete(environmentCustomImageTemplates);
     await db.delete(plugins);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -785,7 +785,7 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
   async function seed() {
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values(
+    await db.insert(organizations).values(
       { id: companyId, name: "Acme", issuePrefix: `A${companyId.slice(0, 4)}` },
     );
     await db.insert(environments).values({
@@ -1083,7 +1083,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     await db.delete(environmentCustomImageTemplates);
     await db.delete(plugins);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -1098,7 +1098,7 @@ describeEmbeddedPostgres("environmentCustomImageService relink", () => {
     const provider = manifest.environmentDrivers[0]!.driverKey;
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values(
+    await db.insert(organizations).values(
       { id: companyId, name: "Acme", issuePrefix: `A${companyId.slice(0, 4)}` },
     );
     await db.insert(environments).values({

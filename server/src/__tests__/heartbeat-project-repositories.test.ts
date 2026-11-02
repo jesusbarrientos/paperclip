@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, createDb, environments, executionWorkspaces, heartbeatRuns, issues, projects, projectWorkspaces } from "@paperclipai/db";
+import { agents, organizations, createDb, environments, executionWorkspaces, heartbeatRuns, issues, projects, projectWorkspaces } from "@paperclipai/db";
 import { setExpensiveWorkspaceGitExecutor } from "@paperclipai/adapter-utils/git-workspace-sync";
 import { buildProjectMentionHref } from "@paperclipai/shared";
 import { createWorkspaceGitOperationScheduler, WorkspaceGitScanError } from "../services/workspace-git-operation-scheduler.js";
@@ -64,7 +64,7 @@ suite("task project repository provisioning", () => {
     const referencedProjectId = randomUUID(), deniedProjectId = randomUUID();
     vi.stubEnv("PAPERCLIP_MULTI_PROJECT_WORKSPACE_SYNC", "true");
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
-    await db.insert(companies).values({ id: companyId, name: "Email company", issuePrefix: `E${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
+    await db.insert(organizations).values({ id: companyId, name: "Email company", issuePrefix: `E${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
     await db.insert(projects).values({ id: projectId, name: "Onboarding" });
     for (const id of [referencedProjectId, deniedProjectId]) {
       const source = path.join(root, companyId, id);
@@ -146,7 +146,7 @@ suite("task project repository provisioning", () => {
       enableIsolatedWorkspaces: true,
       enableIsolatedWorkspacesByDefault: true,
     });
-    await db.insert(companies).values({ id: companyId, name: "Research", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
+    await db.insert(organizations).values({ id: companyId, name: "Research", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
     await db.insert(projects).values({
       id: projectId, name: "Research", status: "in_progress",
       executionWorkspacePolicy: explicitIsolation === "project" ? { enabled: true, defaultMode: "isolated_workspace" } : null,
@@ -211,7 +211,7 @@ suite("task project repository provisioning", () => {
     git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "seed");
     await writeFile(path.join(source, "README.md"), "preserved dirty work");
     await writeFile(path.join(source, "private.secret"), "must not copy");
-    await db.insert(companies).values({ id: companyId, name: "Bootstrap recovery", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
+    await db.insert(organizations).values({ id: companyId, name: "Bootstrap recovery", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
     await db.insert(projects).values({ id: projectId, name: "Local source", status: "in_progress" });
     await db.insert(projectWorkspaces).values([
       { id: randomUUID(), projectId, name: "Anchor", sourceType: "local_path", cwd: source, isPrimary: true, createdAt: new Date(Date.now() - 1000) },
@@ -312,7 +312,7 @@ suite("task project repository provisioning", () => {
       git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "seed");
       repositoryRows.push({ id: randomUUID(), projectId, name: `Repo ${index}`, sourceType: "git_repo", repoUrl: pathToFileURL(source).href, cwd: null, isPrimary: index === 0 });
     }
-    await db.insert(companies).values({ id: companyId, name: "Repo test", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
+    await db.insert(organizations).values({ id: companyId, name: "Repo test", issuePrefix: `R${companyId.slice(0, 6)}`, defaultResponsibleUserId: "responsible-user" });
     await db.insert(projects).values({ id: projectId, name: "Multi-repo", status: "in_progress" });
     await db.insert(projectWorkspaces).values(repositoryRows);
     await db.insert(agents).values({ id: agentId, name: "Test", role: "engineer", status: "idle", adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });

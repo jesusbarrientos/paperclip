@@ -8,7 +8,7 @@ import {
   agents,
   agentRuntimeState,
   approvals,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -40,7 +40,7 @@ type Db = ReturnType<typeof createDb>;
 async function seedHiringFixture(db: Db) {
   const nonce = randomUUID().slice(0, 8);
   const [company] = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Idempotency Co ${nonce}`,
       issuePrefix: `ID${nonce.slice(0, 4).toUpperCase()}`,
@@ -111,7 +111,7 @@ describeEmbeddedPostgres("agent hire idempotency within a run", () => {
     await db.delete(companyMemberships);
     await db.delete(agentRuntimeState);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import {
   agents,
-  companies,
+  organizations,
   companySkills,
   costEvents,
   createDb,
@@ -66,7 +66,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     await db.delete(companySkills);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     for (const dir of tempDirs) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -85,7 +85,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const issueId = randomUUID();
     const commentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `F${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -142,7 +142,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       "utf8",
     );
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -277,7 +277,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const documentId = randomUUID();
     const revisionId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -341,7 +341,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const commentId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -410,7 +410,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     const company = await db
       .select()
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
 
@@ -508,7 +508,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     const company = await db
       .select()
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
 
@@ -933,7 +933,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     const issueId = randomUUID();
     const commentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `H${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

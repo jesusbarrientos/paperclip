@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, agentWakeupRequests, companies, completionContracts, createDb, heartbeatRunEvents, heartbeatRuns, issueRecoveryActions, issueThreadInteractions, issues, nativeRunFinalizations, nativeRunResults, statusDecisions, workAssessments } from "@paperclipai/db";
+import { agents, agentWakeupRequests, organizations, completionContracts, createDb, heartbeatRunEvents, heartbeatRuns, issueRecoveryActions, issueThreadInteractions, issues, nativeRunFinalizations, nativeRunResults, statusDecisions, workAssessments } from "@paperclipai/db";
 import type { ControlPlanePort, NativeExecutionInputV1, PrpEvent, PrpTerminalState } from "@paperclipai/paperclip-runner";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { CONTROL_PLANE_CONFORMANCE_RESULT } from "../../vendor/paperclip-runner/testing.js";
@@ -40,7 +40,7 @@ describe("native completed failure diagnostics", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("native-model-failure-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Native failure regression", issuePrefix: "NMF" });
+    await db.insert(organizations).values({ id: companyId, name: "Native failure regression", issuePrefix: "NMF" });
     await db.insert(agents).values({ id: agentId, name: "Native failure agent", status: "active", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model } });
     await db.insert(agents).values({ id: workerId, name: "Review source worker", status: "active", adapterType: "paperclip_runner" });
   });

@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   instanceSettings,
   issueComments,
@@ -78,7 +78,7 @@ describeEmbeddedPostgres("resolveRunReferencedProjects", () => {
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -116,7 +116,7 @@ describeEmbeddedPostgres("resolveRunReferencedProjects", () => {
 
   const seedCompany = async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

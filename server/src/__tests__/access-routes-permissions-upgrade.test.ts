@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   connectionGrantDelegations,
   connectionGrants,
@@ -63,7 +63,7 @@ async function createApp(db: Db, userId: string) {
 
 async function createCompanyWithOwner(db: Db) {
   const company = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Access Routes ${randomUUID()}`,
       issuePrefix: `AR${randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("access routes permissions upgrade compatibility", () =
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

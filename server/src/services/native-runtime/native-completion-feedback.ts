@@ -10,7 +10,7 @@ import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   approvals,
   agents,
-  companies,
+  organizations,
   documents,
   issueDocuments,
   heartbeatRuns,
@@ -41,9 +41,9 @@ async function savedDocumentLinks(db: Db, run: typeof heartbeatRuns.$inferSelect
   }));
   if (!revisions.size) return [];
   const saved = await db.select({ id: documents.id, revisionId: documents.latestRevisionId,
-    key: issueDocuments.key, issuePrefix: companies.issuePrefix })
+    key: issueDocuments.key, issuePrefix: organizations.issuePrefix })
     .from(issueDocuments).innerJoin(documents, eq(documents.id, issueDocuments.documentId))
-    .innerJoin(companies, sql`true`)
+    .innerJoin(organizations, sql`true`)
     .where(eq(issueDocuments.issueId, issue.id));
   return saved.filter(document => revisions.has(`${document.id}/${document.revisionId}`))
     .map(document => `[Saved document](/${encodeURIComponent(document.issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}#document-${encodeURIComponent(document.key)})`);

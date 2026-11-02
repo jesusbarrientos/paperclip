@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { companies, companySkills, companySkillVersions, createDb } from '@paperclipai/db';
+import { organizations, companySkills, companySkillVersions, createDb } from '@paperclipai/db';
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from './helpers/embedded-postgres.js';
 import { unprocessable } from '../errors.js';
 import { githubFixture } from './helpers/github-skills.js';
@@ -27,7 +27,7 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
   beforeAll(async () => {
     testDb = await startEmbeddedPostgresTestDatabase('paperclip-skill-sources-'); db = createDb(testDb.connectionString);
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'paperclip-source-test-')); process.env.PAPERCLIP_HOME = home;
-    await db.insert(companies).values({ name: "Skills", issuePrefix: "SKL" });
+    await db.insert(organizations).values({ name: "Skills", issuePrefix: "SKL" });
   }, 30000);
   afterAll(async () => {
     if (originalHome === undefined) delete process.env.PAPERCLIP_HOME; else process.env.PAPERCLIP_HOME = originalHome;

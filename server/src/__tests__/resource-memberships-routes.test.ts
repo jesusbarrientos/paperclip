@@ -7,7 +7,7 @@ import {
   activityLog,
   agentMemberships,
   agents,
-  companies,
+  organizations,
   createDb,
   documentMemberships,
   documents,
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("resource membership routes", () => {
     await db.delete(documents);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("resource membership routes", () => {
     const agentId = randomUUID();
     const terminatedAgentId = randomUUID();
     const documentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TST",
       requireBoardApprovalForNewAgents: false,

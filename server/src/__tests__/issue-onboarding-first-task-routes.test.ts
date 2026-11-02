@@ -8,7 +8,7 @@ import {
   agentRuntimeState,
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   companySkills,
   createDb,
   heartbeatRunEvents,
@@ -100,7 +100,7 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceSettings);
   });
 
@@ -119,7 +119,7 @@ describeEmbeddedPostgres("issue create onboarding first-task routes", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 5).toUpperCase()}`,

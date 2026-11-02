@@ -5,7 +5,7 @@ import {
   approvals,
   budgetIncidents,
   budgetPolicies,
-  companies,
+  organizations,
   costEvents,
   createDb,
   projects,
@@ -333,7 +333,7 @@ describeEmbeddedPostgres("budgetService release gate enforcement", () => {
     await db.delete(costEvents);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     mockLogActivity.mockClear();
   });
 
@@ -346,7 +346,7 @@ describeEmbeddedPostgres("budgetService release gate enforcement", () => {
     const agentId = randomUUID();
     const projectId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `B${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import {
   agents,
   authUsers,
-  companies,
+  organizations,
   companySkillVersions,
   companySkills,
   createDb,
@@ -73,7 +73,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await db.delete(projectWorkspaces);
     await db.delete(projects);
     await db.delete(folders);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   async function createPinnedRuntimeFixture() {
     const companyId = randomUUID();
     const skillId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Cache tests", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Cache tests", issuePrefix: `T${companyId.slice(0, 6)}` });
     await db.insert(companySkills).values({
       id: skillId, key: `company/cached`, slug: "cached", name: "Cached",
       markdown: "# Installed skill", sourceType: "github", sourceLocator: "https://github.com/acme/cache",
@@ -113,7 +113,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     try {
       const cold = (await svc.listRuntimeSkillEntries()).find((entry) => entry.key === key)!;
       expect(cold.sourceStatus).toBe("available");
-      expect(select.mock.calls.filter(([fields]) => fields && Object.keys(fields).length === 1 && fields.id === companies.id)).toHaveLength(1);
+      expect(select.mock.calls.filter(([fields]) => fields && Object.keys(fields).length === 1 && fields.id === organizations.id)).toHaveLength(1);
       expect(upstream).toHaveBeenCalledTimes(21);
       expect(new Set(upstream.mock.calls.map(([url]) => String(url))).size).toBe(21);
       const before = await fs.stat(path.join(cold.source, "SKILL.md"));
@@ -156,7 +156,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("keeps upstream changes dormant until explicit update and refreshes supporting-only changes", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Update cache", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Update cache", issuePrefix: `T${companyId.slice(0, 6)}` });
     let revision = "a".repeat(40);
     const markdown = "---\nname: cached\ndescription: A fixture\n---\n# Unchanged skill\n";
     const upstream = vi.fn(async (input: string | URL) => {
@@ -196,7 +196,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("observes edits to a direct local source on the next preparation", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Local cache", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Local cache", issuePrefix: `T${companyId.slice(0, 6)}` });
     const skill = await svc.createLocalSkill({ name: "Local source", slug: "local-source" });
     const first = (await svc.listRuntimeSkillEntries()).find((entry) => entry.key === skill.key)!;
     await fs.appendFile(path.join(first.source, "SKILL.md"), "\nNew local instructions\n");
@@ -207,7 +207,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("serializes same-slug creates and preserves the winner's files", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Concurrent creates", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Concurrent creates", issuePrefix: `T${companyId.slice(0, 6)}` });
     const first = companySkillService(db);
     const second = companySkillService(db);
     const results = await Promise.allSettled([
@@ -226,7 +226,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("recovers an identical create after the outer transaction rolls back", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Rollback retry", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Rollback retry", issuePrefix: `T${companyId.slice(0, 6)}` });
     const input = { name: "Retryable", slug: "retryable", markdown: "# durable bytes\n" };
     await expect(db.transaction(async (tx) => {
       await companySkillService(tx as any).createLocalSkill(input);
@@ -241,7 +241,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("reuses a deleted managed skill name with different instructions", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Recreate skills", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Recreate skills", issuePrefix: `T${companyId.slice(0, 6)}` });
     const original = await svc.createLocalSkill({ name: "Recreate", slug: "recreate", markdown: "# Old instructions\n" });
     await svc.deleteSkill(original.id);
     const replacement = await svc.createLocalSkill({ name: "Recreate", slug: "recreate", markdown: "# New instructions\n" });
@@ -253,7 +253,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it.each(["save", "delete", "rename"] as const)("rejects a stale file %s after the skill is replaced", async (operation) => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Stale editor", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Stale editor", issuePrefix: `T${companyId.slice(0, 6)}` });
     const original = await svc.createLocalSkill({ name: "Editor", slug: "stale-editor", markdown: "# Old\n" });
     await svc.updateFile(original.id, "notes.md", "Original notes");
     let replacement: typeof original | undefined;
@@ -314,7 +314,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("restores managed source files when the deletion transaction fails", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Delete rollback", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Delete rollback", issuePrefix: `T${companyId.slice(0, 6)}` });
     const original = await svc.createLocalSkill({ name: "Retained", slug: "retained", markdown: "# Keep these instructions\n" });
     const failingDb = new Proxy(db, {
       get(target, property, receiver) {
@@ -334,7 +334,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("serializes duplicate deletes with recreation without removing new files", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Delete concurrency", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Delete concurrency", issuePrefix: `T${companyId.slice(0, 6)}` });
     const original = await svc.createLocalSkill({ name: "Concurrent", slug: "concurrent-delete", markdown: "# Old\n" });
     let release!: () => void;
     let staged!: () => void;
@@ -365,7 +365,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("does not remove imported local source files when deleting a skill", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Imported source", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Imported source", issuePrefix: `T${companyId.slice(0, 6)}` });
     const source = await createManagedSkillDir("paperclip-imported-skill-");
     const markdown = "---\nname: external\ndescription: User-owned instructions.\n---\n# Keep this file\n";
     await fs.writeFile(path.join(source, "SKILL.md"), markdown);
@@ -376,7 +376,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("rejects a differing retry after rollback without changing durable bytes", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Rollback conflict", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Rollback conflict", issuePrefix: `T${companyId.slice(0, 6)}` });
     const original = { name: "Original", slug: "rollback-conflict", markdown: "# original bytes\n" };
     await expect(db.transaction(async (tx) => {
       await companySkillService(tx as any).createLocalSkill(original);
@@ -395,7 +395,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("does not adopt an unrelated preexisting managed directory", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Existing directory", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Existing directory", issuePrefix: `T${companyId.slice(0, 6)}` });
     const managedRoot = path.join(paperclipHome!, "instances", "default", "skills");
     const skillDir = path.join(managedRoot, "occupied");
     await fs.mkdir(skillDir, { recursive: true });
@@ -412,7 +412,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("observes supporting-only local file saves across runtime preparations and service restarts", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Local supporting files", issuePrefix: `T${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Local supporting files", issuePrefix: `T${companyId.slice(0, 6)}` });
     const skill = await svc.createLocalSkill({ name: "Local references", slug: "local-references" });
     const source = skill.sourceLocator!;
     await fs.writeFile(path.join(source, "reference.md"), "Original supporting file");
@@ -449,7 +449,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Heavy Skill\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -505,7 +505,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       return dir;
     }
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -651,7 +651,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("does not retouch unchanged bundled skills during list refresh", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -684,7 +684,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("makes the onboarding skill resolvable and available to agent runtimes", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Onboarding",
       issuePrefix: `T${companyId.slice(0, 6)}`,
@@ -712,7 +712,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("seeds bundled skill releases idempotently and materializes the frozen champion snapshot", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -779,7 +779,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("repairs a squatted bundled root during bundled-skill list refresh", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -806,7 +806,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("does not retouch bundled skills with stale missing-source metadata during list refresh", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -856,7 +856,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       "---\nname: Idempotent Import Skill\n---\n\n# Idempotent Import Skill\n",
       "utf8",
     );
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -888,7 +888,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       "---\nname: Null Metadata Import Skill\n---\n\n# Null Metadata Import Skill\n",
       "utf8",
     );
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -932,7 +932,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   it("does not persist audit failures for remote-source skills", async () => {
     const companyId = randomUUID();
     const skillId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -970,7 +970,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Versioned Skill\ncategories:\n  - Memory\n---\n\n# Versioned Skill\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1019,7 +1019,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   it("tracks stars and skill comments with actor ownership", async () => {
     const companyId = randomUUID();
     const skillId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1086,7 +1086,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("updates private/company sharing scope and rejects public link publishing", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1119,7 +1119,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("updates categories, allows spaces, and reflects them in list filters and counts", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1162,7 +1162,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("filters by folder subtree, keeps search global, and returns canonical folder paths", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1220,7 +1220,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("creates skills in folders and rejects unknown folder references", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1241,7 +1241,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("resolves detail by unique skill slug for Studio deep links", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1265,7 +1265,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const companyId = randomUUID();
     const skillA = randomUUID();
     const skillB = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1316,7 +1316,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     );
     await fs.writeFile(path.join(sourceSkillDir, "references", "guide.md"), "# Guide\n\nOriginal notes.\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1424,7 +1424,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const sourceSkillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reassign-source-"));
     cleanupDirs.add(sourceSkillDir);
     await fs.writeFile(path.join(sourceSkillDir, "SKILL.md"), "# Source Skill\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1517,7 +1517,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("forks external source types and deduplicates fork slugs", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1581,7 +1581,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-pinned-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Pinned Skill\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1646,7 +1646,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-tolerant-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Real Skill\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1725,7 +1725,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-used-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1804,7 +1804,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-unused-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1840,7 +1840,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Stale Inventory Skill\n", "utf8");
     await fs.writeFile(path.join(skillDir, "references", "guide.md"), "# Guide\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1892,7 +1892,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     );
     await fs.writeFile(path.join(skillDir, "references", "checklist.md"), "# Checklist\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1922,7 +1922,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(repoDir, "README.md"), "# Repo readme\n", "utf8");
     await fs.writeFile(path.join(repoDir, "server", "src", "index.ts"), "export {};\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1940,7 +1940,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("defaults package conflicts to skip and reports skip, rename, and explicit replace outcomes", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2006,7 +2006,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("rejects executable external package skills before persistence", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2046,7 +2046,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     cleanupDirs.add(bundledSkillDir);
     await fs.writeFile(path.join(bundledSkillDir, "SKILL.md"), "---\nname: Paperclip\n---\n\n# Official Paperclip\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2100,7 +2100,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Restored Skill\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2143,7 +2143,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-readonly-missing-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2194,7 +2194,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-missing-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2246,7 +2246,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-broken-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2304,7 +2304,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-read-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2352,7 +2352,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   it("reads root-level SKILL.md for github skills with a '.' repoSkillDir", async () => {
     const companyId = randomUUID();
     const skillId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2402,7 +2402,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const companyId = randomUUID();
     const rootSkillId = randomUUID();
     const slugSkillId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2464,7 +2464,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   it("seeds an initial version on create and snapshots a version on each changed save", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2517,7 +2517,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     for (let entryIndex = 0; entryIndex < 251; entryIndex += 1) {
       await fs.symlink(skillDir, path.join(workspaceDir, `ignored-${String(entryIndex).padStart(3, "0")}`));
     }
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2574,7 +2574,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.mkdir(cursorSkillDir, { recursive: true });
     await fs.writeFile(path.join(codexSkillDir, "SKILL.md"), "---\nname: Preview Codex\ndescription: Codex candidate\n---\n", "utf8");
     await fs.writeFile(path.join(cursorSkillDir, "SKILL.md"), "---\nname: Preview Cursor\n---\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2629,7 +2629,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const skillDir = path.join(workspaceDir, ".codex", "skills", "same-path");
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Same Path\n---\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2679,7 +2679,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Built In Review\n---\n", "utf8");
     await fs.writeFile(path.join(bundledSkillDir, "SKILL.md"), "---\nname: Built In Review\n---\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2736,7 +2736,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Shared Skill\n---\n", "utf8");
     await fs.writeFile(path.join(existingSkillDir, "SKILL.md"), "---\nname: Shared Skill\n---\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2813,7 +2813,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(ignoredSkillDir, "SKILL.md"), "---\nname: Ignored Skill\n---\n", "utf8");
     await fs.writeFile(outsideSkillFile, "---\nname: Ignored Linked Skill\n---\n", "utf8");
     await fs.symlink(outsideSkillFile, path.join(ignoredLinkedSkillDir, "SKILL.md"));
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2885,7 +2885,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(selectedSkillDir, "SKILL.md"), "---\nname: Selected Skill\n---\n", "utf8");
     await fs.writeFile(path.join(otherCompanySkillDir, "SKILL.md"), "---\nname: Foreign Skill\n---\n", "utf8");
 
-    await db.insert(companies).values([
+    await db.insert(organizations).values([
       {
         id: companyId,
         name: "Paperclip",
@@ -2975,7 +2975,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(outsideDir, "SKILL.md"), "---\nname: Outside Directory Skill\n---\n", "utf8");
     await fs.symlink(outsideSkillFile, path.join(linkedSkillDir, "SKILL.md"));
     await fs.symlink(outsideDir, path.join(workspaceDir, "linked-directory"));
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3039,7 +3039,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     const skillFile = path.join(skillDir, "SKILL.md");
     await fs.mkdir(skillDir, { recursive: true });
     await fs.writeFile(skillFile, "---\nname: Project Skill\n---\n\nInitial content.\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3084,7 +3084,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

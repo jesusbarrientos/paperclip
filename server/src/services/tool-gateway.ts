@@ -37,7 +37,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   approvals,
-  companies,
+  organizations,
   companyMemberships,
   companySecrets,
   connectionGrantMembers,
@@ -4245,8 +4245,8 @@ export function createToolGatewayService(
   ) {
     if (!session.issueId || !session.agentId || !session.runId) return;
     const [company] = await db
-      .select({ issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       .limit(1);
     const href = `/${company?.issuePrefix ?? ""}/apps/${connection.id}/permissions`;
     const idempotencyKey = `connection-authorization:${connection.id}:${userId}`;

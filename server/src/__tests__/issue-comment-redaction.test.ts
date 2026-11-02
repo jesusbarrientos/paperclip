@@ -13,7 +13,7 @@ import {
 } from "vitest";
 import {
   assets,
-  companies,
+  organizations,
   closeRegisteredClients,
   companyMemberships,
   createDb,
@@ -78,7 +78,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     await db.delete(assets);
     await db.delete(issues);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -91,7 +91,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
   async function seedIssue() {
     const companyId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Comment Redaction Co",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -281,7 +281,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     const otherIssueId = randomUUID();
     const otherCompanyId = randomUUID();
     const otherCompanyIssueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: otherCompanyId,
       name: "Other Attachment Co",
       issuePrefix: "OAT",
@@ -500,7 +500,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     const sourceIssueId = randomUUID();
     const targetIssueId = randomUUID();
     const commentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Reference Redaction Co",
       issuePrefix: "REF",

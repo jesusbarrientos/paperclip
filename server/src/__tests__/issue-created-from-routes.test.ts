@@ -3,7 +3,7 @@ import express from "express";
 import { eq } from "drizzle-orm";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, agents, companies, createDb, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, organizations, createDb, heartbeatRuns, issues, projects } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { issueRoutes } from "../routes/issues.js";
 import { issueService } from "../services/issues.js";
@@ -31,7 +31,7 @@ describePostgres("tasks created from an issue", () => {
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("paperclip-created-from-");
     db = createDb(database.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Origin", issuePrefix: "ORG", defaultResponsibleUserId: "board-user" });
+    await db.insert(organizations).values({ id: companyId, name: "Origin", issuePrefix: "ORG", defaultResponsibleUserId: "board-user" });
     await db.insert(agents).values({ id: agentId, name: "Coder", role: "engineer", adapterType: "codex_local" });
     await db.insert(issues).values([
       { id: sourceId, title: "Source", identifier: "ORG-1", issueNumber: 1 },

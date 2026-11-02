@@ -6,7 +6,7 @@ import {
   agentWakeupRequests,
   agents,
   approvals,
-  companies,
+  organizations,
   createDb,
   documents,
   heartbeatRuns,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("task watchdog scheduler", () => {
     await db.delete(issueWatchdogs);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("task watchdog scheduler", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Watchdog Co",
       issuePrefix: `WD${randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase()}`,

@@ -7,7 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { activityLog, agents, companies, createDb, executionWorkspaces, goals, issues, projects, projectWorkspaces, type Db } from "@paperclipai/db";
+import { activityLog, agents, organizations, createDb, executionWorkspaces, goals, issues, projects, projectWorkspaces, type Db } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { errorHandler } from "../middleware/index.js";
 import {
@@ -79,7 +79,7 @@ async function seedGraph(db: Db, input: {
   const issueId = crypto.randomUUID();
   const otherIssueId = crypto.randomUUID();
 
-  await db.insert(companies).values([
+  await db.insert(organizations).values([
     { id: companyId, name: `Company ${suffix}`, issuePrefix: `F${prefixSuffix}` },
   ]);
   await db.insert(goals).values([
@@ -1600,7 +1600,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
 
   it("enforces bounded rate and concurrency limits", async () => {
     const companyId = crypto.randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Rate limit company",
       issuePrefix: "RAT",
@@ -1673,7 +1673,7 @@ describeEmbeddedPostgres("file resource route guards", () => {
 
   it("uses a batch-specific availability limiter", async () => {
     const companyId = crypto.randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Availability rate limit company",
       issuePrefix: "AVL",

@@ -26,7 +26,7 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
 import type { ChatChannelService } from "../services/chat-channels.js";
-import { activityLog, agents as agentsTable, chatConversations, companies, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
+import { activityLog, agents as agentsTable, chatConversations, organizations, heartbeatRuns, issues as issuesTable, projects as projectsTable } from "@paperclipai/db";
 import { and, desc, eq, inArray, not, sql } from "drizzle-orm";
 import { sha256Digest } from "../services/feedback-redaction.js";
 import {
@@ -4050,11 +4050,11 @@ export function agentRoutes(
         adapterType: agentsTable.adapterType,
         runtimeConfig: agentsTable.runtimeConfig,
         lastHeartbeatAt: agentsTable.lastHeartbeatAt,
-        companyName: companies.name,
-        companyIssuePrefix: companies.issuePrefix,
+        companyName: organizations.name,
+        companyIssuePrefix: organizations.issuePrefix,
       })
       .from(agentsTable)
-      .innerJoin(companies, sql`true`)
+      .innerJoin(organizations, sql`true`)
       .orderBy(agentsTable.name);
 
     const items: InstanceSchedulerHeartbeatAgent[] = rows
@@ -4550,7 +4550,7 @@ export function agentRoutes(
 
     const company = await db
       .select()
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!company) {
@@ -4756,7 +4756,7 @@ export function agentRoutes(
 
     const company = await db
       .select()
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!company) {

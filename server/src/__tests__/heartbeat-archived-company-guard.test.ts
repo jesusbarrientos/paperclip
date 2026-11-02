@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -39,7 +39,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -50,7 +50,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Archived Co",
       status: "archived",
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
     const managerId = randomUUID();
     const childId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Invalid Org Co",
       status: "active",

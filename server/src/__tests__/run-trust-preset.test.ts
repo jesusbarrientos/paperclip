@@ -12,7 +12,7 @@ import {
 } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -107,7 +107,7 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
       const projectId = randomUUID();
       const issueId = randomUUID();
       const runId = randomUUID();
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: companyId,
         issuePrefix: companyId.slice(0, 8),

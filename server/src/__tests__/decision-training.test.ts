@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   decisionTrainingExamples,
   executionWorkspaces,
@@ -55,7 +55,7 @@ describeEmbeddedPostgres("decision training", () => {
     await db.delete(projectWorkspaces);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("decision training", () => {
     const atCutoffId = randomUUID();
     const afterId = randomUUID();
 
-    await db.insert(companies).values({ id: companyId, name: "Decision Co", issuePrefix: `D${companyId.slice(0, 4)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Decision Co", issuePrefix: `D${companyId.slice(0, 4)}` });
     await db.insert(projects).values({ id: projectId, name: "Decisions" });
     await db.insert(issues).values({
       id: issueId,

@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   assets,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documents,
@@ -71,7 +71,7 @@ async function createApp(db: Db, actor: Express.Request["actor"]) {
 
 async function seedCompany(db: Db, label: string) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Permissions Boundary ${label}`,
       issuePrefix: `PB${randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -121,7 +121,7 @@ describeEmbeddedPostgres("permissions upgrade visibility and route boundaries", 
     await db.delete(heartbeatRuns);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

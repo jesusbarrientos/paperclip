@@ -4,7 +4,7 @@ import { and, asc, desc, eq, getTableColumns, gte, isNull, lte, ne, or } from "d
 import type { Db } from "@paperclipai/db";
 import {
   agents,
-  companies,
+  organizations,
   companySkills,
   costEvents,
   documentRevisions,
@@ -1902,10 +1902,10 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
 
         const existingCompany = await tx
           .select({
-            feedbackDataSharingEnabled: companies.feedbackDataSharingEnabled,
-            feedbackDataSharingTermsVersion: companies.feedbackDataSharingTermsVersion,
+            feedbackDataSharingEnabled: organizations.feedbackDataSharingEnabled,
+            feedbackDataSharingTermsVersion: organizations.feedbackDataSharingTermsVersion,
           })
-          .from(companies)
+          .from(organizations)
           .limit(1)
           .then((rows) => rows[0] ?? null);
         if (!existingCompany) throw notFound("Company not found");
@@ -1921,7 +1921,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
           consentEnabledNow = true;
           consentVersion = DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION;
           await tx
-            .update(companies)
+            .update(organizations)
             .set({
               feedbackDataSharingEnabled: true,
               feedbackDataSharingConsentAt: now,

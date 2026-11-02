@@ -4,7 +4,7 @@ import request from "supertest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   executionWorkspaceRuntimeLeases,
   executionWorkspaces,
@@ -123,7 +123,7 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
     canaryIssueId = randomUUID();
     competingIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Runtime lease route",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,
@@ -189,7 +189,7 @@ describeEmbeddedPostgres("execution workspace runtime control lease enforcement"
     await db.delete(executionWorkspaces);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   async function createApp() {

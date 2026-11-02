@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -122,7 +122,7 @@ describeEmbeddedPostgres("native Codex server vertical slice", () => {
     const issueId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Native Codex vertical slice",
       issuePrefix: "NCV",

@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueRecoveryActions,
@@ -152,7 +152,7 @@ describeEmbeddedPostgres("native runner restart recovery with real processes", (
     setupRunnerPrpWebSocketServer(server, { apiUrl });
 
     const db = createDb(temporary.connectionString);
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Native restart recovery",
       issuePrefix: "NRR",

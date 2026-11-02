@@ -22,7 +22,7 @@ import {
   activityLog,
   agents,
   assets,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueAttachments,
@@ -67,7 +67,7 @@ describe("native runner file handoff", () => {
     storageRoot = path.join(temporaryRoot, "storage");
     await mkdir(workspaceRoot, { recursive: true });
     await mkdir(storageRoot, { recursive: true });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Native file handoff",
       issuePrefix: "NFH",
       issueCounter: 1,

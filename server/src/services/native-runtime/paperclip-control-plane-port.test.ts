@@ -8,7 +8,7 @@ import {
   agentWakeupRequests,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   completionContracts,
   createDb,
@@ -83,7 +83,7 @@ describe("PaperclipControlPlanePort conformance", () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-port-");
     db = createDb(temporary.connectionString);
     const identity = CONTROL_PLANE_CONFORMANCE_OPEN.identity;
-    await db.insert(companies).values({ name: "Phase 6", issuePrefix: "P6C" });
+    await db.insert(organizations).values({ name: "Phase 6", issuePrefix: "P6C" });
     await db.insert(agents).values({
       id: identity.agentId,
       name: "Native conformance",
@@ -276,7 +276,7 @@ describe("PaperclipControlPlanePort conformance", () => {
       await db.delete(issues);
       await db.delete(agents);
       await db.delete(companyMemberships);
-      await db.delete(companies);
+      await db.delete(organizations);
       await db.delete(authUsers);
       await temporary.cleanup();
     }

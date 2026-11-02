@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, createDb, heartbeatRuns, issues } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns, issues } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { heartbeatService } from "../services/heartbeat.js";
 
@@ -27,7 +27,7 @@ suite("native terminal-run cleanup admission", () => {
 
   it("holds the same task until its native executor settles while allowing unrelated tasks", async () => {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), otherIssueId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Cleanup admission", issuePrefix: "CLN", defaultResponsibleUserId: "owner" });
+    await db.insert(organizations).values({ id: companyId, name: "Cleanup admission", issuePrefix: "CLN", defaultResponsibleUserId: "owner" });
     await db.insert(agents).values({ id: agentId, name: "Worker", role: "engineer", status: "idle", adapterType: "process",
       adapterConfig: {}, permissions: {}, runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true, maxConcurrentRuns: 20 } } });
     await db.insert(issues).values([issueId, otherIssueId].map(id => ({ id, title: "Recovery task", status: "todo", assigneeAgentId: agentId, responsibleUserId: "owner" })));

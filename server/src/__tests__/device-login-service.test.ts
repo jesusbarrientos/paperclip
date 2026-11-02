@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { adapterAuthSessions, companies, createDb, environmentLeases, environments } from "@paperclipai/db";
+import { adapterAuthSessions, organizations, createDb, environmentLeases, environments } from "@paperclipai/db";
 import type { AgentAdapterType } from "@paperclipai/shared";
 import { DEVICE_LOGIN_URL } from "@paperclipai/adapter-codex-local/server";
 import {
@@ -1387,7 +1387,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   afterEach(async () => {
     await db.delete(adapterAuthSessions);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -1397,7 +1397,7 @@ describeEmbeddedPostgres("device login service concurrency (embedded postgres)",
   async function seedCompanyEnvironment(): Promise<{ environmentId: string }> {
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       status: "active",

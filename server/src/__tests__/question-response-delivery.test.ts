@@ -13,7 +13,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   createDb,
   goals,
   heartbeatRuns,
@@ -80,7 +80,7 @@ describeEmbeddedPostgres("question response delivery", () => {
     await db.delete(issues);
     await db.delete(goals);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -103,7 +103,7 @@ describeEmbeddedPostgres("question response delivery", () => {
     const issueId = randomUUID();
     const sourceRunId = randomUUID();
     const successorRunId = args.successorStatus ? randomUUID() : null;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Question delivery",
       issuePrefix: `Q${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

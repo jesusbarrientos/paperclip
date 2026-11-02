@@ -7,7 +7,7 @@ import {
   agentWakeupRequests,
   agentRuntimeState,
   budgetPolicies,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   costEvents,
@@ -127,7 +127,7 @@ describeEmbeddedPostgres("heartbeat resolved dependency wake reconciliation", ()
     await db.delete(agents);
     await db.delete(companyMemberships);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -146,7 +146,7 @@ describeEmbeddedPostgres("heartbeat resolved dependency wake reconciliation", ()
     const blockerIssueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -233,7 +233,7 @@ describeEmbeddedPostgres("heartbeat resolved dependency wake reconciliation", ()
     const executionWorkspaceId = randomUUID();
     const issuePrefix = `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -333,7 +333,7 @@ describeEmbeddedPostgres("heartbeat resolved dependency wake reconciliation", ()
     const agentId = randomUUID();
     const issueId = randomUUID();
     const issuePrefix = `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Review Recovery Co",
       issuePrefix,

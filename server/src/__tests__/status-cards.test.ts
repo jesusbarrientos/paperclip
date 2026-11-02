@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   costEvents,
   createDb,
   documentRevisions,
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("status card routes", () => {
     await db.delete(heartbeatRuns);
     await db.delete(instanceSettings);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -102,7 +102,7 @@ describeEmbeddedPostgres("status card routes", () => {
 
   async function seedCompany() {
     return db
-      .insert(companies)
+      .insert(organizations)
       .values({ name: "Status Cards Co", issuePrefix: `SC${randomUUID().slice(0, 6).toUpperCase()}` })
       .returning()
       .then((rows) => rows[0]!);

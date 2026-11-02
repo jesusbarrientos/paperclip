@@ -5,7 +5,7 @@ import {
   activityLog,
   authUsers,
   cases,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   instanceUserRoles,
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
     await db.delete(companyMemberships);
     await db.delete(cases);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceUserRoles);
     await db.delete(authUsers);
   });
@@ -86,11 +86,11 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
   async function readCompany() {
     return db
       .select({
-        name: companies.name,
-        issuePrefix: companies.issuePrefix,
-        description: companies.description,
+        name: organizations.name,
+        issuePrefix: organizations.issuePrefix,
+        description: organizations.description,
       })
-      .from(companies)
+      .from(organizations)
       .then((rows) => {
         expect(rows).toHaveLength(1);
         return rows[0] ?? null;
@@ -136,7 +136,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
     });
 
     it("keeps the existing organization instead of provisioning another one", async () => {
-      await db.insert(companies).values({ name: "Acme Holdings", issuePrefix: "ACM" });
+      await db.insert(organizations).values({ name: "Acme Holdings", issuePrefix: "ACM" });
 
       await resolveCloudTenantActor(
         db,
@@ -171,7 +171,7 @@ describeEmbeddedPostgres("cloud tenant company provisioning", () => {
       );
       const issuePrefix = input.issuePrefix ?? legacyProvisionedPrefix(input.stackId);
       await db
-        .update(companies)
+        .update(organizations)
         .set({
           issuePrefix,
           description: input.description === undefined

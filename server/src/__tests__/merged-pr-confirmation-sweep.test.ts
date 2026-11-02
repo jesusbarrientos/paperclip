@@ -4,7 +4,7 @@ import { inArray } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   goals,
   issueThreadInteractions,
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     await db.delete(issues);
     await db.delete(goals);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -161,7 +161,7 @@ describeEmbeddedPostgres("merged pull-request confirmation sweep", () => {
     const goalId = randomUUID();
     const issueId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "MPR",

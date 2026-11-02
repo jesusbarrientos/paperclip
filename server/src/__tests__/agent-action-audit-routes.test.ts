@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documents,
@@ -57,13 +57,13 @@ describePostgres("agent action audit routes", () => {
     await db.delete(heartbeatRuns);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => tempDb?.cleanup());
 
   async function seed() {
-    const company = await db.insert(companies).values({
+    const company = await db.insert(organizations).values({
       name: "Audit Company",
       issuePrefix: `AU${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);

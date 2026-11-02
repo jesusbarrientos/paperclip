@@ -19,7 +19,7 @@ import {
   chatGitHubConfigurations,
   chatGitHubReviews,
   chatMessageLinks,
-  companies,
+  organizations,
   heartbeatRuns,
   issues,
   projects,
@@ -1112,8 +1112,8 @@ export function githubChatReviewService(db: Db, fetchImpl = fetch) {
             );
             const origin = runtimePublicOrigin();
             const [company] = await db
-              .select({ prefix: companies.issuePrefix })
-              .from(companies);
+              .select({ prefix: organizations.issuePrefix })
+              .from(organizations);
             const board =
               origin && company
                 ? `${origin}/${encodeURIComponent(company.prefix)}`

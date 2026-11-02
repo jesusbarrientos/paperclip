@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRunEvents,
@@ -125,7 +125,7 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     await db.delete(completionContracts);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     for (const directory of scratchDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -144,7 +144,7 @@ describeEmbeddedPostgres("hidden runner PRP coordinator", () => {
     const sessionId = randomUUID();
     const completionContractId = randomUUID();
     const completionContractSha256 = `sha256:${"c".repeat(64)}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Runner Test Company",
       issuePrefix: `R${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

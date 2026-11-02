@@ -1,8 +1,7 @@
 import { and, count, eq, gte, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
-  companies,
-  companyLogos,
+  organizations,
   assets,
   agents,
   agentApiKeys,
@@ -133,24 +132,24 @@ export function companyService(db: Db) {
   }
 
   const companySelection = {
-    id: companies.id,
-    name: companies.name,
-    description: companies.description,
-    status: companies.status,
-    issuePrefix: companies.issuePrefix,
-    issueCounter: companies.issueCounter,
-    budgetMonthlyCents: companies.budgetMonthlyCents,
-    spentMonthlyCents: companies.spentMonthlyCents,
-    defaultResponsibleUserId: companies.defaultResponsibleUserId,
-    requireBoardApprovalForNewAgents: companies.requireBoardApprovalForNewAgents,
-    interactionResolverGovernance: companies.interactionResolverGovernance,
-    feedbackDataSharingEnabled: companies.feedbackDataSharingEnabled,
-    feedbackDataSharingConsentAt: companies.feedbackDataSharingConsentAt,
-    feedbackDataSharingConsentByUserId: companies.feedbackDataSharingConsentByUserId,
-    feedbackDataSharingTermsVersion: companies.feedbackDataSharingTermsVersion,
-    logoAssetId: companyLogos.assetId,
-    createdAt: companies.createdAt,
-    updatedAt: companies.updatedAt,
+    id: organizations.id,
+    name: organizations.name,
+    description: organizations.description,
+    status: organizations.status,
+    issuePrefix: organizations.issuePrefix,
+    issueCounter: organizations.issueCounter,
+    budgetMonthlyCents: organizations.budgetMonthlyCents,
+    spentMonthlyCents: organizations.spentMonthlyCents,
+    defaultResponsibleUserId: organizations.defaultResponsibleUserId,
+    requireBoardApprovalForNewAgents: organizations.requireBoardApprovalForNewAgents,
+    interactionResolverGovernance: organizations.interactionResolverGovernance,
+    feedbackDataSharingEnabled: organizations.feedbackDataSharingEnabled,
+    feedbackDataSharingConsentAt: organizations.feedbackDataSharingConsentAt,
+    feedbackDataSharingConsentByUserId: organizations.feedbackDataSharingConsentByUserId,
+    feedbackDataSharingTermsVersion: organizations.feedbackDataSharingTermsVersion,
+    logoAssetId: organizations.logoAssetId,
+    createdAt: organizations.createdAt,
+    updatedAt: organizations.updatedAt,
   };
 
   function enrichCompany<T extends { logoAssetId: string | null }>(company: T) {
@@ -197,8 +196,7 @@ export function companyService(db: Db) {
   function getCompanyQuery(database: Pick<Db, "select">) {
     return database
       .select(companySelection)
-      .from(companies)
-      .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id));
+      .from(organizations);
   }
 
   /**
@@ -214,7 +212,7 @@ export function companyService(db: Db) {
    */
   async function resolveRenamedIssuePrefix(
     tx: CompanyTx,
-    companyPatch: Partial<typeof companies.$inferInsert>,
+    companyPatch: Partial<typeof organizations.$inferInsert>,
   ): Promise<{ fromPrefix: string; toPrefix: string } | null> {
     // Only patch and environment facts gate the lock. Every comparison against
     // the company's own name or prefix happens below, under the lock.
@@ -240,8 +238,8 @@ export function companyService(db: Db) {
     // what the first actually committed. Only a managed instance takes this
     // lock, and only for an update that carries a name.
     const locked = await tx
-      .select({ name: companies.name, issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ name: organizations.name, issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       .limit(1)
       .for("update")
       .then((rows) => rows[0] ?? null);
@@ -258,14 +256,14 @@ export function companyService(db: Db) {
     return { fromPrefix: locked.issuePrefix, toPrefix: candidate };
   }
 
-  async function createCompanyWithUniquePrefix(data: typeof companies.$inferInsert) {
+  async function createCompanyWithUniquePrefix(data: typeof organizations.$inferInsert) {
     const base = deriveIssuePrefixBase(data.name);
     let suffix = 1;
     while (suffix <= MAX_ISSUE_PREFIX_ATTEMPTS) {
       const candidate = `${base}${issuePrefixSuffixForAttempt(suffix)}`;
       try {
         const rows = await db
-          .insert(companies)
+          .insert(organizations)
           .values({ ...data, issuePrefix: candidate })
           .returning();
         return rows[0];
@@ -289,20 +287,20 @@ export function companyService(db: Db) {
       // DrizzleQueryError (HTTP 500); treat it as not-found instead.
       if (!UUID_RE.test(id)) return null;
       const row = await getCompanyQuery(db)
-        .where(eq(companies.id, id))
+        .where(eq(organizations.id, id))
         .then((rows) => rows[0] ?? null);
       if (!row) return null;
       const [hydrated] = await hydrateCompanySpend([row], db);
       return enrichCompany(hydrated);
     },
 
-    create: async (data: typeof companies.$inferInsert) => {
+    create: async (data: typeof organizations.$inferInsert) => {
       await assertCanCreateOrganization(db);
       const created = await createCompanyWithUniquePrefix(data);
       await environmentsSvc.ensureLocalEnvironment(created.id);
       await builtInAgents.autoProvisionBundledAgents();
       const row = await getCompanyQuery(db)
-        .where(eq(companies.id, created.id))
+        .where(eq(organizations.id, created.id))
         .then((rows) => rows[0] ?? null);
       if (!row) throw notFound("Company not found after creation");
       const [hydrated] = await hydrateCompanySpend([row], db);
@@ -311,12 +309,12 @@ export function companyService(db: Db) {
 
     update: async (
       id: string,
-      data: Partial<typeof companies.$inferInsert> & { logoAssetId?: string | null },
+      data: Partial<typeof organizations.$inferInsert> & { logoAssetId?: string | null },
       actor: CompanyActivityActor = SYSTEM_COMPANY_ACTOR,
     ) => {
       const result = await db.transaction(async (tx) => {
         const existing = await getCompanyQuery(tx)
-          .where(eq(companies.id, id))
+          .where(eq(organizations.id, id))
           .then((rows) => rows[0] ?? null);
         if (!existing) return null;
 
@@ -336,13 +334,13 @@ export function companyService(db: Db) {
         const renamedPrefix = await resolveRenamedIssuePrefix(tx, companyPatch);
 
         const updated = await tx
-          .update(companies)
+          .update(organizations)
           .set({
             ...companyPatch,
             ...(renamedPrefix ? { issuePrefix: renamedPrefix.toPrefix } : {}),
             updatedAt: new Date(),
           })
-          .where(eq(companies.id, id))
+          .where(eq(organizations.id, id))
           .returning()
           .then((rows) => rows[0] ?? null);
         if (!updated) return null;
@@ -386,22 +384,11 @@ export function companyService(db: Db) {
 
         const archiveCascade = willArchive ? await applyArchiveCascadeInTx(tx, id) : null;
 
-        if (logoAssetId === null) {
-          await tx.delete(companyLogos).where(eq(companyLogos.companyId, id));
-        } else if (logoAssetId !== undefined) {
+        if (logoAssetId !== undefined) {
           await tx
-            .insert(companyLogos)
-            .values({
-              companyId: id,
-              assetId: logoAssetId,
-            })
-            .onConflictDoUpdate({
-              target: companyLogos.companyId,
-              set: {
-                assetId: logoAssetId,
-                updatedAt: new Date(),
-              },
-            });
+            .update(organizations)
+            .set({ logoAssetId, updatedAt: new Date() })
+            .where(eq(organizations.id, id));
         }
 
         if (logoAssetId !== undefined && existing.logoAssetId && existing.logoAssetId !== logoAssetId) {
@@ -471,9 +458,9 @@ export function companyService(db: Db) {
     archive: async (id: string, actor: CompanyActivityActor = SYSTEM_COMPANY_ACTOR) => {
       const result = await db.transaction(async (tx) => {
         const existing = await tx
-          .select({ status: companies.status })
-          .from(companies)
-          .where(eq(companies.id, id))
+          .select({ status: organizations.status })
+          .from(organizations)
+          .where(eq(organizations.id, id))
           .then((rows) => rows[0] ?? null);
         if (!existing) return null;
 
@@ -481,15 +468,15 @@ export function companyService(db: Db) {
 
         if (!wasAlreadyArchived) {
           await tx
-            .update(companies)
+            .update(organizations)
             .set({ status: "archived", updatedAt: new Date() })
-            .where(eq(companies.id, id));
+            .where(eq(organizations.id, id));
         }
 
         const cascade = wasAlreadyArchived ? null : await applyArchiveCascadeInTx(tx, id);
 
         const row = await getCompanyQuery(tx)
-          .where(eq(companies.id, id))
+          .where(eq(organizations.id, id))
           .then((rows) => rows[0] ?? null);
         if (!row) return null;
         const [hydrated] = await hydrateCompanySpend([row], tx);
@@ -548,14 +535,13 @@ export function companyService(db: Db) {
         await tx.delete(issueReadStates);
         await tx.delete(documents);
         await tx.delete(issues);
-        await tx.delete(companyLogos).where(eq(companyLogos.companyId, id));
         await tx.delete(assets);
         await tx.delete(goals);
         await tx.delete(projects);
         await tx.delete(agents);
         const rows = await tx
-          .delete(companies)
-          .where(eq(companies.id, id))
+          .delete(organizations)
+          .where(eq(organizations.id, id))
           .returning();
         return rows[0] ?? null;
       }),

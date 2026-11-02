@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, approvals, companies, costEvents, heartbeatRuns, issues } from "@paperclipai/db";
+import { agents, approvals, organizations, costEvents, heartbeatRuns, issues } from "@paperclipai/db";
 import { notFound } from "../errors.js";
 import { budgetService } from "./budgets.js";
 import { executionIssueCondition } from "./issue-visibility.js";
@@ -32,7 +32,7 @@ export function dashboardService(db: Db) {
       // disconnect; do not replay the later summary or budget workflows.
       const company = await retryIdempotentDatabaseOperation(() => db
         .select()
-        .from(companies)
+        .from(organizations)
         .limit(1)
         .then((rows) => rows[0] ?? null));
 

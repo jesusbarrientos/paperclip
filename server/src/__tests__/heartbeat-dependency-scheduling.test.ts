@@ -7,7 +7,7 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   companySkills,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -156,7 +156,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       try {
         await db.transaction(async (tx) => {
           await tx.delete(companySkills);
-          await tx.delete(companies);
+          await tx.delete(organizations);
         });
         break;
       } catch (error) {
@@ -175,7 +175,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const agentId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `N${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -265,7 +265,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
 
   it.each(["onboarding", "ordinary", "cancelled"])("dispatches only a verified completed onboarding report: %s", async kind => {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), childId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Completion", issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}` });
+    await db.insert(organizations).values({ id: companyId, name: "Completion", issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}` });
     await db.insert(agents).values({ id: agentId, name: "Lead", role: "engineer", status: "active", adapterType: "codex_local",
       adapterConfig: {}, runtimeConfig: { heartbeat: { wakeOnDemand: true, maxConcurrentRuns: 1 } }, permissions: {} });
     await db.insert(issues).values({ id: issueId, title: "Parent", status: kind === "cancelled" ? "cancelled" : "done",
@@ -296,7 +296,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const issueId = randomUUID();
     const activeRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -386,7 +386,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const blockedIssueId = randomUUID();
     const readyIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -636,7 +636,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const blockedIssueId = randomUUID();
     const activeRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -763,7 +763,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       };
     });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -895,7 +895,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const blockedRunId = randomUUID();
     const readyRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1085,7 +1085,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const issueChain = Array.from({ length: 17 }, () => randomUUID());
     const deepDescendantIssueId = issueChain.at(-1)!;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1212,7 +1212,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const agentId = randomUUID();
     const rootIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

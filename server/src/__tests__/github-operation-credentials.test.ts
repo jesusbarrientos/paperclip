@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vites
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   agents,
-  companies,
+  organizations,
   companyMemberships,
   companySecrets,
   connectionGrants,
@@ -79,7 +79,7 @@ const support = await getEmbeddedPostgresTestSupport();
         agentId = randomUUID(),
         runId = randomUUID(),
         issueId = randomUUID();
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: companyId,
         issuePrefix: companyId.slice(0, 8),

@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { cpus, platform, release, totalmem } from "node:os";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { companies, createDb, documents, issueComments, issueDocuments, issues, getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "@paperclipai/db";
+import { organizations, createDb, documents, issueComments, issueDocuments, issues, getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "@paperclipai/db";
 import { companySearchQuerySchema } from "@paperclipai/shared";
 import { companySearchService } from "../services/company-search.js";
 import { parseTaskSearch, taskSearchCtes, taskSearchScore } from "../services/task-search.js";
@@ -28,7 +28,7 @@ describe.skipIf(!support.supported)("task search relevance rubric (real PostgreS
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-search-quality-");
     db = createDb(tempDb.connectionString);
     postgresVersion = String((await db.execute(sql`SELECT version()`))[0]!.version);
-    await db.insert(companies).values({ id: companyId, name: "Search benchmark", issuePrefix: "EVAL" });
+    await db.insert(organizations).values({ id: companyId, name: "Search benchmark", issuePrefix: "EVAL" });
     for (const [index, entry] of taskSearchCorpus.entries()) {
       const id = randomUUID();
       keys.set(id, entry.key);

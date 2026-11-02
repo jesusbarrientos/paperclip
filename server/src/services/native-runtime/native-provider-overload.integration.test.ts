@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, agentWakeupRequests, companies, completionContracts, createDb, environmentLeases, heartbeatRuns, issueComments, issueRecoveryActions, issues, nativeRunFinalizations, statusDecisionEffects, statusDecisions } from "@paperclipai/db";
+import { agents, agentWakeupRequests, organizations, completionContracts, createDb, environmentLeases, heartbeatRuns, issueComments, issueRecoveryActions, issues, nativeRunFinalizations, statusDecisionEffects, statusDecisions } from "@paperclipai/db";
 import type { ControlPlanePort, NativeExecutionInputV1, PrpEvent, PrpTerminalState } from "@paperclipai/paperclip-runner";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { CONTROL_PLANE_CONFORMANCE_RESULT } from "../../vendor/paperclip-runner/testing.js";
@@ -28,7 +28,7 @@ describe("durable native provider capacity retry", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("native-capacity-retry-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Capacity regression", issuePrefix: "CAP" });
+    await db.insert(organizations).values({ id: companyId, name: "Capacity regression", issuePrefix: "CAP" });
     await db.insert(agents).values([
       { id: agentId, name: "Capacity worker", status: "active", adapterType: "paperclip_runner", adapterConfig: { provider: "codex", model: "test-model" } },
       { id: otherAgentId, name: "New owner", status: "active", adapterType: "paperclip_runner" },

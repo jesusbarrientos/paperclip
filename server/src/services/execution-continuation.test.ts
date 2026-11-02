@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueComments,
@@ -49,7 +49,7 @@ const support = await getEmbeddedPostgresTestSupport();
       );
       db = createDb(database.connectionString);
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({ id: companyId, name: "Continuation", issuePrefix: "CTX" });
       await db
         .insert(agents)

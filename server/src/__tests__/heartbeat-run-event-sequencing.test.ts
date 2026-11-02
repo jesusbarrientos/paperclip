@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -29,7 +29,7 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
       payload: exhaustion,
     };
     try {
-      await db.insert(companies).values({ name: "Exhaustion fixture", issuePrefix: "EXH" });
+      await db.insert(organizations).values({ name: "Exhaustion fixture", issuePrefix: "EXH" });
       await db.insert(agents).values({ id: agentId, name: "Exhaustion agent" });
       await db.insert(heartbeatRuns).values([runId, otherRunId].map((id) => ({
         id, agentId, status: "failed",
@@ -81,7 +81,7 @@ describe("P6-11..13 / P6-17 canonical event allocator", () => {
     const agentId = "20000000-0000-4000-8000-000000000002";
     const runId = "20000000-0000-4000-8000-000000000003";
     try {
-      await db.insert(companies).values({ name: "Allocator fixture", issuePrefix: "SEQ" });
+      await db.insert(organizations).values({ name: "Allocator fixture", issuePrefix: "SEQ" });
       await db.insert(agents).values({ id: agentId, name: "Allocator agent" });
       await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running" });
       const eventTypes = ["heartbeat.started", "run.cancel.requested", "item.completed", "stdout"];

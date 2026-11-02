@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   heartbeatRuns,
@@ -5871,7 +5871,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     await db.delete(projects);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   async function createDirtyMismatchRepo(input: {
@@ -5906,7 +5906,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const runId = randomUUID();
     const now = new Date();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `Q${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6506,7 +6506,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     await db.delete(issues);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   it("persists provisioning before starting and excludes provision time from readiness timeout", async () => {
@@ -6541,7 +6541,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     ].join(" ");
     const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(serverScript)}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6741,7 +6741,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
       };
     }));
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Runtime ports ${companyId.slice(0, 8)}`,
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,
@@ -7520,7 +7520,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     // company to respect the activity_log.company_id foreign key.
     await db.delete(activityLog);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   it("restores desired services when one row is stopped and a live registered service has no row", async () => {
@@ -7592,7 +7592,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       ],
     };
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -7764,7 +7764,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       ],
     };
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -7930,7 +7930,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const agentId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8134,7 +8134,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       }
       await expect(fetch(`http://127.0.0.1:${port}`)).resolves.toMatchObject({ ok: true });
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8326,7 +8326,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       await expect(fetch(rootUrl)).resolves.toMatchObject({ ok: true });
       await expect(fetch(healthUrl)).resolves.toMatchObject({ ok: false, status: 503 });
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8482,7 +8482,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8572,7 +8572,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const cwd = process.cwd();
     const reuseKey = `project_workspace:${projectWorkspaceId}:paperclip-dev`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8673,7 +8673,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const runId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8788,7 +8788,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const projectId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -8909,7 +8909,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const projectId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

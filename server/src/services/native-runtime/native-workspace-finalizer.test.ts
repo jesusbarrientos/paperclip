@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, desc, eq, sql } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   executionWorkspaces,
@@ -110,7 +110,7 @@ describe("native workspace finalization recovery", () => {
     );
     db = createDb(temporary.connectionString);
 
-    await db.insert(companies).values({ name: "Native workspace owner", issuePrefix: "NWO" });
+    await db.insert(organizations).values({ name: "Native workspace owner", issuePrefix: "NWO" });
     await db.insert(agents).values({
       id: agentId,
       name: "Native workspace agent",

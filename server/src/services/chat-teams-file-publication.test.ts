@@ -11,7 +11,7 @@ import {
   chatMessageLinks,
   chatPublications,
   chatTeamsFileTransfers,
-  companies,
+  organizations,
   createDb,
   getEmbeddedPostgresTestSupport,
   issueAttachments,
@@ -65,7 +65,7 @@ suite("Teams same-transaction publication projection (real PostgreSQL)", () => {
       principalId = randomUUID();
     const publicationId = randomUUID(),
       id = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Teams projection fixture",
       issuePrefix: `P${companyId.slice(0, 7)}`,

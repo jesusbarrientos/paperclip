@@ -16,7 +16,7 @@ import {
 } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueAttachments,
@@ -70,7 +70,7 @@ describe("Board upload receipt to native wake staging", () => {
       "board-native-attachments-",
     );
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ name: "Board upload fixture", issuePrefix: "UPL", issueCounter: 1 });
+    await db.insert(organizations).values({ name: "Board upload fixture", issuePrefix: "UPL", issueCounter: 1 });
     root = await mkdtemp(path.join(tmpdir(), "board-native-attachments-"));
     storage = createStorageService(
       createLocalDiskStorageProvider(path.join(root, "storage")),

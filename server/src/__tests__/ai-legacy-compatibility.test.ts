@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { createDb, companies, agents, companyMemberships, adapterAuthSessions, environments, connectionGrants, toolConnections, activityLog, companySecrets } from "@paperclipai/db";
+import { createDb, organizations, agents, companyMemberships, adapterAuthSessions, environments, connectionGrants, toolConnections, activityLog, companySecrets } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "@paperclipai/db/test-embedded-postgres";
 import { secretService } from "../services/secrets.js";
 import { aiConnectionService } from "../services/ai-connections.js";
@@ -23,7 +23,7 @@ beforeAll(async () => {
   vi.stubEnv("PAPERCLIP_HOME", home);
   database = await startEmbeddedPostgresTestDatabase("ai-legacy-audit-db-");
   db = createDb(database.connectionString);
-  await db.insert(companies).values({ id: companyId, name: "Audit", issuePrefix: "AUD" });
+  await db.insert(organizations).values({ id: companyId, name: "Audit", issuePrefix: "AUD" });
   await db.insert(companyMemberships).values({ principalId: owner, principalType: "user", status: "active", membershipRole: "owner" }).onConflictDoUpdate(membershipUpsert);
   await db.insert(environments).values({ name: "Local audit", driver: "local" }).onConflictDoNothing();
   await db.insert(agents).values({ id: agentId, name: "Unadopted legacy agent", adapterType: "claude_local" });

@@ -5,7 +5,7 @@ import {
   activityLog,
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRunWatchdogDecisions,
@@ -87,7 +87,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const sourceStatus = opts.sourceStatus ?? "in_progress";
     const terminalEvidenceAt = new Date(startedAt.getTime() + 10 * 60 * 1000);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Watchdog Co",
       issuePrefix,

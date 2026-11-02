@@ -20,8 +20,7 @@ import {
   assets,
   agentApiKeys,
   authUsers,
-  companies,
-  companyLogos,
+  organizations,
   companyMemberships,
   instanceUserRoles,
   invites,
@@ -1454,8 +1453,8 @@ async function loadCompanyInviteRecords(
           )
       : Promise.resolve([]),
     db
-      .select({ name: companies.name })
-      .from(companies)
+      .select({ name: organizations.name })
+      .from(organizations)
       .limit(1)
       .then((companyRows) => companyRows[0]?.name ?? null),
   ]);
@@ -3090,12 +3089,11 @@ export function accessRoutes(
   }> {
     const company = await db
       .select({
-        id: companies.id,
-        name: companies.name,
-        logoAssetId: companyLogos.assetId,
+        id: organizations.id,
+        name: organizations.name,
+        logoAssetId: organizations.logoAssetId,
       })
-      .from(companies)
-      .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id))
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     let logoUrl: string | null = null;
@@ -3141,9 +3139,8 @@ export function accessRoutes(
         byteSize: assets.byteSize,
         originalFilename: assets.originalFilename,
       })
-      .from(companies)
-      .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id))
-      .leftJoin(assets, eq(assets.id, companyLogos.assetId))
+      .from(organizations)
+      .leftJoin(assets, eq(assets.id, organizations.logoAssetId))
       .limit(1)
       .then((rows) => rows[0] ?? null);
 

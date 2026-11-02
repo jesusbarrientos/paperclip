@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecretVersions,
@@ -55,7 +55,7 @@ describeEmbeddedPostgres("agent secret routes", () => {
     await db.delete(companySecretProviderConfigs);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -69,7 +69,7 @@ describeEmbeddedPostgres("agent secret routes", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const heartbeatRunId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Agent secret routes",
       issuePrefix: `S${companyId.slice(0, 7)}`.toUpperCase(),

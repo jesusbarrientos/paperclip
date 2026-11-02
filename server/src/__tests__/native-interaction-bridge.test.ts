@@ -4,7 +4,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -42,7 +42,7 @@ describe("P6-19 native interaction bridge", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-interaction-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ name: "Native interaction", issuePrefix: "NIB" });
+    await db.insert(organizations).values({ name: "Native interaction", issuePrefix: "NIB" });
     await db.insert(agents).values({
       id: agentId,
       name: "Native interaction agent",

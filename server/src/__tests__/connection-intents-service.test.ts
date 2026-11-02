@@ -6,7 +6,7 @@ import {
   aiProviderDefaults,
   agentWakeupRequests,
   issueComments,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecrets,
@@ -104,7 +104,7 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     const goalId = randomUUID();
     const issueId = randomUUID();
     runId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Connection tests",
       issuePrefix: "CONN",
       requireBoardApprovalForNewAgents: false,
@@ -828,7 +828,7 @@ describeEmbeddedPostgres("connectionIntentService", () => {
   async function accessFixture() {
     // Organization-wide installs from an earlier fixture would apply to this fixture's agent too.
     await db.delete(toolConnections).where(eq(toolConnections.name, "Saved Composio"));
-    const [company] = await db.select().from(companies);
+    const [company] = await db.select().from(organizations);
     const [agent] = await db.insert(agents).values({ name: "Default agent", role: "general", adapterType: "process" }).returning();
     const [otherAgent] = await db.insert(agents).values({ name: "Other agent", role: "general", adapterType: "process" }).returning();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: "grant-user", membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);

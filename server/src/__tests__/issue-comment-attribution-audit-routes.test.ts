@@ -7,7 +7,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -70,14 +70,14 @@ describeEmbeddedPostgres("issue comment attribution and patch audit routes", () 
     await db.delete(issues);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 
   afterAll(async () => tempDb?.cleanup());
 
   async function seed() {
-    const company = await db.insert(companies).values({
+    const company = await db.insert(organizations).values({
       name: "Attribution Company",
       issuePrefix: `AT${randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase()}`,
     }).returning().then((rows) => rows[0]!);

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   assets,
-  companies,
+  organizations,
   companySkillTestRunTemplates,
   companySkillTestRuns,
   companySkills,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
   });
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-skill-test-run-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Review Skill\n", "utf8");
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -444,7 +444,7 @@ describeEmbeddedPostgres("companySkillService skill test runs", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Review Skill\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

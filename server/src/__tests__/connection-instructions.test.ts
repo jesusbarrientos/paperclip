@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { access, mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, companyMemberships, connectionGrants, createDb, heartbeatRuns, issues, toolApplications, toolCatalogEntries, toolConnections, toolPolicies, toolProfileBindings, toolActionRequests } from "@paperclipai/db";
+import { agents, organizations, companyMemberships, connectionGrants, createDb, heartbeatRuns, issues, toolApplications, toolCatalogEntries, toolConnections, toolPolicies, toolProfileBindings, toolActionRequests } from "@paperclipai/db";
 import { createToolGatewayService } from "../services/tool-gateway.js";
 import { toolDiscoveryScheduler } from "../services/tool-discovery-scheduler.js";
 import { toolAccessService, projectedConnectionToolArguments, projectedConnectionToolInputSchema } from "../services/tool-access.js";
@@ -90,7 +90,7 @@ async function createRemoteMcpToolFixture(db: ReturnType<typeof createDb>) {
 (support.supported ? describe : describe.skip)("generic connection instruction delivery", () => {
   let db: ReturnType<typeof createDb>;
   let temp: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
-  beforeAll(async () => { temp = await startEmbeddedPostgresTestDatabase("paperclip-connection-instructions-"); db = createDb(temp.connectionString); await db.insert(companies).values({ name: "Gateway", issuePrefix: "TG" }); }, 30000);
+  beforeAll(async () => { temp = await startEmbeddedPostgresTestDatabase("paperclip-connection-instructions-"); db = createDb(temp.connectionString); await db.insert(organizations).values({ name: "Gateway", issuePrefix: "TG" }); }, 30000);
   afterAll(async () => { await temp?.cleanup(); });
   async function fixture() {
     const run = await createRunFixture(db);

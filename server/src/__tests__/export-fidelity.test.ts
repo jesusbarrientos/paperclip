@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, createDb, issueLabels, issueRelations, issues, labels } from "@paperclipai/db";
+import { organizations, createDb, issueLabels, issueRelations, issues, labels } from "@paperclipai/db";
 
 import { buildExportFidelityReport, collectExportFidelityCounts } from "../services/export-fidelity.js";
 import {
@@ -31,7 +31,7 @@ describeEmbeddedPostgres("export fidelity counts", () => {
     await db.delete(issueRelations);
     await db.delete(labels);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("export fidelity counts", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

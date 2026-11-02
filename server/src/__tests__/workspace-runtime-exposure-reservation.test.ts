@@ -46,7 +46,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   projectWorkspaces,
@@ -346,7 +346,7 @@ const GUEST_COMMAND =
       await db.delete(projects);
       // Drift reporting writes activity rows, which hold a company FK.
       await db.delete(activityLog);
-      await db.delete(companies);
+      await db.delete(organizations);
     });
 
     /**
@@ -362,7 +362,7 @@ const GUEST_COMMAND =
       const otherWorkspaceId = randomUUID();
       const leasedRuntimeId = randomUUID();
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: `Q${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

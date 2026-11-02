@@ -11,7 +11,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   connectionGrants,
   companySecretBindings,
@@ -291,7 +291,7 @@ function installMcpOAuthFixture(options: FixtureOptions = {}) {
 
 async function createCompany(db: ReturnType<typeof createDb>) {
   const company = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Generic MCP ${randomUUID()}`,
       issuePrefix: `GM${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -375,7 +375,7 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 
@@ -2174,7 +2174,7 @@ describeEmbeddedPostgres("generic remote MCP connections", () => {
       try {
         // Connect before racing: paying TCP and startup latency inside the race
         // would just hand the first callback an uncontested head start.
-        await otherDb.select().from(companies).limit(1);
+        await otherDb.select().from(organizations).limit(1);
         settled = await Promise.allSettled([
           service.completeOAuthCallback({ state, code, iss: ISSUER, redirectUri: REDIRECT_URI, actor }),
           otherService.completeOAuthCallback({ state, code, iss: ISSUER, redirectUri: REDIRECT_URI, actor }),

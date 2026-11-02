@@ -1,0 +1,2 @@
+ALTER TABLE "company_onboarding_seeds" ADD COLUMN "singleton_key" text DEFAULT 'default' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "company_onboarding_seeds_singleton_uq" ON "company_onboarding_seeds" USING btree ("singleton_key");

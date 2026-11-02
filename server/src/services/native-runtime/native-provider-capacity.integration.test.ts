@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRunEvents,
@@ -43,7 +43,7 @@ describe("native provider capacity failure persistence", () => {
       "native-provider-capacity-",
     );
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Native capacity regression",
       issuePrefix: "NPC",

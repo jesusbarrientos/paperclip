@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeAll, afterAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, companies, completionContracts, createDb, environmentLeases, environments, heartbeatRuns, issues, issueRecoveryActions, nativeRunFinalizations, nativeRunResults, agentWakeupRequests, activityLog } from "@paperclipai/db";
+import { agents, organizations, completionContracts, createDb, environmentLeases, environments, heartbeatRuns, issues, issueRecoveryActions, nativeRunFinalizations, nativeRunResults, agentWakeupRequests, activityLog } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { remoteTerminationReceipt } from "../remote-execution-termination.js";
 import { withNativeWorkspaceFinalizationOwnership } from "./native-workspace-finalization-ownership.js";
@@ -19,7 +19,7 @@ describe("board retry of accepted workspace export", () => {
   const companyId = randomUUID(), agentId = randomUUID(), environmentId = randomUUID();
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("workspace-export-retry-"); db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Export repair", issuePrefix: "EXP" });
+    await db.insert(organizations).values({ id: companyId, name: "Export repair", issuePrefix: "EXP" });
     await db.insert(agents).values({ id: agentId, name: "Exporter", adapterType: "paperclip_runner" });
     await db.insert(environments).values({ id: environmentId, name: `Retained ${environmentId}`, driver: "sandbox" });
   }, 30_000);

@@ -23,7 +23,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -76,7 +76,7 @@ const support = externalDatabaseUrl
         agentId = randomUUID(),
         issueId = randomUUID(),
         runId = randomUUID();
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Recovery",
         issuePrefix: `R${companyId.slice(0, 6)}`,

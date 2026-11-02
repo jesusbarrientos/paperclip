@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -77,7 +77,7 @@ describeEmbeddedPostgres(
       const issueId = randomUUID();
       const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Status Preserving Telemetry",
         issuePrefix,

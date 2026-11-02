@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, companySkills, createDb, projects, projectWorkspaces } from "@paperclipai/db";
+import { organizations, companySkills, createDb, projects, projectWorkspaces } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { companySkillService } from "../services/company-skills.js";
 import { resolveManagedProjectWorkspaceDir } from "../home-paths.js";
@@ -25,7 +25,7 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
     await db.delete(companySkills);
     await db.delete(projectWorkspaces);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all([...cleanupDirs].map((dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
   });
@@ -48,7 +48,7 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
     const symlink = path.join(workspace, "escaped-link");
     await fs.symlink(outside, symlink);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Boundary Co",
       issuePrefix: `B${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
@@ -96,7 +96,7 @@ describeEmbeddedPostgres("company skill local import boundary", () => {
     const previousHome = process.env.PAPERCLIP_HOME;
     process.env.PAPERCLIP_HOME = home;
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Managed Co",
         issuePrefix: `M${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

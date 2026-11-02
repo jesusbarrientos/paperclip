@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   agents,
   assets,
-  companies,
+  organizations,
   createDb,
   documentMemberships,
   documents,
@@ -77,7 +77,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     await db.delete(issues);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -97,7 +97,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     const directAttachmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const workProductAttachmentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-    await db.insert(companies).values([
+    await db.insert(organizations).values([
       { id: companyId, name: "Paperclip", issuePrefix: "PAP", requireBoardApprovalForNewAgents: false },
     ]);
     await db.insert(agents).values([

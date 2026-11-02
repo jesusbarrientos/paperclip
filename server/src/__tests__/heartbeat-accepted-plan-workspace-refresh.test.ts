@@ -12,7 +12,7 @@ import {
   agentTaskSessions,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   documentRevisions,
@@ -152,7 +152,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.delete(agents);
     await db.delete(workspaceOperations);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -281,7 +281,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await instanceSettingsService(db).updateExperimental({
       enableIsolatedWorkspaces: true,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -449,7 +449,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await instanceSettingsService(db).updateExperimental({
       enableIsolatedWorkspaces: true,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -680,7 +680,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await instanceSettingsService(db).updateExperimental({
       enableIsolatedWorkspaces: false,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -832,7 +832,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await instanceSettingsService(db).updateExperimental({
       enableIsolatedWorkspaces: false,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -985,7 +985,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await instanceSettingsService(db).updateExperimental({
       enableIsolatedWorkspaces: false,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

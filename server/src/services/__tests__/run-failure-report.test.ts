@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { agents, companies, createDb, heartbeatRuns, type Db } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns, type Db } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -61,7 +61,7 @@ describeEmbeddedPostgres("reportRunFailure", () => {
     process.env = inheritedEnv;
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("reportRunFailure", () => {
 
   async function seedCompanyAndAgent(agentOverrides: Partial<typeof agents.$inferInsert> = {}) {
     agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TEST",
       requireBoardApprovalForNewAgents: false,

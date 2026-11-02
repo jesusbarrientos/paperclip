@@ -7,7 +7,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueRelations,
@@ -34,7 +34,7 @@ if (!embeddedPostgresSupport.supported) {
 }
 
 type Db = ReturnType<typeof createDb>;
-type CompanyRow = typeof companies.$inferSelect;
+type CompanyRow = typeof organizations.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
 type ProjectRow = typeof projects.$inferSelect;
 type IssueRow = typeof issues.$inferSelect;
@@ -73,7 +73,7 @@ function agentActor(company: CompanyRow, agent: AgentRow, runId: string): Expres
 
 async function seedCompany(db: Db, label = "Wake Diagnostics") {
   const nonce = randomUUID().slice(0, 8);
-  const [company] = await db.insert(companies).values({
+  const [company] = await db.insert(organizations).values({
     name: `${label} ${nonce}`,
     issuePrefix: `WD${nonce.slice(0, 4).toUpperCase()}`,
     defaultResponsibleUserId: "board-user",
@@ -194,7 +194,7 @@ describeEmbeddedPostgres("issue wake diagnostics route", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

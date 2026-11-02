@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   goals,
   heartbeatRuns,
@@ -51,7 +51,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const goalId = randomUUID();
       const issueId = randomUUID();
       runId = randomUUID();
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Connection tests",
         issuePrefix: "AGG",

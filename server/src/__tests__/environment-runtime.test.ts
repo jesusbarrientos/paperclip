@@ -12,7 +12,7 @@ import {
 } from "@paperclipai/adapter-utils/ssh";
 import {
   agents,
-  companies,
+  organizations,
   companySecretVersions,
   companySecrets,
   createDb,
@@ -231,7 +231,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     await db.delete(companySecretVersions);
     await db.delete(companySecrets);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -269,7 +269,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const environmentName = input.name ?? `${driver}-${environmentId.slice(0, 8)}`;
     let config = input.config ?? {};
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       status: "active",

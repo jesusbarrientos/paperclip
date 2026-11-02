@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
-import { agents, approvals, companies, companyMemberships, companySecrets, connectionGrants, createDb, heartbeatRuns, issues, toolCatalogEntries, toolActionRequests, toolConnections, toolPolicies, toolProfileBindings, toolProfiles, toolAccessAuditEvents } from "@paperclipai/db";
+import { agents, approvals, organizations, companyMemberships, companySecrets, connectionGrants, createDb, heartbeatRuns, issues, toolCatalogEntries, toolActionRequests, toolConnections, toolPolicies, toolProfileBindings, toolProfiles, toolAccessAuditEvents } from "@paperclipai/db";
 import { toolAccessService } from "../services/tool-access.js";
 import { createToolGatewayService } from "../services/tool-gateway.js";
 import { RAILWAY_API_URL, RAILWAY_MCP_URL, RAILWAY_QUERIES } from "../services/railway.js";
@@ -26,7 +26,7 @@ const initialTools = [
   afterAll(async () => { await temp?.cleanup(); });
 
   async function fixture() {
-    const [company] = await db.insert(companies).values({ name: "Railway fixture", issuePrefix: `RW${randomUUID().slice(0, 6)}` }).returning();
+    const [company] = await db.insert(organizations).values({ name: "Railway fixture", issuePrefix: `RW${randomUUID().slice(0, 6)}` }).returning();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" }).onConflictDoUpdate(membershipUpsert);
     let tools: unknown[] = [...initialTools];
     let apiStatus = 200;

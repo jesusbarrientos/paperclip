@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   environmentLeases,
   environments,
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("heartbeat sweepOrphanedActiveLeases", () => {
     await db.delete(heartbeatRuns);
     await db.delete(environments);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -76,7 +76,7 @@ describeEmbeddedPostgres("heartbeat sweepOrphanedActiveLeases", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

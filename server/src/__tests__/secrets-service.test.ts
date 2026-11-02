@@ -10,7 +10,7 @@ import { resolveCodexAuthCacheDir, withAccountHomeSecretMutationLock } from "@pa
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretProviderConfigs,
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("secretService", () => {
     await db.delete(companyMemberships);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -187,7 +187,7 @@ describeEmbeddedPostgres("secretService", () => {
 
   async function seedCompany(name = "Acme") {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name,
       issuePrefix: `T${companyId.slice(0, 7)}`.toUpperCase(),

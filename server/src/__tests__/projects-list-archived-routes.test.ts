@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, createDb, projects } from "@paperclipai/db";
+import { organizations, createDb, projects } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -54,7 +54,7 @@ describeEmbeddedPostgres("project list archived route defaults", () => {
 
   afterEach(async () => {
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -66,7 +66,7 @@ describeEmbeddedPostgres("project list archived route defaults", () => {
     const activeProjectId = randomUUID();
     const archivedProjectId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

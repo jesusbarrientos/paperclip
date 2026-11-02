@@ -9,7 +9,7 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   createDb,
@@ -95,7 +95,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     await db.delete(companySkills);
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -140,7 +140,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   }
 
   async function seedCompany() {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,

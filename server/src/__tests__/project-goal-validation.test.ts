@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  companies,
+  organizations,
   createDb,
   goals,
   projectGoals,
@@ -32,7 +32,7 @@ describeEmbeddedPostgres("project goal validation", () => {
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-project-goal-validation-");
     db = createDb(tempDb.connectionString);
-    await db.insert(companies).values({ name: "Goal validation", issuePrefix: "GV" });
+    await db.insert(organizations).values({ name: "Goal validation", issuePrefix: "GV" });
   }, 20_000);
 
   afterEach(async () => {

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { agents, companies, companyMemberships, connectionGrants, createDb, issues, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots, toolProfileBindings, toolProfileEntries, toolProfiles } from "@paperclipai/db";
+import { agents, organizations, companyMemberships, connectionGrants, createDb, issues, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots, toolProfileBindings, toolProfileEntries, toolProfiles } from "@paperclipai/db";
 import { composioAppSetupSchema } from "@paperclipai/shared";
 import { composioAppAccounts, composioAppSetupResult } from "../services/composio-app-setup.js";
 import { toolAccessService } from "../services/tool-access.js";
@@ -56,7 +56,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const database = await startEmbeddedPostgresTestDatabase("paperclip-composio-setup-");
     db = createDb(database.connectionString);
     cleanup = database.cleanup;
-    await db.insert(companies).values({ name: "Composio direct setup", issuePrefix: "CMP" });
+    await db.insert(organizations).values({ name: "Composio direct setup", issuePrefix: "CMP" });
   }, 20_000);
   afterAll(async () => { await cleanup?.(); });
   beforeEach(async () => {
@@ -68,7 +68,7 @@ const support = await getEmbeddedPostgresTestSupport();
   });
 
   async function fixture(syncToolkits: string[] = ["circleback_mcp", "notion", "hubspot"]) {
-    const [company] = await db.select().from(companies);
+    const [company] = await db.select().from(organizations);
     const userId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const [agent, otherAgent] = await db.insert(agents).values(["Default agent", "Other agent"].map(name => ({ name, role: "general" as const, status: "idle" as const, adapterType: "codex_local" }))).returning();

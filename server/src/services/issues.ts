@@ -46,7 +46,7 @@ import {
   authUsers,
   approvals,
   assets,
-  companies,
+  organizations,
   companyMemberships,
   documentRevisions,
   documents,
@@ -9793,13 +9793,13 @@ export function issueService(db: Db) {
         const currentMax = maxRow?.maxNum ?? 0;
 
         const [company] = await tx
-          .update(companies)
+          .update(organizations)
           .set({
-            issueCounter: sql`greatest(${companies.issueCounter}, ${currentMax}) + 1`,
+            issueCounter: sql`greatest(${organizations.issueCounter}, ${currentMax}) + 1`,
           })
           .returning({
-            issueCounter: companies.issueCounter,
-            issuePrefix: companies.issuePrefix,
+            issueCounter: organizations.issueCounter,
+            issuePrefix: organizations.issuePrefix,
           });
 
         const issueNumber = company.issueCounter;
@@ -9951,15 +9951,15 @@ export function issueService(db: Db) {
         const currentMax = maxRow?.maxNum ?? 0;
         const [company] = await tx
           .select({
-            issueCounter: companies.issueCounter,
-            issuePrefix: companies.issuePrefix,
+            issueCounter: organizations.issueCounter,
+            issuePrefix: organizations.issuePrefix,
           })
-          .from(companies)
+          .from(organizations)
           .limit(1);
         if (!company) throw notFound("Target company not found");
         const base = Math.max(company.issueCounter ?? 0, currentMax);
         await tx
-          .update(companies)
+          .update(organizations)
           .set({ issueCounter: base + rows.length });
 
         const defaultCompanyGoal = await getDefaultCompanyGoal(tx);

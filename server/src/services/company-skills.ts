@@ -12,7 +12,7 @@ import {
   agents as agentsTable,
   assets,
   authUsers,
-  companies,
+  organizations,
   companySkillComments,
   companySkillStars,
   companySkillTestInputs,
@@ -3182,8 +3182,8 @@ export function companySkillService(db: Db) {
 
     const refreshPromise = (async () => {
       const companyExists = await db
-        .select({ id: companies.id })
-        .from(companies)
+        .select({ id: organizations.id })
+        .from(organizations)
         .limit(1)
         .then((rows) => rows.length > 0);
       if (!companyExists) {

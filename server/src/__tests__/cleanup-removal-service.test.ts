@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   documents,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await db.delete(issues);
     await db.delete(routines);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     const runId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -213,7 +213,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     const removed = await companyService(db).remove(companyId);
 
     expect(removed?.id).toBe(companyId);
-    await expect(db.select().from(companies).where(eq(companies.id, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(organizations).where(eq(organizations.id, companyId))).resolves.toHaveLength(0);
     await expect(db.select().from(issues).where(eq(issues.id, issueId))).resolves.toHaveLength(0);
     await expect(db.select().from(documents).where(eq(documents.id, documentId))).resolves.toHaveLength(0);
     await expect(db.select().from(documentRevisions).where(eq(documentRevisions.id, revisionId))).resolves.toHaveLength(0);
@@ -254,6 +254,6 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     expect(removed?.id).toBe(companyId);
     await expect(db.select().from(routines).where(eq(routines.id, routineId))).resolves.toHaveLength(0);
     await expect(db.select().from(agents).where(eq(agents.id, agentId))).resolves.toHaveLength(0);
-    await expect(db.select().from(companies).where(eq(companies.id, companyId))).resolves.toHaveLength(0);
+    await expect(db.select().from(organizations).where(eq(organizations.id, companyId))).resolves.toHaveLength(0);
   });
 });

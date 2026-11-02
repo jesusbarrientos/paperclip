@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   activityLog,
   agents,
-  companyOnboardingSeeds,
+  onboardingSeeds,
   goals,
   issues,
   projects,
@@ -41,7 +41,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
 
   afterEach(async () => {
     await ctx.db.delete(activityLog);
-    await ctx.db.delete(companyOnboardingSeeds);
+    await ctx.db.delete(onboardingSeeds);
     await ctx.db.delete(issues);
     await ctx.db.delete(projects);
     await ctx.db.delete(agents);
@@ -114,7 +114,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
 
     const record = await ctx.db
       .select()
-      .from(companyOnboardingSeeds);
+      .from(onboardingSeeds);
     expect(record).toHaveLength(1);
     expect(record[0]?.revision).toBe(SEED.revision);
     expect(record[0]?.agentId).toBe(companyAgents[0]?.id);
@@ -222,7 +222,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
     expect(response.body.changed).toBe(true);
     const record = await ctx.db
       .select()
-      .from(companyOnboardingSeeds);
+      .from(onboardingSeeds);
     expect(record[0]?.revision).toBe("d".repeat(32));
     expect(record[0]?.mission).toBeNull();
   });
@@ -261,7 +261,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
     expect(
       await ctx.db
         .select()
-        .from(companyOnboardingSeeds),
+        .from(onboardingSeeds),
     ).toHaveLength(0);
     expect(await ctx.db.select().from(agents)).toHaveLength(0);
 
@@ -290,7 +290,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
 
     expect(response.status).toBe(403);
     expect(await ctx.db.select().from(agents)).toHaveLength(0);
-    expect(await ctx.db.select().from(companyOnboardingSeeds)).toHaveLength(0);
+    expect(await ctx.db.select().from(onboardingSeeds)).toHaveLength(0);
   });
 
   it("rejects a body missing the revision", async () => {
@@ -299,7 +299,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
     const response = await post(app, { mission: "No revision here" });
 
     expect(response.status).toBe(400);
-    expect(await ctx.db.select().from(companyOnboardingSeeds)).toHaveLength(0);
+    expect(await ctx.db.select().from(onboardingSeeds)).toHaveLength(0);
   });
 
   it("rejects seed fields past the bounds Cloud enforces before sending", async () => {
@@ -323,7 +323,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
     });
     expect(overlongTaskTitle.status).toBe(400);
 
-    expect(await ctx.db.select().from(companyOnboardingSeeds)).toHaveLength(0);
+    expect(await ctx.db.select().from(onboardingSeeds)).toHaveLength(0);
   });
 
   it("never reads the seed from a trusted Cloud header", async () => {
@@ -379,7 +379,7 @@ describeEmbeddedPostgres("POST /api/onboarding-seed", () => {
     expect(await ctx.db.select().from(agents)).toHaveLength(1);
     expect(await ctx.db.select().from(projects)).toHaveLength(1);
     expect(await ctx.db.select().from(issues)).toHaveLength(1);
-    expect(await ctx.db.select().from(companyOnboardingSeeds)).toHaveLength(1);
+    expect(await ctx.db.select().from(onboardingSeeds)).toHaveLength(1);
   });
 
   it("refreshes a first task's assignee and goal when a later revision adds them", async () => {

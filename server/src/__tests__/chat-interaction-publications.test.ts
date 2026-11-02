@@ -7,7 +7,7 @@ import {
   chatConversations,
   chatEndpoints,
   chatPublications,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -62,7 +62,7 @@ describeEmbeddedPostgres(
       const companyId = randomUUID();
       const agentId = randomUUID();
       const issueId = randomUUID();
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: `Terminal chat ${companyId}`,
         issuePrefix: `TC${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

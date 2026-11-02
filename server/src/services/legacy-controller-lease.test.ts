@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "../__tests__/helpers/embedded-postgres.js";
 import { heartbeatService } from "./heartbeat.js";
 import { hasLiveLegacyController, legacyControllerBootId, legacyControllerClaim,
@@ -18,7 +18,7 @@ const support = await getEmbeddedPostgresTestSupport();
   afterAll(async () => { await database?.cleanup(); });
   async function seed() {
     const companyId = randomUUID(), agentId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Controller test", issuePrefix: `C${companyId.slice(0, 7)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Controller test", issuePrefix: `C${companyId.slice(0, 7)}` });
     await db.insert(agents).values({ id: agentId, name: "Agent", role: "general", adapterType: "claude_local", status: "idle" });
     const [queued] = await db.insert(heartbeatRuns).values({ agentId }).returning();
     const [run] = await db.update(heartbeatRuns).set({ status: "running", ...legacyControllerClaim("legacy") })

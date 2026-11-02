@@ -14,7 +14,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import {
   approvals, issueApprovals, issueThreadInteractions, chatConversations, chatEndpoints, toolApplications, toolConnections,
-  agentWakeupRequests, agents, companies, createDb, heartbeatRunEvents, heartbeatRuns, issueComments, issueRecoveryActions,
+  agentWakeupRequests, agents, organizations, createDb, heartbeatRunEvents, heartbeatRuns, issueComments, issueRecoveryActions,
   issues, nativeRunFinalizations, nativeRunResults, completionContracts, environmentLeases, environments, issueRelations, issueTreeHolds, issueTreeHoldMembers,
 } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase, getEmbeddedPostgresTestSupport } from "../__tests__/helpers/embedded-postgres.js";
@@ -36,7 +36,7 @@ const support = await getEmbeddedPostgresTestSupport();
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID();
     const sourceRunId = randomUUID(), successorRunId = randomUUID();
     const commentId: string = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Explicit turn", defaultResponsibleUserId: "board", issuePrefix: `E${companyId.slice(0, 6)}` });
+    await db.insert(organizations).values({ id: companyId, name: "Explicit turn", defaultResponsibleUserId: "board", issuePrefix: `E${companyId.slice(0, 6)}` });
     await db.insert(agents).values({ id: agentId, name: "Native", role: "engineer", adapterType: "paperclip_runner", status: "idle", runtimeConfig: { heartbeat: { maxConcurrentRuns: 1 } } });
     await db.insert(issues).values({ id: issueId, title: "Deploy", status: "blocked", assigneeAgentId: agentId });
     await db.insert(heartbeatRuns).values({ id: sourceRunId, agentId,

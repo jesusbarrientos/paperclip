@@ -4,7 +4,7 @@ import { and, eq, gt, isNull, lt, lte, notExists, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Request } from "express";
 import {
-  type Db, activityLog, companies, companyLogos, mcpOauthClients, mcpOauthGrants, mcpOauthRequests, mcpOauthTokens, mcpOauthDeviceRequests, mcpOauthMetadataAdmissions,
+  type Db, activityLog, organizations, mcpOauthClients, mcpOauthGrants, mcpOauthRequests, mcpOauthTokens, mcpOauthDeviceRequests, mcpOauthMetadataAdmissions,
 } from "@paperclipai/db";
 import { PUBLIC_MCP_PATH, PUBLIC_MCP_SCOPES, type McpConnectionRequest } from "@paperclipai/shared";
 import { boardAuthService } from "../board-auth.js";
@@ -76,7 +76,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     if (grant.revokedAt || grant.resource !== config.resource) throw invalidGrant();
     const access = await boardAuth.resolveBoardAccess(grant.userId);
     const membership = access.memberships.find((m) => m.status === "active");
-    const [company] = await db.select({ status: companies.status }).from(companies).limit(1);
+    const [company] = await db.select({ status: organizations.status }).from(organizations).limit(1);
     if (!access.user || !membership || !company || company.status === "archived") throw invalidGrant();
     return {
       type: "board", source: "mcp_oauth", userId: grant.userId,
@@ -172,8 +172,8 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
   async function consentContext(actor: Request["actor"]) {
     const signedIn = actor.type === "board" && !!actor.userId && ["session", "cloud_tenant"].includes(actor.source ?? "");
     const access = signedIn ? await boardAuth.resolveBoardAccess(actor.userId!) : null;
-    const available = access?.user && access.memberships.length ? await db.select({ id: companies.id, name: companies.name, status: companies.status, logoAssetId: companyLogos.assetId })
-      .from(companies).leftJoin(companyLogos, eq(companyLogos.companyId, companies.id)).limit(1) : [];
+    const available = access?.user && access.memberships.length ? await db.select({ id: organizations.id, name: organizations.name, status: organizations.status, logoAssetId: organizations.logoAssetId })
+      .from(organizations).limit(1) : [];
     return { requiresSignIn: !access?.user, companies: available.flatMap((company) => {
       const membership = access?.memberships[0];
       return membership?.status === "active" && company.status !== "archived"
@@ -186,7 +186,7 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     const access = await boardAuth.resolveBoardAccess(actor.userId);
     const membership = access.memberships.find(m => m.status === "active");
     if (!access.user || !membership) throw new McpOAuthError("access_denied", "You are not an active member of this organization.", 403);
-    const [company] = await tx.select({ status: companies.status }).from(companies).limit(1);
+    const [company] = await tx.select({ status: organizations.status }).from(organizations).limit(1);
     if (!company || company.status === "archived") throw new McpOAuthError("access_denied", "This organization is no longer available.", 403);
     if (input.allowWrites && membership.membershipRole === "viewer") throw new McpOAuthError("access_denied", "Viewer access is read-only.", 403);
     const scopes = request.scopes.filter(s => s !== "paperclip:write" || input.allowWrites);
@@ -420,17 +420,17 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
     },
     async authorizeGrant(grantId: string): Promise<McpPrincipal> {
       await assertEnabled();
-      const [row] = await db.select({ grant: mcpOauthGrants, company: { id: companies.id, name: companies.name, issuePrefix: companies.issuePrefix, status: companies.status } })
-        .from(mcpOauthGrants).innerJoin(companies, sql`true`)
+      const [row] = await db.select({ grant: mcpOauthGrants, company: { id: organizations.id, name: organizations.name, issuePrefix: organizations.issuePrefix, status: organizations.status } })
+        .from(mcpOauthGrants).innerJoin(organizations, sql`true`)
         .where(eq(mcpOauthGrants.id, grantId));
       if (!row || !row.grant.scopes.includes("paperclip:read")) throw invalidGrant();
       return { ...row, actor: await actorForGrant(row.grant) };
     },
     async authenticate(token: string): Promise<McpPrincipal> {
       await assertEnabled();
-      const [row] = await db.select({ token: mcpOauthTokens, grant: mcpOauthGrants, company: { id: companies.id, name: companies.name, issuePrefix: companies.issuePrefix, status: companies.status } })
+      const [row] = await db.select({ token: mcpOauthTokens, grant: mcpOauthGrants, company: { id: organizations.id, name: organizations.name, issuePrefix: organizations.issuePrefix, status: organizations.status } })
         .from(mcpOauthTokens).innerJoin(mcpOauthGrants, eq(mcpOauthTokens.grantId, mcpOauthGrants.id))
-        .innerJoin(companies, sql`true`)
+        .innerJoin(organizations, sql`true`)
         .where(and(eq(mcpOauthTokens.tokenHash, hashMcpSecret(token)), eq(mcpOauthTokens.kind, "access"),
           gt(mcpOauthTokens.expiresAt, new Date()), isNull(mcpOauthGrants.revokedAt)));
       if (!row) throw new McpOAuthError("invalid_token", "Connect Paperclip again.", 401);
@@ -453,9 +453,9 @@ export function createPublicMcpOAuth(db: Db, config: PublicMcpConfig, options: {
       });
     },
     async listConnections(userId: string) {
-      const rows = await db.select({ grant: mcpOauthGrants, clientName: mcpOauthClients.name, companyName: companies.name })
+      const rows = await db.select({ grant: mcpOauthGrants, clientName: mcpOauthClients.name, companyName: organizations.name })
         .from(mcpOauthGrants).innerJoin(mcpOauthClients, eq(mcpOauthGrants.clientId, mcpOauthClients.id))
-        .innerJoin(companies, sql`true`)
+        .innerJoin(organizations, sql`true`)
         .where(eq(mcpOauthGrants.userId, userId));
       return rows.map(({ grant, clientName, companyName }) => ({
         id: grant.id, clientName, companyName, scopes: grant.scopes,

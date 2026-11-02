@@ -17,7 +17,7 @@ import {
   chatIdentityLinks,
   chatMessageLinks,
   chatPublications,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -74,7 +74,7 @@ describe("native same-conversation chat attachment reuse", () => {
     );
     await mkdir(storageRoot, { recursive: true });
     storage = createStorageService(createLocalDiskStorageProvider(storageRoot));
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Native chat attachment reuse",
       issuePrefix: "NCR",
       issueCounter: 1,

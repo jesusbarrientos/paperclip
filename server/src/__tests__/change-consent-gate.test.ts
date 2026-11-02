@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueThreadInteractions,
@@ -35,7 +35,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     await db.delete(issues);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -50,7 +50,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     const skillId = randomUUID();
     const targetKey = skillChangeTargetKey(skillId);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",

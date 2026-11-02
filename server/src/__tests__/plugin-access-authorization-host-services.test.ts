@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   invites,
@@ -34,7 +34,7 @@ function createEventBusStub() {
 
 async function createCompany(db: ReturnType<typeof createDb>, prefix: string) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `${prefix} ${randomUUID()}`,
       issuePrefix: `${prefix}${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -58,7 +58,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     await db.delete(invites);
     await db.delete(agents);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

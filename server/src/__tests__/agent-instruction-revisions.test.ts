@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import { agents, agentApiKeys, companies, authUsers, companyMemberships, principalPermissionGrants, heartbeatRuns,
+import { agents, agentApiKeys, organizations, authUsers, companyMemberships, principalPermissionGrants, heartbeatRuns,
   agentInstructionRevisions, agentInstructionHeads, issueThreadInteractions, issues, createDb } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentInstructionRevisionService } from "../services/agent-instruction-revisions.js";
@@ -31,7 +31,7 @@ describe("canonical instruction revisions", () => {
     database = await startEmbeddedPostgresTestDatabase("instruction-revisions-db-");
     db = createDb(database.connectionString);
     service = agentInstructionRevisionService(db);
-    await db.insert(companies).values({ name: "Instruction tests", issuePrefix: "INST" });
+    await db.insert(organizations).values({ name: "Instruction tests", issuePrefix: "INST" });
   }, 90_000);
   afterAll(async () => {
     vi.restoreAllMocks();

@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   issues,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("reopen archived isolated execution workspace", () => {
     await db.delete(executionWorkspaces);
     await db.delete(projectWorkspaces);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("reopen archived isolated execution workspace", () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `PAP-${companyId.slice(0, 8)}`,
@@ -134,7 +134,7 @@ describeEmbeddedPostgres("reopen archived isolated execution workspace", () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `PAP-${companyId.slice(0, 8)}`,

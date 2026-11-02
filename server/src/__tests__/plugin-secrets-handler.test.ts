@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  companies,
+  organizations,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecrets,
@@ -84,7 +84,7 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
     await db.delete(companySecrets);
     await db.delete(companySecretProviderConfigs);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -98,7 +98,7 @@ describeEmbeddedPostgres("createPluginSecretsHandler shared vault integration", 
   });
 
   async function seedOrganization() {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Plugin Co",
       issuePrefix: "PLUG",
       status: "active",

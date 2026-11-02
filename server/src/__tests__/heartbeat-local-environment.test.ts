@@ -6,7 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   environmentLeases,
   environments,
@@ -115,7 +115,7 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
     const agentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -173,7 +173,7 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "paperclip-process-env-"));
     const envPath = join(tempDir, "env.json");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

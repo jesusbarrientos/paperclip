@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { readPaperclipSkillSyncPreference, writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/server-utils";
 import { and, desc, eq, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, builtInManagedResources, companies, issueThreadInteractions, issues, routines, routineTriggers } from "@paperclipai/db";
+import { activityLog, agents, builtInManagedResources, organizations, issueThreadInteractions, issues, routines, routineTriggers } from "@paperclipai/db";
 import { syncRoutineVariablesWithTemplate } from "@paperclipai/shared";
 import type { Agent, Approval, CompanySkill, PermissionKey, Routine, RoutineTrigger, RoutineVariable } from "@paperclipai/shared";
 import { conflict, HttpError, notFound, unprocessable } from "../errors.js";
@@ -1620,10 +1620,10 @@ export function builtInAgentService(db: Db) {
   async function ensureCompany() {
     const company = await db
       .select({
-        id: companies.id,
-        requireBoardApprovalForNewAgents: companies.requireBoardApprovalForNewAgents,
+        id: organizations.id,
+        requireBoardApprovalForNewAgents: organizations.requireBoardApprovalForNewAgents,
       })
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!company) throw notFound("Company not found");

@@ -5,7 +5,7 @@ import {
   agents,
   agentRuntimeState,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(agentRuntimeState);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     const agentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     const issueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -200,7 +200,7 @@ describeEmbeddedPostgres("heartbeat runtime state deduplication", () => {
     const issueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

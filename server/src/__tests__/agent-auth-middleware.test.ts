@@ -7,7 +7,7 @@ import {
   agentApiKeys,
   agents,
   boardApiKeys,
-  companies,
+  organizations,
   heartbeatRuns,
 } from "@paperclipai/db";
 import { actorMiddleware } from "../middleware/auth.js";
@@ -76,7 +76,7 @@ function createDbState(input: {
         if (table === agentApiKeys) return keyRow ? [keyRow] : [];
         if (table === agents) return [agentRow];
         if (table === heartbeatRuns) return runRow ? [runRow] : [];
-        if (table === companies) return [{ id: "company-1" }];
+        if (table === organizations) return [{ id: "company-1" }];
         return [];
       }),
     update: () => ({

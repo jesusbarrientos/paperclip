@@ -7,7 +7,7 @@ import {
   agents,
   approvals,
   authUsers,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueApprovals,
@@ -49,7 +49,7 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(authUsers);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -79,7 +79,7 @@ describeEmbeddedPostgres("work timeline aggregation", () => {
     const userId = "user-1";
     const agentAId = randomUUID();
     const agentBId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Timeline Co",
       issuePrefix: `T${randomUUID().replace(/-/g, "").slice(0, 4).toUpperCase()}`,

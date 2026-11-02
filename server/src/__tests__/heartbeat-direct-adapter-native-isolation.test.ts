@@ -11,7 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("direct adapter native-runner isolation", () => {
         resultJson: { directProofJson },
       });
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Direct compatibility",
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -203,7 +203,7 @@ describeEmbeddedPostgres("direct adapter native-runner isolation", () => {
       return { exitCode: 1, signal: null, timedOut: false, errorMessage: "ACP turn cancelled",
         resultJson: { status: "cancelled", acpToolInventoryComplete: true, acpPendingToolCount: 0 } };
     });
-    await db.insert(companies).values({ id: companyId, name: "Provider stop",
+    await db.insert(organizations).values({ id: companyId, name: "Provider stop",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false, defaultResponsibleUserId: "responsible-user" });
     await db.insert(agents).values({ id: agentId, name: "Claude", role: "engineer", status: "idle",

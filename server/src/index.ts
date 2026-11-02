@@ -40,7 +40,7 @@ import {
   formatDatabaseBackupResult,
   runDatabaseBackup,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   instanceUserRoles,
 } from "@paperclipai/db";
@@ -390,7 +390,7 @@ async function startServerWithDatabaseTeardown(
       });
     }
   
-    const companyRows = await db.select({ id: companies.id }).from(companies);
+    const companyRows = await db.select({ id: organizations.id }).from(organizations);
     for (const company of companyRows) {
       const membership = await db
         .select({ id: companyMemberships.id })
@@ -1633,7 +1633,7 @@ async function startServerWithDatabaseTeardown(
     await runEnvironmentLeaseCleanupSweep(0);
 
     const runRetentionSweep = async () => {
-      const activeCompanies = await db.select({ id: companies.id }).from(companies).where(eq(companies.status, "active"));
+      const activeCompanies = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.status, "active"));
       let archived = 0;
       for (const company of activeCompanies) {
         // Cursor pagination rebuilds the whole feed for every page; one

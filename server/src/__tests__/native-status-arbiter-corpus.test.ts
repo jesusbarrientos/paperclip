@@ -8,7 +8,7 @@ import { and, eq } from "drizzle-orm";
 import {
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -381,7 +381,7 @@ describe("P6-31 Section 18.13 executable status-authority corpus", () => {
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-status-corpus-");
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ id: companyId, name: "Status corpus", issuePrefix: "PSC" });
+    await db.insert(organizations).values({ id: companyId, name: "Status corpus", issuePrefix: "PSC" });
     await db.insert(agents).values([
       {
         id: agentId,

@@ -29,7 +29,7 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
-  companies,
+  organizations,
   heartbeatRuns,
   pluginLogs,
   pluginWebhookDeliveries,

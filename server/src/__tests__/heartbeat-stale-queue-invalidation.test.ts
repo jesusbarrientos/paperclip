@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   costEvents,
   createDb,
   documentRevisions,
@@ -187,7 +187,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   async function seedCompanyAndAgent(opts: SeedOptions = {}): Promise<SeedResult> {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

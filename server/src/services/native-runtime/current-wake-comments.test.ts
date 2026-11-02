@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   type Db,
   heartbeatRuns,
@@ -67,7 +67,7 @@ describeEmbeddedPostgres("current external-chat wake comment reader", () => {
     const issueId = randomUUID();
     const runId = randomUUID();
     const issuePrefix = `W${companyId.replaceAll("-", "").slice(0, 6)}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

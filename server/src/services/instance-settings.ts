@@ -1,5 +1,5 @@
 import type { Db } from "@paperclipai/db";
-import { companies, instanceSettings } from "@paperclipai/db";
+import { organizations, instanceSettings } from "@paperclipai/db";
 
 /**
  * A `Db` or an open transaction handle — the subset of query builders the
@@ -580,8 +580,8 @@ export function instanceSettingsService(db: Db, options: InstanceSettingsService
 
     listCompanyIds: async (): Promise<string[]> =>
       db
-        .select({ id: companies.id })
-        .from(companies)
+        .select({ id: organizations.id })
+        .from(organizations)
         .limit(1)
         .then((rows) => rows.map((row) => row.id)),
   };

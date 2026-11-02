@@ -5,7 +5,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   assets,
-  companies,
+  organizations,
   documentMemberships,
   documents,
   heartbeatRuns,
@@ -326,8 +326,8 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
       const cursor = decodeCursor(query.cursor);
       const groupBy = query.groupBy === "none" ? null : query.groupBy;
       const company = await db
-        .select({ id: companies.id, issuePrefix: companies.issuePrefix })
-        .from(companies)
+        .select({ id: organizations.id, issuePrefix: organizations.issuePrefix })
+        .from(organizations)
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!company) throw notFound("Company not found");

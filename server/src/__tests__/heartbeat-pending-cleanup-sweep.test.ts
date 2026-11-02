@@ -5,7 +5,7 @@ import {
   activityLog,
   agents,
   heartbeatRuns,
-  companies,
+  organizations,
   createDb,
   environmentLeases,
   environments,
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
     await db.delete(heartbeatRuns);
     await db.delete(environments);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -84,7 +84,7 @@ describeEmbeddedPostgres("heartbeat sweepPendingCleanupLeases", () => {
   async function seedCompanyAndEnvironment() {
     const companyId = randomUUID();
     const environmentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   agents,
   assets,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -248,7 +248,7 @@ describeEmbeddedPostgres("company import batches inserts", () => {
 
   beforeEach(async () => {
     await resetTables();
-    await db.insert(companies).values({ name: "Import Target Co", issuePrefix: "IMP", requireBoardApprovalForNewAgents: false });
+    await db.insert(organizations).values({ name: "Import Target Co", issuePrefix: "IMP", requireBoardApprovalForNewAgents: false });
     counts.reset();
   });
 

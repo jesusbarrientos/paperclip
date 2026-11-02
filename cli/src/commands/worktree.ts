@@ -37,7 +37,7 @@ import {
   authAccounts,
   authUsers,
   assets,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documentRevisions,
@@ -1476,7 +1476,7 @@ export async function inspectLegacyWorktreeDatabase(
     db = createDb(connectionString);
     await Promise.all([
       db.select({ id: authUsers.id }).from(authUsers).limit(1),
-      db.select({ id: companies.id }).from(companies).limit(1),
+      db.select({ id: organizations.id }).from(organizations).limit(1),
       db.select({ id: issues.id }).from(issues).limit(1),
     ]);
     return { migrationRevision };
@@ -1518,7 +1518,7 @@ async function inspectVerifiedSeedDatabase(
         credentialAccountCount: sql<number>`count(distinct ${authAccounts.id})::int`,
         instanceAdminCount: sql<number>`count(distinct ${instanceUserRoles.userId})::int`,
         activeMembershipCount: sql<number>`count(distinct ${companyMemberships.id})::int`,
-        companyCount: sql<number>`count(distinct ${companies.id})::int`,
+        companyCount: sql<number>`count(distinct ${organizations.id})::int`,
         issueCount: sql<number>`count(distinct ${issues.id})::int`,
       })
       .from(authUsers)
@@ -1535,7 +1535,7 @@ async function inspectVerifiedSeedDatabase(
           eq(companyMemberships.status, "active"),
         ),
       )
-      .leftJoin(companies, sql`true`)
+      .leftJoin(organizations, sql`true`)
       .leftJoin(issues, sql`true`);
 
     const admin = await db
@@ -3087,11 +3087,11 @@ async function openConfiguredDb(configPath: string): Promise<OpenDbHandle> {
 async function resolveMergeOrganization(targetDb: ClosableDb): Promise<ResolvedMergeCompany> {
   const organization = await targetDb
     .select({
-      id: companies.id,
-      name: companies.name,
-      issuePrefix: companies.issuePrefix,
+      id: organizations.id,
+      name: organizations.name,
+      issuePrefix: organizations.issuePrefix,
     })
-    .from(companies)
+    .from(organizations)
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!organization) {
@@ -3238,10 +3238,10 @@ async function collectMergePlan(input: {
   ] = await Promise.all([
     input.targetDb
       .select({
-        issueCounter: companies.issueCounter,
+        issueCounter: organizations.issueCounter,
       })
-      .from(companies)
-      .where(eq(companies.id, input.company.id))
+      .from(organizations)
+      .where(eq(organizations.id, input.company.id))
       .then((rows) => rows[0] ?? null),
     input.sourceDb
       .select()
@@ -3718,10 +3718,10 @@ async function applyMergePlan(input: {
     let nextIssueNumber = 0;
     if (issueInserts.length > 0) {
       const [companyRow] = await tx
-        .update(companies)
-        .set({ issueCounter: sql`${companies.issueCounter} + ${issueInserts.length}` })
-        .where(eq(companies.id, input.company.id))
-        .returning({ issueCounter: companies.issueCounter });
+        .update(organizations)
+        .set({ issueCounter: sql`${organizations.issueCounter} + ${issueInserts.length}` })
+        .where(eq(organizations.id, input.company.id))
+        .returning({ issueCounter: organizations.issueCounter });
       nextIssueNumber = companyRow.issueCounter - issueInserts.length + 1;
     }
 

@@ -18,7 +18,7 @@ import {
   chatIdentityLinks,
   chatMessageLinks,
   chatPublications,
-  companies,
+  organizations,
   companyMemberships,
   completionContracts,
   closeRegisteredClients,
@@ -126,7 +126,7 @@ describe("native external-chat response wait", () => {
     // digit random prefix can collide within this fixture-heavy suite.
     const issuePrefix = `W${companyId.replaceAll("-", "").toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "External chat wait",
       issuePrefix,

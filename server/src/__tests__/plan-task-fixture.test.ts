@@ -6,7 +6,7 @@ import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { like } from "drizzle-orm";
-import { agents, companies, companySkills, createDb, heartbeatRuns } from "@paperclipai/db";
+import { agents, organizations, companySkills, createDb, heartbeatRuns } from "@paperclipai/db";
 import { companySkillRoutes } from "../routes/company-skills.js";
 import { agentRoutes } from "../routes/agents.js";
 import { errorHandler } from "../middleware/error-handler.js";
@@ -34,7 +34,7 @@ if (!support.supported) console.warn(`Planning fixture API calibration skipped: 
     process.env.PAPERCLIP_HOME = root;
     process.env.PAPERCLIP_INSTANCE_ID = "default";
     db = createDb(tempDb.connectionString);
-    await db.insert(companies).values({ name: "Planning calibration", issuePrefix: "PLAN" });
+    await db.insert(organizations).values({ name: "Planning calibration", issuePrefix: "PLAN" });
     app = express();
     app.use(express.json());
     app.use((req, _res, next) => { (req as any).actor = { type: "board", source: "local_implicit", isInstanceAdmin: true, userId: "local-board" }; next(); });

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
-import { agents, heartbeatRuns, issues, toolCatalogEntries, toolConnectionInstalls, toolInvocations, companies, companyMemberships, instanceSettings, createDb, toolConnections, toolPolicies, toolProfileEntries } from "@paperclipai/db";
+import { agents, heartbeatRuns, issues, toolCatalogEntries, toolConnectionInstalls, toolInvocations, organizations, companyMemberships, instanceSettings, createDb, toolConnections, toolPolicies, toolProfileEntries } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { toolAccessService } from "../services/tool-access.js";
@@ -31,7 +31,7 @@ describe("remote connector lifecycle", () => {
   });
   afterAll(async () => { await fixture?.cleanup(); vi.unstubAllEnvs(); if (keyDir) await rm(keyDir, { recursive: true, force: true }); });
   async function company() {
-    const [row] = await db.insert(companies).values({ name: `MCP ${randomUUID()}`, issuePrefix: `M${randomUUID().slice(0, 5)}` }).returning();
+    const [row] = await db.insert(organizations).values({ name: `MCP ${randomUUID()}`, issuePrefix: `M${randomUUID().slice(0, 5)}` }).returning();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: actor.actorId, status: "active", membershipRole: "admin" }).onConflictDoUpdate(membershipUpsert);
     return row;
   }

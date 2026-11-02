@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, createDb, projects as projectsTable } from "@paperclipai/db";
+import { organizations, createDb, projects as projectsTable } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -30,7 +30,7 @@ describeEmbeddedPostgres("project icon persistence", () => {
 
   afterEach(async () => {
     await db.delete(projectsTable);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -40,7 +40,7 @@ describeEmbeddedPostgres("project icon persistence", () => {
   async function seedCompany(): Promise<string> {
     prefixCounter += 1;
     const [company] = await db
-      .insert(companies)
+      .insert(organizations)
       .values({ name: "Icon Co", issuePrefix: `ICN${prefixCounter}` })
       .returning();
     return company.id;

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   heartbeatRuns,
@@ -46,7 +46,7 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
     await db.delete(projects);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -55,7 +55,7 @@ describeEmbeddedPostgres("workspace runtime service authz helper", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `PAP-${companyId.slice(0, 8)}`,

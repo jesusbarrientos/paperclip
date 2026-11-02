@@ -4,7 +4,7 @@ import { accessService } from "../services/access.js";
 import { assertBoard } from "./authz.js";
 import type { Request } from "express";
 import { Router } from "express";
-import { companies, type Db } from "@paperclipai/db";
+import { organizations, type Db } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { slackToolCallSchema, isUuidLike } from "@paperclipai/shared";
@@ -49,8 +49,8 @@ export function slackToolRoutes(db: Db, publicBaseUrl?: string) {
       userId,
     );
     const [company] = await db
-      .select({ prefix: companies.issuePrefix })
-      .from(companies);
+      .select({ prefix: organizations.issuePrefix })
+      .from(organizations);
     res.redirect(
       `/${encodeURIComponent(company.prefix)}/apps/chat/${result.endpointId}/access`,
     );

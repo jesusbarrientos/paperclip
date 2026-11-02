@@ -7,7 +7,7 @@ import {
   activityLog,
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -106,7 +106,7 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
     const now = new Date("2026-05-06T18:00:00.000Z");
     const scheduledRetryAt = new Date("2026-05-06T19:00:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -298,7 +298,7 @@ describeEmbeddedPostgres("issue scheduled retry routes", () => {
   it("returns a clear no-op response when there is no scheduled retry", async () => {
     const companyId = randomUUID();
     const issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "NONE",

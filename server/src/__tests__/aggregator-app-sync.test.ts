@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { companies, companyMemberships, connectionGrants, createDb, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots } from "@paperclipai/db";
+import { organizations, companyMemberships, connectionGrants, createDb, toolApplications, toolCatalogEntries, toolConnections, toolConnectionAppSnapshots } from "@paperclipai/db";
 import { toolAccessService } from "../services/tool-access.js";
 import { secretService } from "../services/secrets.js";
 import { toolAccessRoutes } from "../routes/tool-access.js";
@@ -25,7 +25,7 @@ if (!support.supported) console.warn(`Managed-account database tests unavailable
   }, 90_000);
   afterAll(async () => { await cleanup?.(); });
   async function fixture(provider: "arcade" | "executor" = "executor") {
-    const [company] = await db.insert(companies).values({ name: "Aggregator sync test", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
+    const [company] = await db.insert(organizations).values({ name: "Aggregator sync test", issuePrefix: randomUUID().slice(0, 6).toUpperCase() }).returning();
     const userId = randomUUID();
     await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "admin", status: "active" }).onConflictDoUpdate(membershipUpsert);
     const [application] = await db.insert(toolApplications).values({ applicationKey: randomUUID(), name: `${provider} ${randomUUID()}`, type: "mcp_http", metadata: { sourceTemplateKey: provider } }).returning();

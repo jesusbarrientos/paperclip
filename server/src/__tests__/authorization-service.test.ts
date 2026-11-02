@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import {
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   instanceUserRoles,
@@ -27,7 +27,7 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 async function createCompany(db: ReturnType<typeof createDb>, label: string) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Authorization ${label} ${randomUUID()}`,
       issuePrefix: `AZ${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -175,7 +175,7 @@ describeEmbeddedPostgres("authorization service", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 

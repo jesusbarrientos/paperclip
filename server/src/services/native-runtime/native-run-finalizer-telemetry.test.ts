@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("native run finalizer / status decision committer — a
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-native-finalizer-telemetry-");
     db = createDb(tempDb.connectionString);
     agentId = randomUUID();
-    await db.insert(companies).values({ name: "Telemetry", issuePrefix: "TLM" });
+    await db.insert(organizations).values({ name: "Telemetry", issuePrefix: "TLM" });
     await db.insert(agents).values({
       id: agentId,
       name: "Native worker",

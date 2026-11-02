@@ -7,7 +7,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -49,7 +49,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 
@@ -77,7 +77,7 @@ describeEmbeddedPostgres("inbox archive routes", () => {
     const responsibleUserId = `user-${randomUUID()}`;
     const targetUserId = `user-${randomUUID()}`;
     const now = new Date();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Inbox ${companyId}`,
       issuePrefix: `IA${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

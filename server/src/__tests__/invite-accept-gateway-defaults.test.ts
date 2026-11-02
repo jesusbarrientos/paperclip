@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  companies,
+  organizations,
   companySecretProviderConfigs,
   companySecretVersions,
   companySecrets,
@@ -272,7 +272,7 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
     await db.delete(companySecretVersions);
     await db.delete(companySecrets);
     await db.delete(companySecretProviderConfigs);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -291,7 +291,7 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
     const joinRequestId = randomUUID();
     const literalApiKey = `hermes-key-${randomUUID()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

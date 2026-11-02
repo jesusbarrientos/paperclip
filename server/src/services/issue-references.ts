@@ -321,7 +321,7 @@ export function issueReferenceService(db: Db) {
     }
   }
 
-  async function syncAllForCompany(dbOrTx: any = db) {
+  async function syncAll(dbOrTx: any = db) {
     const issueRows = await dbOrTx
       .select({ id: issues.id })
       .from(issues)
@@ -422,7 +422,7 @@ export function issueReferenceService(db: Db) {
     deleteDocumentSource,
     deleteCommentSource,
     syncAllForIssue,
-    syncAllForCompany,
+    syncAll,
     listIssueReferenceSummary,
     diffIssueReferenceSummary: diffIssueSummaries,
     emptySummary,

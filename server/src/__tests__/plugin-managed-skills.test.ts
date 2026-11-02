@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   companySkills,
   createDb,
   pluginManagedResources,
@@ -77,7 +77,7 @@ describeEmbeddedPostgres("plugin-managed skills", () => {
     await db.delete(pluginManagedResources);
     await db.delete(companySkills);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -87,7 +87,7 @@ describeEmbeddedPostgres("plugin-managed skills", () => {
   async function seedCompanyAndPlugin(pluginManifest = manifest()) {
     const companyId = randomUUID();
     const pluginId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

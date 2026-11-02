@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
-import { activityLog, agents, authUsers, companies, companyMemberships, createDb, documents, documentRevisions, heartbeatRuns,
+import { activityLog, agents, authUsers, organizations, companyMemberships, createDb, documents, documentRevisions, heartbeatRuns,
   issueComments, issueDocuments, issues, issueThreadInteractions } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
@@ -26,7 +26,7 @@ const support = await getEmbeddedPostgresTestSupport();
   afterAll(async () => { await temporary?.cleanup(); });
   async function seed(checkbox = false, conversation = false) {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Replies", issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: "Replies", issuePrefix: companyId.slice(0, 8) });
     if (conversation) {
       await db.insert(authUsers).values({ id: "operator", name: "Operator", email: "operator@example.test", createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
       await db.insert(companyMemberships).values({ principalType: "user", principalId: "operator", status: "active", membershipRole: "member" }).onConflictDoUpdate(membershipUpsert);

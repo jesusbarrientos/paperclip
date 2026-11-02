@@ -7,7 +7,7 @@ import {
   activityLog,
   agents,
   approvals,
-  companies,
+  organizations,
   createDb,
   decisionQueueItems,
   decisionQueues,
@@ -55,7 +55,7 @@ describeEmbeddedPostgres("decision queue routes", () => {
     await db.delete(approvals);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("decision queue routes", () => {
     const issueId = randomUUID();
     const interactionId = randomUUID();
     const approvalId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Decision Queue Co",
       issuePrefix: "DQC",

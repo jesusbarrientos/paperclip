@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
-import { companies, type Db } from "@paperclipai/db";
+import { organizations, type Db } from "@paperclipai/db";
 import { ANNOUNCEMENT_ANIMATION_CSP, announcementIdSchema, dismissAnnouncementSchema } from "@paperclipai/shared";
 import { badRequest, forbidden, notFound } from "../errors.js";
 import { validate } from "../middleware/validate.js";

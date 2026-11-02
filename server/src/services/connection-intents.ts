@@ -12,7 +12,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   aiConnectionTaskPins,
-  companies,
+  organizations,
   toolConnections,
   toolCatalogEntries,
   toolProfiles,
@@ -390,7 +390,7 @@ export function connectionIntentService(db: Db) {
   async function search(claims: ConnectionRunClaims, query: string, options: { retryProviderChoice?: boolean } = {}): Promise<ConnectionsSearchResult> {
     const { run, agent, issue } = await loadRunContext(claims);
     const settings = await instanceSettingsService(db).getExperimental();
-    const [company] = await db.select({ prefix: companies.issuePrefix }).from(companies);
+    const [company] = await db.select({ prefix: organizations.issuePrefix }).from(organizations);
     if (!company) throw notFound("Company was not found");
     const explicit = explicitAggregatorQuery(query);
     const serviceQuery = explicit?.serviceQuery ?? query;

@@ -5,7 +5,7 @@ import {
   agents,
   agentRuntimeState,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -64,7 +64,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     await db.delete(issues);
     await db.delete(agentRuntimeState);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     vi.clearAllMocks();
   });
 
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     const wakeupRequestId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

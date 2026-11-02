@@ -6,7 +6,7 @@ import {
   agents,
   companySecretBindings,
   companySecrets,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   connectionGrantDelegations,
@@ -34,7 +34,7 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 async function createCompanyWithOwner(db: ReturnType<typeof createDb>) {
   const company = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Access Service ${randomUUID()}`,
       issuePrefix: `AS${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -85,7 +85,7 @@ describeEmbeddedPostgres("access service", () => {
     await db.delete(instanceUserRoles);
     await db.delete(agents);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

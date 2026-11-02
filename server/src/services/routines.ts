@@ -6,7 +6,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -145,8 +145,8 @@ function legacyExecutionIssueTransientFailureStatus(
 
 async function resolveCompanyDefaultResponsibleUserId(db: Db) {
   const company = await db
-    .select({ defaultResponsibleUserId: companies.defaultResponsibleUserId })
-    .from(companies)
+    .select({ defaultResponsibleUserId: organizations.defaultResponsibleUserId })
+    .from(organizations)
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (company?.defaultResponsibleUserId) return company.defaultResponsibleUserId;

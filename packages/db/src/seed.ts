@@ -1,5 +1,5 @@
 import { createDb } from "./client.js";
-import { companies, agents, goals, projects, issues } from "./schema/index.js";
+import { organizations, agents, goals, projects, issues } from "./schema/index.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
@@ -9,7 +9,7 @@ const db = createDb(url);
 console.log("Seeding database...");
 
 const [company] = await db
-  .insert(companies)
+  .insert(organizations)
   .values({
     name: "Paperclip Demo Co",
     description: "A demo autonomous company",

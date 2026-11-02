@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { companies, companyMemberships, createDb } from "@paperclipai/db";
+import { organizations, companyMemberships, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
     db = createDb(tempDb.connectionString);
     app = createApp();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Multilingual tenant",
       issuePrefix: "LNG",
       requireBoardApprovalForNewAgents: false,

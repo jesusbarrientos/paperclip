@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documents,
@@ -89,7 +89,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceSettings);
   });
 
@@ -111,7 +111,7 @@ describeEmbeddedPostgres("pipeline routes", () => {
   }
 
   async function seedCompany(name = "Pipeline Co") {
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name,
       issuePrefix: `P${randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase()}`,
     }).returning();

@@ -29,7 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   projectWorkspaces,
   projects,
@@ -138,7 +138,7 @@ if (optedIn && !live) {
       ],
     };
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `L${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

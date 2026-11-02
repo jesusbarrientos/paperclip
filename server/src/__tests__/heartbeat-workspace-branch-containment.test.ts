@@ -11,7 +11,7 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   documentRevisions,
@@ -323,7 +323,7 @@ async function seedBranchContainmentRun(
     enableIsolatedWorkspaces: true,
     enableWorkspaceBranchReconcileForward: opts.enableWorkspaceBranchReconcileForward === true,
   });
-  await db.insert(companies).values({
+  await db.insert(organizations).values({
     id: companyId,
     name: "Acme",
     issuePrefix,
@@ -901,7 +901,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
     await db.delete(executionWorkspaces);
     await db.delete(environments);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -917,7 +917,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
     const issueIdentifier = `${issuePrefix}-1`;
 
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix,

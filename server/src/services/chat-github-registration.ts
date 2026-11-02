@@ -3,7 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import {
   chatEndpoints,
   chatGitHubRegistrations,
-  companies,
+  organizations,
   companyMemberships,
   type Db,
 } from "@paperclipai/db";
@@ -84,8 +84,8 @@ export function githubChatRegistrationService(
     if (!member || member.membershipRole === "viewer")
       throw forbidden("An active company member is required");
     const [company] = await db
-      .select({ issuePrefix: companies.issuePrefix })
-      .from(companies);
+      .select({ issuePrefix: organizations.issuePrefix })
+      .from(organizations);
     const state = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 30 * 60_000);
     await db.transaction(async (tx) => {
@@ -223,8 +223,8 @@ export function githubChatRegistrationService(
         .set({ status: "completed" })
         .where(eq(chatGitHubRegistrations.id, session.id));
       const [company] = await db
-        .select({ issuePrefix: companies.issuePrefix })
-        .from(companies);
+        .select({ issuePrefix: organizations.issuePrefix })
+        .from(organizations);
       return `${origin}/${company!.issuePrefix}/apps/chat/connect?provider=github&resume=${session.endpointId}`;
     } catch (error) {
       await db

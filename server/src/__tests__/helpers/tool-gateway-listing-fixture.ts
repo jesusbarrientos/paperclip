@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/postgres-js";
 import {
-  agents, companies, createDb, heartbeatRuns, issues, principalPermissionGrants,
+  agents, organizations, createDb, heartbeatRuns, issues, principalPermissionGrants,
   projects, toolApplications, toolCatalogEntries, toolConnections, toolPolicies,
   toolProfileBindings, toolProfileEntries, toolProfiles,
 } from "@paperclipai/db";
@@ -35,7 +35,7 @@ export async function createListingFixture(
   toolCount: number,
   options: { broadBindings?: boolean; connectionCount?: number } = {},
 ) {
-  const company = await db.insert(companies).values({
+  const company = await db.insert(organizations).values({
     name: `Listing ${randomUUID()}`,
     issuePrefix: `LM${randomUUID().slice(0, 6).toUpperCase()}`,
   }).returning().then((rows) => rows[0]!);

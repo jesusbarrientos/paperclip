@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   documents,
   issueComments,
@@ -73,7 +73,7 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
     await db.delete(documents);
     await db.delete(issueComments);
     await db.delete(issues);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -82,7 +82,7 @@ describeEmbeddedPostgres("companySearchExtractService", () => {
 
   async function createCompany(name = "Paperclip") {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name,
       issuePrefix: `E${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

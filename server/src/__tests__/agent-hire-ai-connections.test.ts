@@ -6,7 +6,7 @@ import express from "express";
 import request from "supertest";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { activityLog, agents, companies, companyMemberships, createDb, heartbeatRuns, issues, plugins, principalPermissionGrants, toolConnectionInstalls } from "@paperclipai/db";
+import { activityLog, agents, organizations, companyMemberships, createDb, heartbeatRuns, issues, plugins, principalPermissionGrants, toolConnectionInstalls } from "@paperclipai/db";
 import { type AiConnectionBinding, type AiConnectionPoolMember, type PaperclipPluginManifestV1 } from "@paperclipai/shared";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentRoutes } from "../routes/agents.js";
@@ -52,7 +52,7 @@ async function fixture(provider: "anthropic" | "openai", method: "api_key" | "su
   const userId = `owner-${fixtureId}`;
   const binding = { provider, method, mode: "responsible_user" } as const;
   const adapterType = provider === "anthropic" ? "claude_local" : "codex_local";
-  await db.insert(companies).values({ name: "Hiring connection test", issuePrefix: `H${fixtureId.slice(0, 7)}`, defaultResponsibleUserId: userId });
+  await db.insert(organizations).values({ name: "Hiring connection test", issuePrefix: `H${fixtureId.slice(0, 7)}`, defaultResponsibleUserId: userId });
   await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: "owner", status: "active" }).onConflictDoUpdate(membershipUpsert);
   await db.insert(principalPermissionGrants).values({ principalType: "user", principalId: userId, permissionKey: "agents:create" });
   await db.insert(agents).values({ id: agentId, name: "Manager", role: "ceo", adapterType, runtimeConfig: { aiConnection: binding } });
@@ -390,7 +390,7 @@ describe("agent-created hires use managed AI connections", () => {
 
   it("accepts an explicit personal default before authentication, including approval-gated hires", async () => {
     const f = await fixture("anthropic");
-    await db.update(companies).set({ requireBoardApprovalForNewAgents: true });
+    await db.update(organizations).set({ requireBoardApprovalForNewAgents: true });
     const binding: AiConnectionBinding = { provider: "openai", method: "subscription", mode: "responsible_user" };
     const response = await request(f.app).post(`/api/agent-hires`).send({ name: "Future Codex", role: "engineer", adapterType: "codex_local", runtimeConfig: { aiConnection: binding } });
     const agent = hired(response);

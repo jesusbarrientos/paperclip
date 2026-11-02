@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,

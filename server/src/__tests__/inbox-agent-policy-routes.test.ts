@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   principalPermissionGrants,
@@ -38,7 +38,7 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 
@@ -64,7 +64,7 @@ describeEmbeddedPostgres("inbox agent policy routes", () => {
     const otherUserId = `user-${randomUUID()}`;
     const agentId = randomUUID();
     const now = new Date();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Policy ${companyId}`,
       issuePrefix: `IP${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

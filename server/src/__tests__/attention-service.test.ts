@@ -10,7 +10,7 @@ import {
   assets,
   budgetIncidents,
   budgetPolicies,
-  companies,
+  organizations,
   createDb,
   decisionQueueItems,
   decisionQueues,
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("attention service", () => {
     await db.delete(projectWorkspaces);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -106,7 +106,7 @@ describeEmbeddedPostgres("attention service", () => {
     const reviewerId = randomUUID();
     const errorAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `${prefix} Co`,
       issuePrefix: prefix,

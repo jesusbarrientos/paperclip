@@ -4,7 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -108,7 +108,7 @@ export async function seedPaperclipSemanticConformance(
   db: Db,
   ids: PaperclipSemanticConformanceIds,
 ): Promise<void> {
-  await db.insert(companies).values({ id: ids.organizationId, name: "Semantic Conformance", issuePrefix: "SCF" });
+  await db.insert(organizations).values({ id: ids.organizationId, name: "Semantic Conformance", issuePrefix: "SCF" });
   await db.insert(agents).values({
     id: ids.actorId,
     name: "Conformance Approver",

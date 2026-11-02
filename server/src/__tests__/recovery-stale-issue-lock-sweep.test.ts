@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRunEvents,
@@ -58,7 +58,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     await db.delete(completionContracts);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -71,7 +71,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     const failedRunId = randomUUID();
     const runningRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

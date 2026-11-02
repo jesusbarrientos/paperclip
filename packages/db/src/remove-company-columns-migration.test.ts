@@ -13,7 +13,6 @@ type SnapshotTable = {
   foreignKeys: Record<string, unknown>;
 };
 
-const COMPANY_TABLES = ["company_logos", "company_onboarding_seeds", "company_transfer_runs"];
 // Migration 0159 created these columns without the foreign key the schema declares.
 const PREEXISTING_MISSING_FOREIGN_KEYS = [
   "tool_mcp_gateway_tokens|created_by_agent_id|agents|id",
@@ -35,7 +34,7 @@ describeEmbeddedPostgres("remove company columns migration", () => {
     await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
   });
 
-  it("leaves company_id only on the company metadata tables", async () => {
+  it("leaves no company_id column on any table", async () => {
     const database = await startEmbeddedPostgresTestDatabase("paperclip-remove-company-");
     cleanups.push(database.cleanup);
     const sql = postgres(database.connectionString, { max: 1, onnotice: () => {} });
@@ -46,7 +45,7 @@ describeEmbeddedPostgres("remove company columns migration", () => {
       WHERE "table_schema" = 'public' AND "column_name" = 'company_id'
       ORDER BY "table_name"
     `;
-    expect(rows.map((row) => row.table_name)).toEqual(COMPANY_TABLES);
+    expect(rows.map((row) => row.table_name)).toEqual([]);
   }, 60_000);
 
   // The migration drops constraints with CASCADE; this proves no foreign key or

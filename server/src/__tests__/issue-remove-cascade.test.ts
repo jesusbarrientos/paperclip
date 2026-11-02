@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   costEvents,
   createDb,
   decisions,
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     await db.delete(issues);
     await db.delete(goals);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("issueService.remove referential integrity", () => {
     const agentId = randomUUID();
     const runId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

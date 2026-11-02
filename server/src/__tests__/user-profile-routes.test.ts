@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   costEvents,
   createDb,
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("GET /users/:userSlug/profile", () => {
     agentId = randomUUID();
     const now = new Date();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "USR",
       requireBoardApprovalForNewAgents: false,
@@ -96,7 +96,7 @@ describeEmbeddedPostgres("GET /users/:userSlug/profile", () => {
     await db.delete(agents);
     await db.delete(companyMemberships);
     await db.delete(authUsers);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

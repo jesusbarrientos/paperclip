@@ -9,7 +9,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   createDb,
@@ -60,7 +60,7 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
     await db.delete(companySkills);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
@@ -114,7 +114,7 @@ describeEmbeddedPostgres("company skill import authorization routes", () => {
   }
 
   async function seedGrantedAgentWithResponsibleUser() {
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: "Company Skill Import Authz",
       issuePrefix: `IA${randomUUID().replace(/-/g, "").slice(0, 6)}`,
     }).returning();

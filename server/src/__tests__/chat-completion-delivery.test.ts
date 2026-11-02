@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { agents, agentWakeupRequests, chatCompletionDeliveries as deliveries, chatTaskHandoffs as handoffs,
-  companies, createDb, documents, environmentLeases, heartbeatRuns, issueComments, issueRecoveryActions, issues } from "@paperclipai/db";
+  organizations, createDb, documents, environmentLeases, heartbeatRuns, issueComments, issueRecoveryActions, issues } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { settleInterruptedNativeBootstrap, terminalizeLegacyExecution } from "../services/legacy-execution-recovery.js";
 import { getExecutionBlocker } from "../services/execution-blocker.js";
@@ -22,7 +22,7 @@ const support = await getEmbeddedPostgresTestSupport();
     temporary = await startEmbeddedPostgresTestDatabase("chat-completion-"); db = createDb(temporary.connectionString);
     await instanceSettingsService(db).updateExperimental({ enableAgentChat: true });
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Completion", issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: "Completion", issuePrefix: companyId.slice(0, 8) });
   }, 30_000);
   afterAll(async () => { await temporary?.cleanup(); });
   beforeEach(async () => { await db.update(deliveries).set({ status: "exhausted" }); });

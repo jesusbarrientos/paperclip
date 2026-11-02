@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, count, eq, gt, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { companies, activityLog, mcpEventAdmissions as admissions, mcpEventDeliveries as deliveries, mcpEventSubscriptions as subscriptions, type Db } from "@paperclipai/db";
+import { organizations, activityLog, mcpEventAdmissions as admissions, mcpEventDeliveries as deliveries, mcpEventSubscriptions as subscriptions, type Db } from "@paperclipai/db";
 import { ISSUE_STATUSES } from "@paperclipai/shared";
 import { localEncryptedProvider } from "../../secrets/local-encrypted-provider.js";
 import { logActivity } from "../activity-log.js";
@@ -178,7 +178,7 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
   }
 
   async function enqueue(s: Subscription) {
-    const [company] = await db.select({ prefix: companies.issuePrefix }).from(companies).limit(1);
+    const [company] = await db.select({ prefix: organizations.issuePrefix }).from(organizations).limit(1);
     if (!company) return;
     // No moving timestamp cursor: an activity transaction committing late cannot
     // fall behind a high-water mark. The unique receipt is the durable scan marker.

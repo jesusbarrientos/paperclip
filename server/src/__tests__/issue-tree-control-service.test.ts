@@ -5,7 +5,7 @@ import {
   activityLog,
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueComments,
@@ -49,7 +49,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const doneChildId = randomUUID();
     const cancelledChildId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -160,7 +160,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const companyId = randomUUID();
     const rootIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -208,7 +208,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const companyId = randomUUID();
     const rootIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -253,7 +253,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const todoChildId = randomUUID();
     const doneChildId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -391,7 +391,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const rootCommentId = randomUUID();
     const deepDescendantCommentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -593,7 +593,7 @@ describeEmbeddedPostgres("issueTreeControlService", () => {
     const childIssueId = randomUUID();
     const nonSubtreeIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

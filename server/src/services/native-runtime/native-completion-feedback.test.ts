@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, heartbeatRuns, issues } from "@paperclipai/db";
+import { agents, organizations, createDb, heartbeatRuns, issues } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import type { PrpStructuredRunResult } from "../../vendor/paperclip-runner/index.js";
 import { documentService } from "../documents.js";
@@ -21,7 +21,7 @@ describe("native final-response feedback", () => {
   afterAll(async () => { await temporary?.cleanup(); });
   async function fixture() {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Feedback", issuePrefix: `FB${companyId.slice(0, 8).toUpperCase()}` });
+    await db.insert(organizations).values({ id: companyId, name: "Feedback", issuePrefix: `FB${companyId.slice(0, 8).toUpperCase()}` });
     await db.insert(agents).values({ id: agentId, name: "Worker", adapterType: "paperclip_runner", status: "active" });
     await db.insert(issues).values({ id: issueId, identifier: `FB${companyId.slice(0, 8).toUpperCase()}-1`, title: "Save the task document", status: "in_progress", assigneeAgentId: agentId });
     await db.insert(heartbeatRuns).values({ id: runId, agentId, nativeIssueId: issueId, status: "running", runtimeMode: "native", contextSnapshot: { issueId } });

@@ -7,7 +7,7 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   documentRevisions,
@@ -116,7 +116,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
     await db.delete(agentRuntimeState);
     await db.delete(agents);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
   }
 
   afterEach(async () => {
@@ -167,7 +167,7 @@ describeEmbeddedPostgres("issue monitor scheduler", () => {
       ...(input?.monitor ?? {}),
     };
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

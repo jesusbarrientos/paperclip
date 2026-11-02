@@ -25,7 +25,7 @@ import {
   agents,
   authUsers,
   companySecretProposals,
-  companies,
+  organizations,
   documents,
   heartbeatRuns,
   runIdentityContexts,
@@ -3346,9 +3346,9 @@ export function issueThreadInteractionService(
       const governance = await db
         .select({
           interactionResolverGovernance:
-            companies.interactionResolverGovernance,
+            organizations.interactionResolverGovernance,
         })
-        .from(companies)
+        .from(organizations)
         .limit(1)
         .then((rows) => rows[0]?.interactionResolverGovernance ?? {});
       const policy = resolveInteractionPolicy({

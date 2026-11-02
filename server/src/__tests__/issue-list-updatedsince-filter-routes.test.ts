@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, companyMemberships, createDb, issues, principalPermissionGrants } from "@paperclipai/db";
+import { organizations, companyMemberships, createDb, issues, principalPermissionGrants } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -34,7 +34,7 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
     await db.delete(issues);
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
   it("returns 0 issues when updatedSince is in the future", async () => {
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
@@ -112,7 +112,7 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
     const staleUpdatedAt = new Date("2026-06-30T00:00:00.000Z");
     const freshUpdatedAt = new Date("2026-07-02T00:00:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
@@ -145,7 +145,7 @@ describeEmbeddedPostgres("issue list routes updatedSince filter", () => {
   });
 
   it("returns 400 for a malformed updatedSince timestamp", async () => {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,

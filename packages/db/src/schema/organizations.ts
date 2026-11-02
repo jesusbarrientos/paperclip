@@ -1,7 +1,10 @@
 import type { InteractionResolverGovernance } from "@paperclipai/shared";
 import { pgTable, uuid, text, integer, timestamp, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { assets } from "./assets.js";
 
-export const companies = pgTable(
+// The single organization row. The table keeps its historical name because plugin
+// SQL migrations and core-table read grants refer to it as "companies".
+export const organizations = pgTable(
   "companies",
   {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -28,6 +31,7 @@ export const companies = pgTable(
     feedbackDataSharingConsentAt: timestamp("feedback_data_sharing_consent_at", { withTimezone: true }),
     feedbackDataSharingConsentByUserId: text("feedback_data_sharing_consent_by_user_id"),
     feedbackDataSharingTermsVersion: text("feedback_data_sharing_terms_version"),
+    logoAssetId: uuid("logo_asset_id").references(() => assets.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

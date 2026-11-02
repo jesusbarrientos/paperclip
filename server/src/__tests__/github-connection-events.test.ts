@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   connectionEventDeliveries,
   connectionGrants,
   createDb,
@@ -38,7 +38,7 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     await db.delete(connectionGrants);
     await db.delete(toolConnections);
     await db.delete(toolApplications);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -51,7 +51,7 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     const applicationId = randomUUID();
     const connectionId = randomUUID();
     const grantId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Paperclip", issuePrefix: "GHE" });
+    await db.insert(organizations).values({ id: companyId, name: "Paperclip", issuePrefix: "GHE" });
     await db.insert(toolApplications).values({
       id: applicationId,
       applicationKey: `github-${randomUUID()}`,
@@ -208,7 +208,7 @@ describeEmbeddedPostgres("GitHub connection event delivery", () => {
     const applicationId = randomUUID();
     const connectionId = randomUUID();
     const grantId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Paperclip", issuePrefix: "GHI" });
+    await db.insert(organizations).values({ id: companyId, name: "Paperclip", issuePrefix: "GHI" });
     await db.insert(toolApplications).values({
       id: applicationId,
       applicationKey: `github-${randomUUID()}`,

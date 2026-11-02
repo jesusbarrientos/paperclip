@@ -44,7 +44,7 @@ import {
   companySecretBindings,
   companySecrets,
   companySkills,
-  companies,
+  organizations,
   completionContracts,
   costEvents,
   documentAnnotationAnchorSnapshots,
@@ -647,7 +647,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       await db.delete(companySecretBindings);
       await db.delete(companySecrets);
       try {
-        await db.delete(companies);
+        await db.delete(organizations);
         break;
       } catch (error) {
         if (attempt === 4) throw error;
@@ -677,7 +677,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
   });
 
   async function organizationIssuePrefix() {
-    const [row] = await db.select({ issuePrefix: companies.issuePrefix }).from(companies).limit(1);
+    const [row] = await db.select({ issuePrefix: organizations.issuePrefix }).from(organizations).limit(1);
     return row!.issuePrefix;
   }
 
@@ -702,7 +702,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const now = new Date("2026-03-19T00:00:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -929,7 +929,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const now = new Date("2026-03-19T00:00:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -1116,7 +1116,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const wakeReason = input?.wakeReason ?? "execution_review_requested";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -1205,7 +1205,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const issueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -1244,7 +1244,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const agentId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -1387,7 +1387,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const now = new Date("2026-03-19T00:00:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -9797,7 +9797,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const resolvedAt = new Date("2026-03-19T00:05:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -9879,7 +9879,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const resolvedAt = new Date("2026-03-19T00:05:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10048,7 +10048,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const resolvedAt = new Date("2026-03-19T00:05:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10183,7 +10183,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const succeededAt = new Date("2026-03-19T00:06:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10268,7 +10268,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const unrelatedRunAt = new Date("2026-03-19T00:06:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10364,7 +10364,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const resolvedAt = new Date("2026-03-19T00:05:00.000Z");
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10766,7 +10766,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const blockerIssueId = randomUUID();
     const blockedIssueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -10943,7 +10943,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     const agentId = randomUUID();
     const issueId = randomUUID();
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

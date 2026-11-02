@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documents,
@@ -46,7 +46,7 @@ describe("PaperclipRunnerToolAuthority", () => {
       "paperclip-runner-tools-",
     );
     db = createDb(temporary.connectionString);
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Runner tools",
       issuePrefix: "RNT",
       issueCounter: 1,

@@ -16,7 +16,7 @@ import {
   issues,
   heartbeatRuns,
   agents,
-  companies,
+  organizations,
   costEvents,
   financeEvents,
 } from "@paperclipai/db";
@@ -927,7 +927,7 @@ export function browserUseService(
       })
       .where(eq(agents.id, s.agentId));
     await db
-      .update(companies)
+      .update(organizations)
       .set({
         spentMonthlyCents: await getMonthlySpendTotal(db, {
 }),

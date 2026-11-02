@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   documents,
   issues,
@@ -48,7 +48,7 @@ describeEmbeddedPostgres("pipeline schema", () => {
   });
 
   it("persists one row per pipeline table and enforces unique keys and required checks", async () => {
-    const [company] = await db.insert(companies).values({ name: "Pipeline Co", issuePrefix: "PIP" }).returning();
+    const [company] = await db.insert(organizations).values({ name: "Pipeline Co", issuePrefix: "PIP" }).returning();
     const [agent] = await db.insert(agents).values({
       name: "Pipeline Agent",
       role: "engineer",

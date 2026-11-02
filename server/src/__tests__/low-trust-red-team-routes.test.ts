@@ -13,7 +13,7 @@ import {
   agents,
   approvals,
   assets,
-  companies,
+  organizations,
   companyMemberships,
   companySkills,
   createDb,
@@ -121,7 +121,7 @@ async function deleteCompanySkillsAfterLateHeartbeatWritesDrain(db: Db) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     await db.delete(companySkills);
     try {
-      await db.delete(companies);
+      await db.delete(organizations);
       return;
     } catch (error) {
       lastError = error;
@@ -421,7 +421,7 @@ async function seedLowTrustFixture(db: Db) {
   };
 
   const [company] = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Low trust ${nonce}`,
       issuePrefix: `LT${nonce.slice(0, 4).toUpperCase()}`,

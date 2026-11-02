@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   instanceUserRoles,
@@ -36,7 +36,7 @@ describeEmbeddedPostgres("board claim", () => {
     await initializeBoardClaimChallenge(db, { deploymentMode: "local_trusted" });
     await db.delete(principalPermissionGrants);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceUserRoles);
     await db.delete(authUsers);
   });
@@ -49,7 +49,7 @@ describeEmbeddedPostgres("board claim", () => {
     const now = new Date();
     const userId = `claim-user-${randomUUID()}`;
     const company = await db
-      .insert(companies)
+      .insert(organizations)
       .values({
         name: "Board Claim Co",
         issuePrefix: `BC${randomUUID().slice(0, 6).toUpperCase()}`,

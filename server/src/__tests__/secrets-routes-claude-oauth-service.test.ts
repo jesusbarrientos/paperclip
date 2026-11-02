@@ -13,7 +13,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, beforeEach } from
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
 import {
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("secretService Claude Code OAuth helper and compare-and
     await db.delete(companySecrets);
     await db.delete(userSecretDefinitions);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("secretService Claude Code OAuth helper and compare-and
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.slice(0, 7)}`.toUpperCase(),

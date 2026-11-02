@@ -6,7 +6,7 @@ import {
   approvals,
   budgetIncidents,
   budgetPolicies,
-  companies,
+  organizations,
   costEvents,
   projects,
 } from "@paperclipai/db";
@@ -82,13 +82,13 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
   if (scopeType === "company") {
     const row = await db
       .select({
-        name: companies.name,
-        status: companies.status,
-        pauseReason: companies.pauseReason,
-        pausedAt: companies.pausedAt,
+        name: organizations.name,
+        status: organizations.status,
+        pauseReason: organizations.pauseReason,
+        pausedAt: organizations.pausedAt,
       })
-      .from(companies)
-      .where(eq(companies.id, scopeId))
+      .from(organizations)
+      .where(eq(organizations.id, scopeId))
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Company not found");
     return {
@@ -232,14 +232,14 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     }
 
     await db
-      .update(companies)
+      .update(organizations)
       .set({
         status: "paused",
         pauseReason: "budget",
         pausedAt: now,
         updatedAt: now,
       })
-      .where(eq(companies.id, policy.scopeId));
+      .where(eq(organizations.id, policy.scopeId));
   }
 
   async function pauseAndCancelScopeForBudget(policy: PolicyRow) {
@@ -278,14 +278,14 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     }
 
     await db
-      .update(companies)
+      .update(organizations)
       .set({
         status: "active",
         pauseReason: null,
         pausedAt: null,
         updatedAt: now,
       })
-      .where(and(eq(companies.id, policy.scopeId), eq(companies.pauseReason, "budget")));
+      .where(and(eq(organizations.id, policy.scopeId), eq(organizations.pauseReason, "budget")));
   }
 
   async function getPolicyRow(policyId: string) {
@@ -551,12 +551,12 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
 
       if (input.scopeType === "company" && windowKind === "calendar_month_utc") {
         await db
-          .update(companies)
+          .update(organizations)
           .set({
             budgetMonthlyCents: amount,
             updatedAt: now,
           })
-          .where(eq(companies.id, input.scopeId));
+          .where(eq(organizations.id, input.scopeId));
       }
 
       if (input.scopeType === "agent" && windowKind === "calendar_month_utc") {
@@ -708,12 +708,12 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
 
       const company = await db
         .select({
-          id: companies.id,
-          status: companies.status,
-          pauseReason: companies.pauseReason,
-          name: companies.name,
+          id: organizations.id,
+          status: organizations.status,
+          pauseReason: organizations.pauseReason,
+          name: organizations.name,
         })
-        .from(companies)
+        .from(organizations)
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!company) throw notFound("Organization not found");
@@ -866,9 +866,9 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
 
         if (policy.scopeType === "company" && policy.windowKind === "calendar_month_utc") {
           await db
-            .update(companies)
+            .update(organizations)
             .set({ budgetMonthlyCents: nextAmount, updatedAt: now })
-            .where(eq(companies.id, policy.scopeId));
+            .where(eq(organizations.id, policy.scopeId));
         }
 
         if (policy.scopeType === "agent" && policy.windowKind === "calendar_month_utc") {

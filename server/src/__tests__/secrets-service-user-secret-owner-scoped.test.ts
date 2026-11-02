@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -52,7 +52,7 @@ describeEmbeddedPostgres("secretService resolveAdapterConfigForRuntime — userS
     await db.delete(companySecrets);
     await db.delete(userSecretDefinitions);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -66,7 +66,7 @@ describeEmbeddedPostgres("secretService resolveAdapterConfigForRuntime — userS
   });
 
   async function seedOrganization() {
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Acme",
       issuePrefix: "ACME",
       status: "active",

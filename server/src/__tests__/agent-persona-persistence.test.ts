@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { agents, companies, createDb } from "@paperclipai/db";
+import { agents, organizations, createDb } from "@paperclipai/db";
 import { agentAppearanceSchema, appearanceForPalette, legacyAgentAppearance } from "@paperclipai/shared";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentService } from "../services/agents.js";
@@ -13,7 +13,7 @@ describe("persisted agent personas", () => {
   beforeAll(async () => {
     database = await startEmbeddedPostgresTestDatabase("agent-persona-persistence-");
     db = createDb(database.connectionString);
-    await db.insert(companies).values({ id: randomUUID(), name: "Persona test", issuePrefix: "CAP" });
+    await db.insert(organizations).values({ id: randomUUID(), name: "Persona test", issuePrefix: "CAP" });
   }, 30_000);
   afterAll(async () => { await database?.cleanup(); });
   it("randomizes once, accepts a saved draft and preserves identity across edits and revision rollback", async () => {

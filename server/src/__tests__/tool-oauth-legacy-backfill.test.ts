@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  companies,
+  organizations,
   companySecretBindings,
   companySecretProviderConfigs,
   companySecrets,
@@ -25,7 +25,7 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 async function createCompany(db: ReturnType<typeof createDb>) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `OAuth Legacy ${randomUUID()}`,
       issuePrefix: `OL${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -51,7 +51,7 @@ describeEmbeddedPostgres("tool OAuth legacy backfill", () => {
     await db.delete(companySecretProviderConfigs);
     await db.delete(toolConnections);
     await db.delete(toolApplications);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretProviderConfigs,
@@ -92,7 +92,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
     await db.delete(companyMemberships);
     await db.delete(agents);
     await db.delete(environments);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Auth Inheritance Co ${companyId.slice(0, 8)}`,
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -419,7 +419,7 @@ describeEmbeddedPostgres("hired agent provider credential inheritance", () => {
 
   it("records only inherited safe settings in an approval snapshot", async () => {
     const companyId = await seedCompany();
-    await db.update(companies).set({ requireBoardApprovalForNewAgents: true }).where(eq(companies.id, companyId));
+    await db.update(organizations).set({ requireBoardApprovalForNewAgents: true }).where(eq(organizations.id, companyId));
     const parent = await seedParentAgent("paperclip_runner", {});
     await db.update(agents).set({ adapterConfig: {
       provider: "acpx", acpxAgent: "claude", model: "claude-sonnet-5", acpxPermissionMode: "approve-all",

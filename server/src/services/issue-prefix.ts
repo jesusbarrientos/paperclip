@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
-import { cases, companies, issues } from "@paperclipai/db";
+import { cases, organizations, issues } from "@paperclipai/db";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -84,12 +84,12 @@ export async function pickAvailableIssuePrefix(
 ): Promise<string | null> {
   const taken = new Set(
     await database
-      .select({ issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       // An exact head comparison rather than LIKE, so a base is never read as a
       // pattern. `deriveIssuePrefixBase` cannot produce a LIKE metacharacter,
       // but this helper does not get to assume its caller used it.
-      .where(sql`left(${companies.issuePrefix}, ${base.length}::int) = ${base}`)
+      .where(sql`left(${organizations.issuePrefix}, ${base.length}::int) = ${base}`)
       .then((rows) => rows.map((row) => row.issuePrefix)),
   );
   for (let attempt = 1; attempt <= MAX_ISSUE_PREFIX_ATTEMPTS; attempt += 1) {

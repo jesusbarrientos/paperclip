@@ -6,7 +6,7 @@ import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, companies, completionContracts, createDb, environmentLeases, environments, heartbeatRuns, issues, issueRecoveryActions, nativeRunFinalizations, nativeRunResults, agentWakeupRequests, plugins } from "@paperclipai/db";
+import { agents, organizations, completionContracts, createDb, environmentLeases, environments, heartbeatRuns, issues, issueRecoveryActions, nativeRunFinalizations, nativeRunResults, agentWakeupRequests, plugins } from "@paperclipai/db";
 import type { Environment, EnvironmentLease } from "@paperclipai/shared";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { environmentRuntimeService } from "../environment-runtime.js";
@@ -99,7 +99,7 @@ describeLive("live Daytona export-resume failure recovery", () => {
     ({ default: plugin } = await import(new URL("../../../../packages/plugins/sandbox-providers/daytona/dist/plugin.js", import.meta.url).href));
     plugin = plugin.definition;
     ({ default: manifest } = await import(new URL("../../../../packages/plugins/sandbox-providers/daytona/dist/manifest.js", import.meta.url).href));
-    await db.insert(companies).values({ id: ids.company, name: "Disposable export lifecycle", issuePrefix: "LXR" });
+    await db.insert(organizations).values({ id: ids.company, name: "Disposable export lifecycle", issuePrefix: "LXR" });
     await db.insert(agents).values({ id: ids.agent, name: "No provider turn", adapterType: "paperclip_runner" });
     await db.insert(environments).values({ id: ids.environment, name: `Lifecycle ${nonce}`, driver: "sandbox", config });
     environment = (await db.select().from(environments).where(eq(environments.id, ids.environment)))[0] as unknown as Environment;

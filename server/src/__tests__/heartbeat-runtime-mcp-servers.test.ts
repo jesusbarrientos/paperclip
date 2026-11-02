@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   connectionGrants,
   createDb,
@@ -63,7 +63,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
     await db.delete(toolApplications);
     await db.delete(agents);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -72,7 +72,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
 
   it("provisions one aggregate gateway and omits unavailable access without blocking any runtime", async () => {
     process.env.PAPERCLIP_API_URL = "https://paperclip.example.test";
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Runtime MCP ${randomUUID()}`,
       issuePrefix: `RM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
@@ -200,7 +200,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
 
   async function seedAssignedAgents(count: number) {
     process.env.PAPERCLIP_API_URL = "https://paperclip.example.test";
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Runtime MCP ${randomUUID()}`,
       issuePrefix: `RM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
@@ -426,7 +426,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
 
   it("preserves exact permissions when an aggregate assignment exceeds the public 250-entry edit limit", async () => {
     process.env.PAPERCLIP_API_URL = "https://paperclip.example.test";
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: "Large MCP assignment",
       issuePrefix: `LM${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
@@ -504,7 +504,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
 
   it("exposes only the dedicated GitHub connection when a personal connection is also installed", async () => {
     process.env.PAPERCLIP_API_URL = "https://paperclip.example.test";
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Runtime GitHub identity ${randomUUID()}`,
       issuePrefix: `RG${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
@@ -616,7 +616,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
   });
 
   it("audits permitted remote MCP connections that were not installed when delivery is empty", async () => {
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Runtime MCP diagnostic ${randomUUID()}`,
       issuePrefix: `RD${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();
@@ -693,7 +693,7 @@ describeEmbeddedPostgres("heartbeat runtime MCP servers", () => {
   });
 
   it("injects only managed gateways whose profile connections are installed for the agent", async () => {
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Managed gateway installs ${randomUUID()}`,
       issuePrefix: `MG${randomUUID().slice(0, 5).toUpperCase()}`,
     }).returning();

@@ -14,7 +14,7 @@ import {
   approvals,
   budgetPolicies,
   builtInManagedResources,
-  companies,
+  organizations,
   companyMemberships,
   companySkillVersions,
   companySkills,
@@ -151,7 +151,7 @@ describeEmbeddedPostgres("built-in agents", () => {
     await db.delete(approvals);
     await db.delete(agents);
     await db.delete(budgetPolicies);
-    await db.delete(companies);
+    await db.delete(organizations);
     // Some tests drop the built-in marker unique index to simulate legacy
     // (pre-migration 0192) duplicates; restore it now that all rows are gone.
     await db.execute(sql.raw(BUILT_IN_MARKER_UNIQUE_INDEX_DDL));
@@ -171,7 +171,7 @@ describeEmbeddedPostgres("built-in agents", () => {
 
   async function seedCompany(options: { requireApproval?: boolean } = {}) {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

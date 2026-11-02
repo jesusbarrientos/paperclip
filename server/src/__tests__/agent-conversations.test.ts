@@ -19,7 +19,7 @@ import {
   agentTaskSessions,
   agentWakeupRequests,
   companyMemberships,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueComments,
@@ -85,7 +85,7 @@ const support = await getEmbeddedPostgresTestSupport();
         })
         .onConflictDoNothing();
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           id: companyId,
           name: "Chats",
@@ -614,7 +614,7 @@ const support = await getEmbeddedPostgresTestSupport();
       const runtimeCompany = randomUUID();
       const runtimeAgent = randomUUID();
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           id: runtimeCompany,
           name: "Runtime chat",

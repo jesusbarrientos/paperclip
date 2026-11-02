@@ -6,7 +6,7 @@ import {
   agents,
   agentWakeupRequests,
   approvals,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueApprovals,
@@ -51,7 +51,7 @@ describeEmbeddedPostgres("issue blocker attention", () => {
     await db.delete(issueRelations);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -62,7 +62,7 @@ describeEmbeddedPostgres("issue blocker attention", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
     const pausedAgentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Company ${prefix}`,
       issuePrefix: prefix,

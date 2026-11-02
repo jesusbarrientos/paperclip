@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agentWakeupRequests, agents, companies, createDb, heartbeatRuns, issueComments, issues } from "@paperclipai/db";
+import { activityLog, agentWakeupRequests, agents, organizations, createDb, heartbeatRuns, issueComments, issues } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -48,7 +48,7 @@ describeEmbeddedPostgres("queued-comment postgres adapter", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("queued-comment postgres adapter", () => {
 
   async function seedOrganization(): Promise<string> {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

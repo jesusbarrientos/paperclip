@@ -11,7 +11,7 @@ import {
 } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   agentWakeupRequests,
@@ -102,7 +102,7 @@ describe("durable inbound chat scheduler receipts", () => {
       agentId = randomUUID(),
       issueId = randomUUID(),
       activeRunId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Durable wake",
       issuePrefix: `D${companyId.slice(0, 7)}`,

@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   agents,
   agentWakeupRequests,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
 } from "@paperclipai/db";
@@ -63,7 +63,7 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
     mockAdapterExecute.mockClear();
     runningProcesses.clear();
     // Executed runs write to many company-scoped tables; clear them all.
-    await db.execute(sql`truncate table ${companies} cascade`);
+    await db.execute(sql`truncate table ${organizations} cascade`);
   });
 
   afterAll(async () => {
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("heartbeat queued-run claim isolation", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Claim Isolation Co",
       status: "active",

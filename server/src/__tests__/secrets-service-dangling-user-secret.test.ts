@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
     await db.delete(companySecrets);
     await db.delete(userSecretDefinitions);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -71,7 +71,7 @@ describeEmbeddedPostgres("secretService dangling user_secret_ref resolution", ()
 
   async function seedCompany(name = "Acme") {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name,
       issuePrefix: `T${companyId.slice(0, 7)}`.toUpperCase(),

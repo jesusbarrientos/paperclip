@@ -14,7 +14,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -58,7 +58,7 @@ describe("native external chat workspace boundary", () => {
     instanceRoot = await realpath(
       await mkdtemp(path.join(os.tmpdir(), "native-chat-workspace-")),
     );
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Chat workspaces",
       issuePrefix: "NCW",
       issueCounter: 3,

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, agents, companies, companySkillPolicies, createDb } from "@paperclipai/db";
+import { activityLog, agents, organizations, companySkillPolicies, createDb } from "@paperclipai/db";
 import { errorHandler } from "../middleware/error-handler.js";
 import { companySkillPolicyRoutes } from "../routes/company-skill-policy.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -24,7 +24,7 @@ describeEmbeddedPostgres("company skill policy routes", () => {
     await db.delete(activityLog);
     await db.delete(companySkillPolicies);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -34,7 +34,7 @@ describeEmbeddedPostgres("company skill policy routes", () => {
   async function setupApp() {
     const companyId = randomUUID();
     agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Policy Co",
       issuePrefix: `P${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,

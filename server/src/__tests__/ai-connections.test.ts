@@ -8,7 +8,7 @@ import { mkdtemp, rm, access, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
-import { createDb, companies, agents, heartbeatRuns, companyMemberships, connectionGrants, connectionGrantDelegations, connectionGrantMembers, toolConnections, toolConnectionInstalls, aiConnectionDefaults, aiProviderDefaults, adapterAuthSessions, environments, issues, issueThreadInteractions, issueRecoveryActions, connectionIntentDeliveries, agentWakeupRequests, companySecrets, principalPermissionGrants } from "@paperclipai/db";
+import { createDb, organizations, agents, heartbeatRuns, companyMemberships, connectionGrants, connectionGrantDelegations, connectionGrantMembers, toolConnections, toolConnectionInstalls, aiConnectionDefaults, aiProviderDefaults, adapterAuthSessions, environments, issues, issueThreadInteractions, issueRecoveryActions, connectionIntentDeliveries, agentWakeupRequests, companySecrets, principalPermissionGrants } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "@paperclipai/db/test-embedded-postgres";
 import { aiConnectionService } from "../services/ai-connections.js";
 import * as executionTarget from "@paperclipai/adapter-utils/execution-target";
@@ -38,7 +38,7 @@ beforeAll(async () => {
   database = await startEmbeddedPostgresTestDatabase("paperclip-ai-db-");
   db = createDb(database.connectionString);
   service = aiConnectionService(db);
-  await db.insert(companies).values({ name: "AI connection tests", issuePrefix: "AIT" });
+  await db.insert(organizations).values({ name: "AI connection tests", issuePrefix: "AIT" });
   await db.insert(agents).values({ id: agentId, name: "Nova", adapterType: "claude_local" });
   await db.insert(companyMemberships).values(["alice", "bob"].map(principalId => ({ principalId, principalType: "user", status: "active", membershipRole: "member" }))).onConflictDoUpdate(membershipUpsert);
 }, 90000);
@@ -847,7 +847,7 @@ describe("managed AI connections", () => {
 
   it("creates and hires agents with an authorized restricted shared connection", async () => {
     const { agentRoutes } = await import("../routes/agents.js");
-    await db.update(companies).set({ requireBoardApprovalForNewAgents: false });
+    await db.update(organizations).set({ requireBoardApprovalForNewAgents: false });
     const account = await service.save("alice", { provider: "anthropic", method: "api_key", ownership: "shared", name: "Shared creation routes", apiKey: "fixture", agentIds: [], allAgents: false }, "fixture-create-routes");
     const selected = { ...binding, mode: "shared", ...account } as const;
     const app = express();

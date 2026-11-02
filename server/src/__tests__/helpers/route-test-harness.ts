@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express, { type Router } from "express";
 import { isNotNull } from "drizzle-orm";
 import {
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   issues,
@@ -82,7 +82,7 @@ export type SeededCompany = { userId: string; actor: BoardActor };
 export async function seedCompanyWithBoardAccess(db: Db, name: string): Promise<SeededCompany> {
   const companyId = randomUUID();
   const userId = `user-${randomUUID()}`;
-  await db.insert(companies).values({
+  await db.insert(organizations).values({
     id: companyId,
     name: `${name} ${companyId}`,
     issuePrefix: `T${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
@@ -139,5 +139,5 @@ export async function resetCompanyIssueFixtures(db: Db) {
   await db.delete(issues);
   await db.delete(principalPermissionGrants);
   await db.delete(companyMemberships);
-  await db.delete(companies);
+  await db.delete(organizations);
 }

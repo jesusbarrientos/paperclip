@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companySecrets,
   createDb,
   heartbeatRuns,
@@ -36,7 +36,7 @@ const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
 async function createCompany(db: ReturnType<typeof createDb>) {
-  return db.insert(companies).values({
+  return db.insert(organizations).values({
     name: `Tool Access ${randomUUID()}`,
     issuePrefix: `TA${randomUUID().slice(0, 6).toUpperCase()}`,
   }).returning().then((rows) => rows[0]!);
@@ -168,7 +168,7 @@ describeEmbeddedPostgres("tool access policy service", () => {
     await db.delete(activityLog);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

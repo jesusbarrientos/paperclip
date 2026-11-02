@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { companies, createDb, pluginConfig, plugins } from "@paperclipai/db";
+import { organizations, createDb, pluginConfig, plugins } from "@paperclipai/db";
 import { pluginRegistryService } from "../services/plugin-registry.js";
 import {
   getEmbeddedPostgresTestSupport,
@@ -41,7 +41,7 @@ describeEmbeddedPostgres("registry.listConfigs (startup config delivery)", () =>
   afterEach(async () => {
     await db.delete(pluginConfig);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -76,7 +76,7 @@ describeEmbeddedPostgres("registry.listConfigs (startup config delivery)", () =>
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `Co ${companyId.slice(0, 6)}`,
       issuePrefix: issuePrefix(companyId),

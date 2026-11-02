@@ -22,7 +22,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import {
   createDb,
-  companies,
+  organizations,
   agents,
   authUsers,
   companyMemberships,
@@ -109,7 +109,7 @@ describe("iMessage Photon channel control plane", () => {
     const companyId = randomUUID(),
       agentId = randomUUID(),
       userId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Photon test",
       issuePrefix: `P${companyId.replaceAll("-", "").slice(0, 7).toUpperCase()}`,

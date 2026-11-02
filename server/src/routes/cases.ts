@@ -30,7 +30,7 @@ import {
   caseIssueLinks,
   caseLabels,
   cases,
-  companies,
+  organizations,
   documents,
   documentRevisions,
   issues,
@@ -333,8 +333,8 @@ async function autoLinkRunIssue(db: CaseRouteDb, input: {
 async function nextCaseIdentity(db: CaseRouteDb) {
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${"paperclip:cases"}))`);
   const [company] = await db
-    .select({ issuePrefix: companies.issuePrefix })
-    .from(companies)
+    .select({ issuePrefix: organizations.issuePrefix })
+    .from(organizations)
     .limit(1);
   if (!company) throw notFound("Company not found");
   const [maxRow] = await db

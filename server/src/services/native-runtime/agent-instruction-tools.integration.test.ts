@@ -4,7 +4,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { activityLog, agents, authUsers, companies, companyMemberships, principalPermissionGrants, heartbeatRuns, issues, agentInstructionRevisions, createDb } from "@paperclipai/db";
+import { activityLog, agents, authUsers, organizations, companyMemberships, principalPermissionGrants, heartbeatRuns, issues, agentInstructionRevisions, createDb } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "../../__tests__/helpers/embedded-postgres.js";
 import { resolveManagedInstructionsRoot } from "../agent-instructions.js";
 import { PaperclipRunnerToolAuthority } from "./paperclip-runner-tool-authority.js";
@@ -32,7 +32,7 @@ describe("canonical instruction tools through native authority", () => {
   });
   beforeEach(async () => {
     [agentId, targetAgentId, userId, runId, issueId] = Array.from({ length: 5 }, () => randomUUID());
-    await db.insert(companies).values({ name: "Tool scope", issuePrefix: randomUUID().slice(0, 8) });
+    await db.insert(organizations).values({ name: "Tool scope", issuePrefix: randomUUID().slice(0, 8) });
     await db.insert(authUsers).values({ id: userId, name: "Editor", email: `${userId}@example.test`, createdAt: new Date(), updatedAt: new Date() });
     root = resolveManagedInstructionsRoot({ id: targetAgentId, name: "Target", adapterConfig: {} });
     await db.insert(agents).values([

@@ -2,7 +2,7 @@ import { agentAvatarUrl, resolveAgentAppearance } from "@paperclipai/shared";
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, organizations, costEvents, heartbeatRuns, issues, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
@@ -86,7 +86,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .where(eq(agents.id, event.agentId));
 
       await db
-        .update(companies)
+        .update(organizations)
         .set({
           spentMonthlyCents: companyMonthSpend,
           updatedAt: new Date(),
@@ -100,7 +100,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
     summary: async (range?: CostDateRange) => {
       const company = await db
         .select()
-        .from(companies)
+        .from(organizations)
         .limit(1)
         .then((rows) => rows[0] ?? null);
 

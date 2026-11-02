@@ -7,7 +7,7 @@ import request from "supertest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -139,7 +139,7 @@ describeEmbeddedPostgres("agents adapter-config user-secret resolution routes", 
     const started = await startEmbeddedPostgresTestDatabase("adapter-user-secret-routes");
     stopDb = started.cleanup;
     db = createDb(started.connectionString);
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Acme",
       issuePrefix: "ACME",
       status: "active",

@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { companies, type Db } from "@paperclipai/db";
+import { organizations, type Db } from "@paperclipai/db";
 import {
   patchInstanceSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
@@ -392,8 +392,8 @@ logActivity(tx as unknown as Db, {
     }
     const primaryCompanyId = cloudTenantPrimaryCompanyId(stackId);
     const rows = await db
-      .select({ id: companies.id, status: companies.status })
-      .from(companies);
+      .select({ id: organizations.id, status: organizations.status })
+      .from(organizations);
     const primary = rows.find((row) => row.id === primaryCompanyId);
     res.json({
       primaryCompanyId,

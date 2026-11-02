@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { companies, createDb, invites, joinRequests } from "@paperclipai/db";
+import { organizations, createDb, invites, joinRequests } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { accessRoutes } from "../routes/access.js";
 import { errorHandler } from "../middleware/index.js";
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("GET /invites", () => {
 
   beforeEach(async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -58,7 +58,7 @@ describeEmbeddedPostgres("GET /invites", () => {
   afterEach(async () => {
     await db.delete(joinRequests);
     await db.delete(invites);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

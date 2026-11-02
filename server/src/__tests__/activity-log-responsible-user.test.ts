@@ -5,7 +5,7 @@ import {
   activityLog,
   agentApiKeys,
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -78,7 +78,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
       [heartbeatRuns, [{ responsibleUserId: "run-user" }]],
       [issues, [{ responsibleUserId: "issue-user", createdByUserId: null }]],
       [agentApiKeys, [{ responsibleUserId: "key-user" }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -92,7 +92,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
       [heartbeatRuns, []],
       [issues, [{ responsibleUserId: "issue-user", createdByUserId: "creator-user" }]],
       [agentApiKeys, [{ responsibleUserId: "key-user" }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -104,7 +104,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
   it("uses explicit issue context for non-issue activity", async () => {
     const db = createReader(new Map([
       [issues, [{ responsibleUserId: "issue-user", createdByUserId: null }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -117,7 +117,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
   it("uses the active agent API key responsible user for no-run actions", async () => {
     const db = createReader(new Map([
       [agentApiKeys, [{ responsibleUserId: "key-user" }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -130,7 +130,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
   it("falls back to the organization default responsible user", async () => {
     const db = createReader(new Map([
       [agentApiKeys, []],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -143,7 +143,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
   it("uses issue creator attribution when responsibleUserId is absent", async () => {
     const db = createReader(new Map([
       [issues, [{ responsibleUserId: null, createdByUserId: "creator-user" }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput())).resolves.toBe("creator-user");
@@ -154,7 +154,7 @@ describe("resolveResponsibleUserIdForActivity", () => {
       [heartbeatRuns, [{ responsibleUserId: "run-user" }]],
       [issues, [{ responsibleUserId: "issue-user", createdByUserId: null }]],
       [agentApiKeys, [{ responsibleUserId: "key-user" }]],
-      [companies, [{ defaultResponsibleUserId: "default-user" }]],
+      [organizations, [{ defaultResponsibleUserId: "default-user" }]],
     ]));
 
     await expect(resolveResponsibleUserIdForActivity(db, activityInput({
@@ -187,7 +187,7 @@ describeEmbeddedPostgres("logActivity responsible-user stamping", () => {
     const agentId = randomUUID();
     const agentApiKeyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

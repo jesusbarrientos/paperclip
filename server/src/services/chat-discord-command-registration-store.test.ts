@@ -14,7 +14,7 @@ import {
   chatActions,
   chatDiscordCommandOwners,
   chatEndpoints,
-  companies,
+  organizations,
   createDb,
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -64,7 +64,7 @@ suite("Discord command ownership store (real PostgreSQL, no network)", () => {
     const application = randomUUID(),
       connection = randomUUID();
     const scope = { endpointId, applicationId, guildId: appId() };
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Registration fixture",
       issuePrefix: `D${companyId.slice(0, 7)}`,

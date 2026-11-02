@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issues,
@@ -38,7 +38,7 @@ const support = await getEmbeddedPostgresTestSupport();
         issueId = randomUUID(),
         runId = randomUUID();
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           id: companyId,
           name: "Context",

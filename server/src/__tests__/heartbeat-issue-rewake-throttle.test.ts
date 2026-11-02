@@ -6,7 +6,7 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   environmentLeases,
@@ -97,7 +97,7 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
         await db.delete(environments);
         await db.delete(executionWorkspaces);
         await db.delete(companySkills);
-        await db.delete(companies);
+        await db.delete(organizations);
         break;
       } catch (error) {
         if (attempt >= 4) throw error;
@@ -115,7 +115,7 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
     const agentId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

@@ -4,7 +4,7 @@ import {
   agentWakeupRequests,
   agents,
   approvals,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   issueApprovals,
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("issue review attention", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("issue review attention", () => {
   async function seed() {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Review Attention Co",
       issuePrefix: "RVA",

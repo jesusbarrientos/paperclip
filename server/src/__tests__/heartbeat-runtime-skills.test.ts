@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   companySkills,
   createDb,
   toolApplications,
@@ -153,7 +153,7 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-versioned-runtime-skill-"));
     cleanupDirs.add(skillDir);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -321,7 +321,7 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
 
   it("delivers installed connections without exposing gateway bearers in adapter config or logs", async () => {
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Runtime MCP Delivery",
       issuePrefix: "MRSK",
       requireBoardApprovalForNewAgents: false,

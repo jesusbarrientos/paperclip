@@ -24,7 +24,7 @@ import { captureEmptyTablesReset, membershipUpsert } from "./helpers/reset-organ
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   createDb,
-  companies,
+  organizations,
   agents,
   chatEndpoints,
   chatConversations,
@@ -195,7 +195,7 @@ describe("AgentMail durable email pipeline", () => {
       agentId = randomUUID(),
       endpointId = randomUUID();
     const address = `${endpointId}@agentmail.to`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Email test",
       issuePrefix: `E${companyId.slice(0, 7).toUpperCase()}`,

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   projects,
@@ -62,7 +62,7 @@ describeEmbeddedPostgres("managed runtime-control operation recovery", () => {
     await db.delete(workspaceOperations);
     await db.delete(executionWorkspaces);
     await db.delete(projects);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -76,7 +76,7 @@ describeEmbeddedPostgres("managed runtime-control operation recovery", () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const executionWorkspaceId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Runtime control recovery",
       issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 7).toUpperCase()}`,

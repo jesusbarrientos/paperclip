@@ -156,7 +156,7 @@ import {
   companySkillTestRuns,
   companySkillVersions,
   companySkills as companySkillsTable,
-  companies,
+  organizations,
   completionContracts,
   costEvents,
   documentAnnotationComments,
@@ -10466,7 +10466,7 @@ export function heartbeatService(
       .from(agentWakeupRequests)
       .innerJoin(issues, and(sql`${issues.id}::text = ${agentWakeupRequests.payload}->>'issueId'`,
         eq(issues.assigneeAgentId, agentWakeupRequests.agentId)))
-      .innerJoin(companies, eq(companies.status, "active"))
+      .innerJoin(organizations, eq(organizations.status, "active"))
       .where(and(exists(db.select({ id: issueRecoveryActions.id }).from(issueRecoveryActions).where(and(
         eq(issueRecoveryActions.sourceIssueId, issues.id),
         executionBlockerPredicate(),
@@ -10799,8 +10799,8 @@ export function heartbeatService(
 
   async function resolveCompanyDefaultResponsibleUserId() {
     const company = await db
-      .select({ defaultResponsibleUserId: companies.defaultResponsibleUserId })
-      .from(companies)
+      .select({ defaultResponsibleUserId: organizations.defaultResponsibleUserId })
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     const explicitDefault = readNonEmptyString(
@@ -11812,7 +11812,7 @@ export function heartbeatService(
     const dueMonitors = await db
       .select(issueMonitorDispatchColumns)
       .from(issues)
-      .innerJoin(companies, eq(companies.status, "active"))
+      .innerJoin(organizations, eq(organizations.status, "active"))
       .where(
         and(
           sql`${issues.monitorNextCheckAt} is not null`,
@@ -19270,7 +19270,7 @@ export function heartbeatService(
     await resumeExecutionWaitComments();
     const cutoff = await getWorktreeExecutionCutoff();
     const pendingInterrupts = await db.select({ id: agentWakeupRequests.id })
-      .from(agentWakeupRequests).innerJoin(companies, eq(companies.status, "active"))
+      .from(agentWakeupRequests).innerJoin(organizations, eq(organizations.status, "active"))
       .where(and(eq(agentWakeupRequests.status, "deferred_issue_execution"),
         sql`${agentWakeupRequests.payload}->'queuedCommentInterrupt' is not null`,
         lte(agentWakeupRequests.updatedAt, new Date(Date.now() - 30_000)),
@@ -19291,7 +19291,7 @@ export function heartbeatService(
       .from(agentWakeupRequests)
       .innerJoin(issues, and(sql`${issues.id}::text = ${agentWakeupRequests.payload}->>'issueId'`,
         eq(issues.assigneeAgentId, agentWakeupRequests.agentId)))
-      .innerJoin(companies, eq(companies.status, "active"))
+      .innerJoin(organizations, eq(organizations.status, "active"))
       .where(and(eq(agentWakeupRequests.status, "deferred_issue_execution"),
         isNull(issues.executionRunId),
         or(and(
@@ -19334,7 +19334,7 @@ export function heartbeatService(
         sql`${heartbeatRuns.resultJson}->>'queuedCommentInterruptQueueId' = ${agentWakeupRequests.id}::text`,
         eq(heartbeatRuns.agentId, agentWakeupRequests.agentId),
       ))
-      .innerJoin(companies, eq(companies.status, "active"))
+      .innerJoin(organizations, eq(organizations.status, "active"))
       .where(and(
         eq(agentWakeupRequests.status, "deferred_issue_execution"),
         eq(heartbeatRuns.status, "cancelled"),
@@ -19350,7 +19350,7 @@ export function heartbeatService(
     const queuedRuns = await db
       .select({ agentId: heartbeatRuns.agentId })
       .from(heartbeatRuns)
-      .innerJoin(companies, eq(companies.status, "active"))
+      .innerJoin(organizations, eq(organizations.status, "active"))
       .where(
         and(
           eq(heartbeatRuns.status, "queued"),
@@ -26708,8 +26708,8 @@ export function heartbeatService(
         : await getWorktreeExecutionCutoff();
 
     const company = await db
-      .select({ status: companies.status })
-      .from(companies)
+      .select({ status: organizations.status })
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
 
@@ -29846,7 +29846,7 @@ export function heartbeatService(
       const allAgents = await db
         .select({ ...getTableColumns(agents) })
         .from(agents)
-        .innerJoin(companies, eq(companies.status, "active"));
+        .innerJoin(organizations, eq(organizations.status, "active"));
       const agentOrgRows = allAgents.map(toAgentOrgRow);
       let checked = 0;
       let enqueued = 0;

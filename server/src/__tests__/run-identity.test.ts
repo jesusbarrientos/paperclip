@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentWakeupRequests, agents, companies, createDb, heartbeatRuns, heartbeatRunEvents, issueComments, issueThreadInteractions, issues, secretAccessEvents } from "@paperclipai/db";
+import { agentWakeupRequests, agents, organizations, createDb, heartbeatRuns, heartbeatRunEvents, issueComments, issueThreadInteractions, issues, secretAccessEvents } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { acceptSteeredIdentity, captureRunIdentity, initializeRunIdentity, listRunIdentityContexts, rejectSteeredIdentity, reserveSteeredIdentity } from "../services/run-identity.js";
 
@@ -17,7 +17,7 @@ const support = await getEmbeddedPostgresTestSupport();
 
   async function seed() {
     const companyId = randomUUID(), agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Identity tests", issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: "Identity tests", issuePrefix: companyId.slice(0, 8) });
     await db.insert(agents).values({ id: agentId, name: "Shared agent", role: "engineer", adapterType: "codex_local" });
     await db.insert(issues).values({ id: issueId, title: "Shared task", responsibleUserId: "owner" });
     await db.insert(heartbeatRuns).values({ id: runId, agentId, status: "running", contextSnapshot: { issueId } });

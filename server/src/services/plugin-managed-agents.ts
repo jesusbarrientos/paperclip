@@ -2,7 +2,7 @@ import { and, eq, isNull, like, ne, or } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
-  companies,
+  organizations,
   pluginEntities,
   pluginManagedResources,
   plugins,
@@ -480,7 +480,7 @@ export function pluginManagedAgentService(
   async function createManagedAgent(declaration: PluginManagedAgentDeclaration) {
     const company = await db
       .select()
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!company) throw notFound("Company not found");

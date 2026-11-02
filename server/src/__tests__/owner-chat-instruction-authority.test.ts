@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  agents, agentWakeupRequests, authUsers, companies, companyMemberships, createDb,
+  agents, agentWakeupRequests, authUsers, organizations, companyMemberships, createDb,
   heartbeatRuns, issueComments, issues, principalPermissionGrants, runIdentityContexts,
 } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -49,7 +49,7 @@ describe("owner-chat instruction authority", () => {
   async function seed() {
     const companyId = randomUUID(), agentId = randomUUID(), userId = randomUUID();
     const root = resolveManagedInstructionsRoot({ id: agentId, name: "Ralph", adapterConfig: {} });
-    await db.insert(companies).values({ id: companyId, name: "Owner chat", issuePrefix: companyId.slice(0, 8) });
+    await db.insert(organizations).values({ id: companyId, name: "Owner chat", issuePrefix: companyId.slice(0, 8) });
     await db.insert(authUsers).values({ id: userId, name: "Owner", email: `${userId}@example.test`, createdAt: new Date(), updatedAt: new Date() });
     const permissions = { trustPreset: "low_trust_review", authorizationPolicy: {
       trustBoundary: { mode: "low_trust_review", rootIssueId: randomUUID() },

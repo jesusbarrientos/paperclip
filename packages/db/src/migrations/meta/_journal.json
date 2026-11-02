@@ -2157,6 +2157,20 @@
       "when": 1793624865003,
       "tag": "0309_single_organization_singletons",
       "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1793632341305,
+      "tag": "0310_organization_logo_and_legacy_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1793632355374,
+      "tag": "0311_onboarding_seed_singleton",
+      "breakpoints": true
     }
   ]
 }

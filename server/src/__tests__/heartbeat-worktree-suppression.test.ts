@@ -7,7 +7,7 @@ import {
   agentWakeupRequests,
   agentRuntimeState,
   companySkills,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -86,7 +86,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
     await db.delete(agentRuntimeState);
     await db.delete(companySkills);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceSettings);
   });
 
@@ -99,7 +99,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
     const agentId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       status: "active",

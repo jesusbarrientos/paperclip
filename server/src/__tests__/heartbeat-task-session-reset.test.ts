@@ -5,7 +5,7 @@ import {
   agents,
   agentRuntimeState,
   agentTaskSessions,
-  companies,
+  organizations,
   createDb,
   issues,
 } from "@paperclipai/db";
@@ -45,7 +45,7 @@ describePostgres("task-scoped runtime session reset", () => {
     const identifier = `RESET-${randomUUID().slice(0, 8).toUpperCase()}-1`;
     const otherIdentifier = `${identifier}-OTHER`;
     const foreignIdentifier = `${identifier}-FOREIGN`;
-    await db.insert(companies).values([
+    await db.insert(organizations).values([
       {
         id: companyId,
         name: "Reset fixture",

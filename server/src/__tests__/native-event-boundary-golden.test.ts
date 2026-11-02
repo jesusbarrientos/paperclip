@@ -1,6 +1,6 @@
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -41,7 +41,7 @@ describeEmbeddedPostgres(
       );
       const db = createDb(temporary.connectionString);
       try {
-        await db.insert(companies).values({
+        await db.insert(organizations).values({
           name: "Native boundary fixture",
           issuePrefix: "NBG",
         });

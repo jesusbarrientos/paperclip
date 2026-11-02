@@ -11,7 +11,7 @@ import {
   chatGitHubConfigurations,
   chatGitHubReviews,
   chatMessageLinks,
-  companies,
+  organizations,
   heartbeatRuns,
   type Db,
 } from "@paperclipai/db";
@@ -94,7 +94,7 @@ export function githubReviewCheckService(db: Db, fetchImpl = fetch) {
               endpoint: chatEndpoints,
               resource: chatEndpointResources,
               configuration: chatGitHubConfigurations.configuration,
-              companyPrefix: sql<string>`(select ${companies.issuePrefix} from ${companies} limit 1)`,
+              companyPrefix: sql<string>`(select ${organizations.issuePrefix} from ${organizations} limit 1)`,
             })
             .from(chatEndpoints)
             .innerJoin(

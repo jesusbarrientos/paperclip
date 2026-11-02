@@ -5,7 +5,7 @@ import { composioAppSetupSchema, composioAppsRefreshSchema, composioAppsSyncSche
 import { aggregatorAppsSyncSchema, aggregatorAppsRefreshSchema, arcadeDiscoverySetupSchema } from "@paperclipai/shared/aggregator-apps";
 import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
-import { agents, companies, connectionGrants, issueThreadInteractions, toolConnectionInstalls } from "@paperclipai/db";
+import { agents, organizations, connectionGrants, issueThreadInteractions, toolConnectionInstalls } from "@paperclipai/db";
 import { and, eq, or } from "drizzle-orm";
 import {
   APP_STORE_DEFINITIONS,
@@ -468,8 +468,8 @@ export function toolAccessRoutes(
     connectionId: string,
   ) {
     const [company] = await db
-      .select({ issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       .limit(1);
     if (!company) throw new Error("OAuth callback connection belongs to a missing company");
     return `/${company.issuePrefix}/apps/${connectionId}/permissions`;
@@ -1064,8 +1064,8 @@ function connectorEnrollmentPrincipal(req: Request): string {
       throw notFound("Paperclip Cloud enrollment not found");
     }
     const [company] = await db
-      .select({ id: companies.id, issuePrefix: companies.issuePrefix })
-      .from(companies)
+      .select({ id: organizations.id, issuePrefix: organizations.issuePrefix })
+      .from(organizations)
       .limit(1);
     if (!company) throw notFound("Paperclip Cloud enrollment not found");
     let status;

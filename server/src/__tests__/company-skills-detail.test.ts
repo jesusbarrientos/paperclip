@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, companies, companySkills, createDb } from "@paperclipai/db";
+import { agents, organizations, companySkills, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     mockListSkills.mockClear();
     await db.delete(agents);
     await db.delete(companySkills);
-    await db.delete(companies);
+    await db.delete(organizations);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
   });
@@ -105,7 +105,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TSKD",
       requireBoardApprovalForNewAgents: false,
@@ -158,7 +158,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TSKD",
       requireBoardApprovalForNewAgents: false,

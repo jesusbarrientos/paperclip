@@ -101,7 +101,7 @@ import {
   chatPublications,
   chatSdkState,
   chatTeamsFileTransfers,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   heartbeatRunEvents,
@@ -27624,8 +27624,8 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         link: chatIdentityLinks,
         principal: chatExternalPrincipals,
         endpoint: chatEndpoints,
-        companyName: companies.name,
-        companyPrefix: companies.issuePrefix,
+        companyName: organizations.name,
+        companyPrefix: organizations.issuePrefix,
       })
       .from(chatIdentityLinks)
       .innerJoin(
@@ -27636,7 +27636,7 @@ export function chatChannelService(db: Db, options: ChatChannelServiceOptions) {
         chatEndpoints,
         eq(chatEndpoints.id, chatIdentityLinks.endpointId),
       )
-      .innerJoin(companies, sql`true`)
+      .innerJoin(organizations, sql`true`)
       .where(
         and(
           eq(chatIdentityLinks.confirmationTokenHash, tokenHash),

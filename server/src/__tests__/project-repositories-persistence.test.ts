@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, beforeEach } from "vitest";
-import { companies, companyMemberships, companySecrets, connectionGrants, connectionGrantMembers, toolApplications, toolConnections, createDb, projects as projectTable, userSecretDefinitions } from "@paperclipai/db";
+import { organizations, companyMemberships, companySecrets, connectionGrants, connectionGrantMembers, toolApplications, toolConnections, createDb, projects as projectTable, userSecretDefinitions } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { toolAccessService } from "../services/tool-access.js";
 import { projectService } from "../services/projects.js";
@@ -20,7 +20,7 @@ const support = await getEmbeddedPostgresTestSupport();
   beforeAll(async () => {
     temp = await startEmbeddedPostgresTestDatabase("paperclip-repositories-");
     db = createDb(temp.connectionString);
-    await db.insert(companies).values({ name: "Repositories", issuePrefix: "REPO" });
+    await db.insert(organizations).values({ name: "Repositories", issuePrefix: "REPO" });
   }, 20_000);
   afterAll(async () => { await temp?.cleanup(); });
   afterEach(() => { vi.unstubAllGlobals(); personalTokens.clear(); });

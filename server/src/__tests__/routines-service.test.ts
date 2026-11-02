@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companySecretBindings,
   companySecrets,
   companySecretVersions,
@@ -82,7 +82,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     await db.delete(projectWorkspaces);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceSettings);
   });
 
@@ -128,7 +128,7 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       };
     }> = [];
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

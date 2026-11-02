@@ -11,7 +11,7 @@ import {
   agentInstructionHeads,
   agents,
   approvals,
-  companies,
+  organizations,
   createDb,
   pluginEntities,
   pluginCompanySettings,
@@ -110,7 +110,7 @@ describeEmbeddedPostgres("plugin-managed agents", () => {
     await db.delete(principalPermissionGrants);
     await db.delete(agents);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -121,7 +121,7 @@ describeEmbeddedPostgres("plugin-managed agents", () => {
     const companyId = randomUUID();
     const pluginId = randomUUID();
     const pluginManifest = options.manifest ?? manifest();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

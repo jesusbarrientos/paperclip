@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   documents,
   issueComments,
@@ -91,7 +91,7 @@ describeEmbeddedPostgres("companySearchService", () => {
     await db.delete(labels);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -100,7 +100,7 @@ describeEmbeddedPostgres("companySearchService", () => {
 
   async function createCompany(name = "Paperclip") {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name,
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

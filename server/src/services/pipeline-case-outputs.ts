@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
 import {
   assets,
-  companies,
+  organizations,
   documents,
   documentRevisions,
   heartbeatRuns,
@@ -274,8 +274,8 @@ export function pipelineCaseOutputsService(db: Db) {
           .limit(1)
           .then((rows) => rows[0] ?? null),
         db
-          .select({ issuePrefix: companies.issuePrefix })
-          .from(companies)
+          .select({ issuePrefix: organizations.issuePrefix })
+          .from(organizations)
           .limit(1)
           .then((rows) => rows[0] ?? null),
       ]);

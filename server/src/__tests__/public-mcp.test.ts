@@ -4,7 +4,7 @@ import request from "supertest";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetOrganizationState, membershipUpsert } from "./helpers/reset-organization.js";
-import { activityLog, mcpEventAdmissions, mcpEventDeliveries, mcpEventSubscriptions, createDb, authUsers, companies, companyLogos, assets, companyMemberships, mcpOauthTokens, mcpOauthRequests, mcpOauthGrants, mcpOauthClients, mcpOauthDeviceRequests, mcpOauthMetadataAdmissions, mcpMutationReceipts, agents, issues, issueComments, instanceUserRoles } from "@paperclipai/db";
+import { activityLog, mcpEventAdmissions, mcpEventDeliveries, mcpEventSubscriptions, createDb, authUsers, organizations, companyLogos, assets, companyMemberships, mcpOauthTokens, mcpOauthRequests, mcpOauthGrants, mcpOauthClients, mcpOauthDeviceRequests, mcpOauthMetadataAdmissions, mcpMutationReceipts, agents, issues, issueComments, instanceUserRoles } from "@paperclipai/db";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { createPublicMcpOAuth, publicMcpConfig, hashMcpSecret, DEVICE_GRANT } from "../services/public-mcp/oauth.js";
 import { McpApiError, createMcpApiDispatch, createPublicMcpExecutor, publicMcpCapabilities } from "../services/public-mcp/capabilities.js";
@@ -103,9 +103,9 @@ describe.skipIf(!support.supported)("public MCP OAuth and tool boundary", () => 
   async function fixture(role = "member", write = true) {
     const userId = randomUUID();
     await db.insert(authUsers).values({ id: userId, name: "Human", email: userId + "@example.com", createdAt: new Date(), updatedAt: new Date() });
-    const [existingCompany] = await db.select().from(companies).limit(1);
+    const [existingCompany] = await db.select().from(organizations).limit(1);
     const company = existingCompany
-      ?? (await db.insert(companies).values({ name: "Team", issuePrefix: "M" + randomBytes(4).toString("hex") }).returning())[0];
+      ?? (await db.insert(organizations).values({ name: "Team", issuePrefix: "M" + randomBytes(4).toString("hex") }).returning())[0];
     const [membership] = await db.insert(companyMemberships).values({ principalType: "user", principalId: userId, membershipRole: role, status: "active" }).onConflictDoUpdate(membershipUpsert).returning();
     const actor: Request["actor"] = { type: "board", source: "session", userId };
     const client = await oauth.register({ client_name: "Test client", redirect_uris: [redirectUri] }, randomUUID());
@@ -352,7 +352,7 @@ describe.skipIf(!support.supported)("public MCP OAuth and tool boundary", () => 
     for (const unavailable of ["membership", "archived"] as const) {
       const id = await begin();
       if (unavailable === "membership") await db.update(companyMemberships).set({ status: "inactive" }).where(eq(companyMemberships.id, f.membership.id));
-      else await db.update(companies).set({ status: "archived" }).where(eq(companies.id, f.company.id));
+      else await db.update(organizations).set({ status: "archived" }).where(eq(organizations.id, f.company.id));
       expect((await oauth.describeRequest(id, f.actor, null)).companies).toEqual([]);
       await expect(oauth.consent(id, f.actor, { decision: "approve", allowWrites: false })).rejects.toMatchObject({ status: 403 });
       await oauth.consent(id, f.actor, { decision: "deny", allowWrites: false });

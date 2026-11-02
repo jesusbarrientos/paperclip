@@ -11,7 +11,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -115,7 +115,7 @@ describeEmbeddedPostgres("native question bridge", () => {
     runId = randomUUID();
     sessionId = randomUUID();
     runnerInstanceId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Native questions",
       issuePrefix: `NQ${issueId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   environments,
   executionWorkspaces,
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       }),
     } as unknown as PluginWorkerManager;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -334,7 +334,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     ]);
     await instanceSettingsService(db).update({ defaultEnvironmentId: sharedEnvironmentId });
 
-    await db.insert(companies).values([
+    await db.insert(organizations).values([
       {
         id: companyAId,
         name: "Acme A",
@@ -500,7 +500,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       enableEnvironments: true,
       enableIsolatedWorkspaces: true,
     });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Acme",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

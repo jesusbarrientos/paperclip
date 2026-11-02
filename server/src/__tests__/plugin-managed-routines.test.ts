@@ -5,7 +5,7 @@ import {
   activityLog,
   agentConfigRevisions,
   agents,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -126,7 +126,7 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     await db.delete(agents);
     await db.delete(projects);
     await db.delete(plugins);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -136,7 +136,7 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
   async function seedCompanyAndPlugin(pluginManifest = manifest()) {
     const companyId = randomUUID();
     const pluginId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

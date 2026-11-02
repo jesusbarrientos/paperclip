@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecrets,
@@ -116,7 +116,7 @@ function installMcpFixture(requiredHeader: { name: string; value: string }) {
 
 async function createCompany(db: ReturnType<typeof createDb>) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Removal ${randomUUID()}`,
       issuePrefix: `RM${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -199,7 +199,7 @@ describeEmbeddedPostgres("tool connection removal", () => {
     await db.delete(issues);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 

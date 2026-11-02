@@ -1,5 +1,4 @@
 import { pgTable, uuid, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { companies } from "./companies.js";
 import { goals } from "./goals.js";
 import { agents } from "./agents.js";
 import { issues } from "./issues.js";
@@ -15,11 +14,11 @@ import { issues } from "./issues.js";
  * The `goal_id` / `agent_id` / `issue_id` back-references are what a later
  * revision updates in place rather than duplicating.
  */
-export const companyOnboardingSeeds = pgTable(
+export const onboardingSeeds = pgTable(
   "company_onboarding_seeds",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    singletonKey: text("singleton_key").notNull().default("default"),
     revision: text("revision").notNull(),
     mission: text("mission"),
     agentName: text("agent_name"),
@@ -34,6 +33,6 @@ export const companyOnboardingSeeds = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    companyUq: uniqueIndex("company_onboarding_seeds_company_uq").on(table.companyId),
+    singletonUq: uniqueIndex("company_onboarding_seeds_singleton_uq").on(table.singletonKey),
   }),
 );

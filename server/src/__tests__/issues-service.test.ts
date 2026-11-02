@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   documentRevisions,
@@ -87,7 +87,7 @@ describeEmbeddedPostgres("issueService run attachment artifacts", () => {
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "ART",
@@ -554,7 +554,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     await db.delete(agents);
     await db.delete(instanceSettings);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -563,7 +563,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
 
   async function seedAssignableAgentCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1020,7 +1020,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const agentId = randomUUID();
     const otherAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1128,7 +1128,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1180,7 +1180,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const assignedIssueId = randomUUID();
     const unassignedIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1226,7 +1226,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const assignedIssueId = randomUUID();
     const otherIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1279,7 +1279,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
 
   it("rejects malformed assigneeAgentId filter values", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1303,7 +1303,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const assignedIssueId = randomUUID();
     const unassignedIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1347,7 +1347,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const assignedIssueId = randomUUID();
     const otherIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1386,7 +1386,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
 
   it("rejects malformed assigneeAgentId filter values in count", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1401,7 +1401,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
   it("applies result limits to issue search", async () => {
     const companyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1451,7 +1451,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const otherDocumentId = randomUUID();
     const planDocumentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1513,7 +1513,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const oldCriticalIssueId = randomUUID();
     const recentMediumIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1550,7 +1550,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const companyId = randomUUID();
     const [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1599,7 +1599,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const commentMatchId = randomUUID();
     const descriptionMatchId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1643,7 +1643,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const grandchildId = randomUUID();
     const siblingId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1691,7 +1691,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const grandchildId = randomUUID();
     const outsideMatchId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1736,7 +1736,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const companyId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PC1A2",
@@ -1775,7 +1775,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const otherLinkedIssueId = randomUUID();
     const unlinkedIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1849,7 +1849,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const projectLinkedIssueId = randomUUID();
     const otherIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -1926,7 +1926,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const typedOperationIssueId = randomUUID();
     const legacyContentMachineOperationIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2040,7 +2040,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const normalIssueId = randomUUID();
     const operationIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2086,7 +2086,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const inProgressIssueId = randomUUID();
     const doneIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2126,7 +2126,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const userId = "user-1";
     const otherUserId = "user-2";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2208,7 +2208,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const otherUserId = "user-2";
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2380,7 +2380,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const commentIssueId = randomUUID();
     const activityIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2462,7 +2462,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const anchorCommentId = randomUUID();
     const latestCommentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2516,7 +2516,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const anchorCommentId = randomUUID();
     const latestCommentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2568,7 +2568,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const commentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2605,7 +2605,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const commentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2663,7 +2663,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const commentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2725,7 +2725,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const blockedId = randomUUID();
     const unblockedId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2783,7 +2783,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const longDescription = "x".repeat(5_000);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2816,7 +2816,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const description = "x".repeat(1200);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2841,7 +2841,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const companyId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2867,7 +2867,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const issueId = randomUUID();
     const description = `${"x".repeat(1199)}— still valid after truncation`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -2905,7 +2905,7 @@ describeEmbeddedPostgres("issueService.findOpenAncestorCreatedByAgent", () => {
   afterEach(async () => {
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -2915,7 +2915,7 @@ describeEmbeddedPostgres("issueService.findOpenAncestorCreatedByAgent", () => {
   async function seedChain() {
     const companyId = randomUUID();
     const delegatorId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Chain Co",
       issuePrefix: `C${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3033,7 +3033,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     await db.delete(agents);
     await db.delete(environments);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -3047,7 +3047,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3117,7 +3117,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const agentId = randomUUID();
     const runId = randomUUID();
     const responsibleUserId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3165,7 +3165,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const companyId = randomUUID();
     const creatorUserId = randomUUID();
     const requestedResponsibleUserId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3192,7 +3192,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const companyId = randomUUID();
     const actorResponsibleUserId = randomUUID();
     const requestedResponsibleUserId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3215,7 +3215,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const assigneeEnvironmentId = randomUUID();
     const assigneeAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3285,7 +3285,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const assigneeEnvironmentId = randomUUID();
     const assigneeAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3362,7 +3362,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const firstAgentId = randomUUID();
     const secondAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3463,7 +3463,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const firstAgentId = randomUUID();
     const secondAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3539,7 +3539,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const explicitProjectWorkspaceId = randomUUID();
     const explicitExecutionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3630,7 +3630,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3698,7 +3698,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3790,7 +3790,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const environmentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3860,7 +3860,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const parentProjectWorkspaceId = randomUUID();
     const targetProjectWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3920,7 +3920,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const goalId = randomUUID();
     const parentIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -3986,7 +3986,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -4003,7 +4003,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
     const dependentId = randomUUID();
     const foreignIssueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4088,7 +4088,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
     const companyId = randomUUID();
     const issueId = randomUUID();
     const blockerId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4146,7 +4146,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("persists blocked-by relations and exposes both blockedBy and blocks summaries", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4183,7 +4183,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("returns blocked-by summaries on newly created issues", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4216,7 +4216,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("returns blocked-by summaries on newly created child issues", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4254,7 +4254,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("returns blocks summaries when child creation blocks the parent", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4287,7 +4287,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("adds terminal blockers to immediate blocked-by summaries", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4330,7 +4330,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("rejects blocking cycles", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4354,7 +4354,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
   it("only returns dependents once every blocker is done", async () => {
     const companyId = randomUUID();
     const assigneeAgentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4551,7 +4551,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
     const companyId = randomUUID();
     const assigneeAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4595,7 +4595,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("reports dependency readiness for blocked issue chains", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4633,7 +4633,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
 
   it("unblocks a source issue when a liveness escalation recovery issue is marked done", async () => {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4678,7 +4678,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
   it("rejects execution when unresolved blockers remain", async () => {
     const companyId = randomUUID();
     const assigneeAgentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4732,7 +4732,7 @@ describeEmbeddedPostgres("issueService blockers and dependency wake readiness", 
   it("wakes parents only when all direct children are terminal", async () => {
     const companyId = randomUUID();
     const assigneeAgentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4824,7 +4824,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -4838,7 +4838,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4910,7 +4910,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -4976,7 +4976,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const targetProjectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5042,7 +5042,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
   it("rejects explicitly pinned isolated git worktrees without a project or reusable workspace", async () => {
     const companyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5071,7 +5071,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
   it("does not reject ambiguous inherited git-worktree settings before dispatch", async () => {
     const companyId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5104,7 +5104,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const explicitProjectWorkspaceId = randomUUID();
     const explicitExecutionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5195,7 +5195,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5261,7 +5261,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const projectWorkspaceId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5301,7 +5301,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const companyId = randomUUID();
     const agentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5348,7 +5348,7 @@ describeEmbeddedPostgres("issueService.create workspace inheritance", () => {
     const executionWorkspaceId = randomUUID();
     const issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5465,7 +5465,7 @@ describeEmbeddedPostgres("issueService.findMentionedProjectIds", () => {
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -5478,7 +5478,7 @@ describeEmbeddedPostgres("issueService.findMentionedProjectIds", () => {
     const titleProjectId = randomUUID();
     const commentProjectId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5525,7 +5525,7 @@ describeEmbeddedPostgres("issueService.findMentionedProjectIds", () => {
     const secondProjectId = randomUUID();
     const thirdProjectId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5588,7 +5588,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     await db.delete(goals);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -5601,7 +5601,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     const issueId = randomUUID();
     const runId = status ? randomUUID() : null;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5699,7 +5699,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     const failedRunId = randomUUID();
     const runningRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5769,7 +5769,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     const releasingRunId = randomUUID();
     const successorRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5860,7 +5860,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     const failedRunId = randomUUID();
     const successorRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -5938,7 +5938,7 @@ describeEmbeddedPostgres("issueService.clearExecutionRunIfTerminal", () => {
     const queuedExecutionRunId = randomUUID();
     const successorRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6042,7 +6042,7 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     await db.delete(heartbeatRuns);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -6054,7 +6054,7 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     const goalId = randomUUID();
     const assigneeAgentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6097,7 +6097,7 @@ describeEmbeddedPostgres("accepted plan decomposition", () => {
     const acceptedInteractionId = randomUUID();
 
     if (!args?.goalId || !args?.assigneeAgentId) {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6720,7 +6720,7 @@ describeEmbeddedPostgres("issueService.assertCheckoutOwner stale checkout adopti
     await db.delete(goals);
     await db.delete(agents);
     await db.delete(instanceSettings);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -6740,7 +6740,7 @@ describeEmbeddedPostgres("issueService.assertCheckoutOwner stale checkout adopti
     const issueId = randomUUID();
     const actorRunStatus = params.actorRunStatus ?? "running";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
@@ -6936,7 +6936,7 @@ describeEmbeddedPostgres("issueService.addComment createdByRunId", () => {
     agentId = randomUUID();
     issueId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Paperclip",
       issuePrefix: "TST",
       requireBoardApprovalForNewAgents: false,

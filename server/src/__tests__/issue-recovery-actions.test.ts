@@ -12,7 +12,7 @@ import {
   authUsers,
   agentWakeupRequests,
   activityLog,
-  companies,
+  organizations,
   createDb,
   environmentLeases,
   environments,
@@ -159,7 +159,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     await db.delete(issues);
     await db.delete(agentRuntimeState);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
   });
 
@@ -176,7 +176,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
     const coderId = randomUUID();
     const sourceIssueId = randomUUID();
     const prefix = `RA${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Recovery Co",
       issuePrefix: prefix,
@@ -1777,7 +1777,7 @@ describeEmbeddedPostgres("issue recovery actions", () => {
       updatedAt: new Date(),
     });
     await db
-      .update(companies)
+      .update(organizations)
       .set({ defaultResponsibleUserId: responsibleUserId });
     await db
       .update(agents)

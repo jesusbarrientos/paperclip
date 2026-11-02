@@ -7,7 +7,7 @@ import {
   agents,
   authUsers,
   connectionGrants,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -33,7 +33,7 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 type TestDb = ReturnType<typeof createDb>;
 
 async function createCompany(db: TestDb) {
-  return db.insert(companies).values({
+  return db.insert(organizations).values({
     name: `Smoke Lab ${randomUUID()}`,
     issuePrefix: `SL${randomUUID().slice(0, 6).toUpperCase()}`,
   }).returning().then((rows) => rows[0]!);
@@ -119,7 +119,7 @@ describeEmbeddedPostgres("smoke lab service pack and results API", () => {
     await db.delete(heartbeatRuns);
     await db.delete(agents);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(authUsers);
     await db.delete(instanceSettings);
   });

@@ -6,7 +6,7 @@ import {
   approvals,
   activityLog,
   budgetPolicies,
-  companies,
+  organizations,
   createDb,
   principalPermissionGrants,
 } from "@paperclipai/db";
@@ -45,7 +45,7 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
     await db.delete(budgetPolicies);
     await db.delete(approvals);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -54,7 +54,7 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
 
   async function seedCompany() {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),

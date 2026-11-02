@@ -7,7 +7,7 @@ import {
   activityLog,
   agentWakeupRequests,
   agents,
-  companies,
+  organizations,
   createDb,
   environmentLeases,
   heartbeatRunEvents,
@@ -70,7 +70,7 @@ describeEmbeddedPostgres("wake-queue postgres adapter", () => {
     await db.delete(issueRecoveryActions);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -79,7 +79,7 @@ describeEmbeddedPostgres("wake-queue postgres adapter", () => {
 
   async function seedCompany(): Promise<string> {
     const companyId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

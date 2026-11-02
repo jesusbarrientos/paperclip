@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activityLog, companies, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { activityLog, organizations, companyMemberships, instanceUserRoles } from "@paperclipai/db";
 import {
   actorMiddleware,
   humanizeCloudStackSlug,
@@ -177,18 +177,18 @@ describe("actorMiddleware authenticated session profile", () => {
         from: (table: unknown) => ({
           where: () =>
             Promise.resolve(
-              table === companies
+              table === organizations
                 ? [{ name: "paperclip-stack-purple-rain" }]
                 : [],
             ),
           limit: () =>
             Promise.resolve(
-              table === companies
+              table === organizations
                 ? [{ name: "paperclip-stack-purple-rain" }]
                 : [],
             ),
           orderBy: () => ({
-            limit: () => Promise.resolve(table === companies ? [{ id: "company-1" }] : []),
+            limit: () => Promise.resolve(table === organizations ? [{ id: "company-1" }] : []),
           }),
         }),
       })),

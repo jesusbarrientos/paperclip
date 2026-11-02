@@ -8,7 +8,7 @@ import {
   agentWakeupRequests,
   agents,
   approvals,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -60,7 +60,7 @@ describeEmbeddedPostgres("stalled review decision routes", () => {
     await db.delete(issues);
     await db.delete(companyMemberships);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("stalled review decision routes", () => {
     const memberUserId = `${prefix.toLowerCase()}-member`;
     const peerUserId = `${prefix.toLowerCase()}-peer`;
     const viewerUserId = `${prefix.toLowerCase()}-viewer`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: `${prefix} Company`,
       issuePrefix: prefix,

@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog,
-  companies,
+  organizations,
   companyMemberships,
   companySecretBindings,
   companySecretVersions,
@@ -55,7 +55,7 @@ function updatedEvents() {
 
 async function createCompany(db: Db) {
   const company = await db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Lifecycle telemetry ${randomUUID()}`,
       issuePrefix: `LT${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -192,7 +192,7 @@ describeEmbeddedPostgres("connector lifecycle telemetry (tool-access)", () => {
     await db.delete(companySecretVersions);
     await db.delete(companySecrets);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

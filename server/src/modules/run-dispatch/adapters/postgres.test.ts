@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   documentRevisions,
   documents,
@@ -61,7 +61,7 @@ describeEmbeddedPostgres("run-dispatch postgres adapter", () => {
     await db.delete(heartbeatRunEvents);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -71,7 +71,7 @@ describeEmbeddedPostgres("run-dispatch postgres adapter", () => {
   async function seedCompanyAndAgent(): Promise<{ agentId: string }> {
     const companyId = randomUUID();
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,

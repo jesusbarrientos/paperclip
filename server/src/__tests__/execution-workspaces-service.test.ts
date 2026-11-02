@@ -10,7 +10,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   executionWorkspaces,
   heartbeatRuns,
@@ -284,7 +284,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await db.delete(projects);
     await db.delete(heartbeatRuns);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     pullRequestDetailsByKey.clear();
 
     for (const dir of tempDirs) {
@@ -319,7 +319,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     await runGit(worktreePath, ["add", "delivered.txt"]);
     await runGit(worktreePath, ["commit", "-m", "Delivered change"]);
     const headSha = await readGit(worktreePath, ["rev-parse", "HEAD"]);
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -493,7 +493,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const executionWorkspaceId = randomUUID();
     const sourceIssueId = randomUUID();
     const issuePrefix = `P${companyId.slice(0, 8).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -636,7 +636,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const companyId = randomUUID();
     const projectId = randomUUID();
     const issuePrefix = `P${companyId.slice(0, 8).toUpperCase()}`;
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -1877,7 +1877,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -1949,7 +1949,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const untouchedWorkspaceId = randomUUID();
     const environmentId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2042,7 +2042,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const sharedWorkspaceId = randomUUID();
     const closedWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2135,7 +2135,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
       actualBranch,
     });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2252,7 +2252,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2330,7 +2330,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2400,7 +2400,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2476,7 +2476,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
       actualBranch,
     });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2630,7 +2630,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const executionWorkspaceId = randomUUID();
     const runtimeServiceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2744,7 +2744,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
       actualBranch,
     });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -2918,7 +2918,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
       const claimantWorkspacePath = path.join(path.dirname(repoRoot), `paperclip-claimant-${randomUUID()}`);
       const now = new Date();
 
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix: "PAP",
@@ -3077,7 +3077,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3159,7 +3159,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3241,7 +3241,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3342,7 +3342,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const executionWorkspaceId = randomUUID();
     const runtimeServiceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3445,7 +3445,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const executionWorkspaceId = randomUUID();
     const runtimeServiceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3570,7 +3570,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const executionWorkspaceId = randomUUID();
     const runtimeStartedMarker = path.join(os.tmpdir(), `paperclip-runtime-started-${randomUUID()}.marker`);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3749,7 +3749,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const issueId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3817,7 +3817,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const projectWorkspaceId = randomUUID();
     const workspaceCount = 6_176;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -3905,7 +3905,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const currentWebServiceId = randomUUID();
     const currentWorkerServiceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -4063,7 +4063,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const hostname = "paperclip-dev.tail29c1aa.ts.net";
     const httpsUrl = `https://${hostname}:42010`;
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -4226,7 +4226,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const workspaceBId = "22222222-2222-4222-8222-222222222222";
     const archivedWorkspaceId = "33333333-3333-4333-8333-333333333333";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -4392,7 +4392,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const idleWorkspaceId = "66666666-6666-4666-8666-666666666666";
     const archivedWorkspaceId = "77777777-7777-4777-8777-777777777777";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -4482,7 +4482,7 @@ describeEmbeddedPostgres("executionWorkspaceService.getCloseReadiness", () => {
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",

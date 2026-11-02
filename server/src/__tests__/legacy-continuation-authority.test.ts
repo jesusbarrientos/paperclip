@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { agents, agentWakeupRequests, companies, createDb, heartbeatRuns, issueComments, issueRecoveryActions, issueThreadInteractions, issues } from "@paperclipai/db";
+import { agents, agentWakeupRequests, organizations, createDb, heartbeatRuns, issueComments, issueRecoveryActions, issueThreadInteractions, issues } from "@paperclipai/db";
 import { heartbeatService } from "../services/heartbeat.js";
 import { recoveryService } from "../services/recovery/service.js";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
@@ -11,10 +11,10 @@ describe("legacy continuation persisted authority", () => {
   let db: ReturnType<typeof createDb>;
   beforeAll(async () => {
     temporary = await startEmbeddedPostgresTestDatabase("legacy-authority-"); db = createDb(temporary.connectionString);
-    await db.insert(companies).values({ name: "Authority fixture", issuePrefix: "AUTH", defaultResponsibleUserId: "fixture-owner" });
+    await db.insert(organizations).values({ name: "Authority fixture", issuePrefix: "AUTH", defaultResponsibleUserId: "fixture-owner" });
   }, 20_000);
   afterAll(async () => { await db?.$client.end({ timeout: 0 }); await temporary?.cleanup(); });
-  afterEach(async () => { await db.update(companies).set({ status: "active", pauseReason: null }); });
+  afterEach(async () => { await db.update(organizations).set({ status: "active", pauseReason: null }); });
   async function fixture(context: Record<string, unknown> = {}, continuationAttempt = 0) {
     const agentId = randomUUID(), issueId = randomUUID(), runId = randomUUID();
     await db.insert(agents).values({ id: agentId, name: "Worker", role: "engineer", status: "idle", adapterType: "codex_local", runtimeConfig: { heartbeat: { wakeOnDemand: true } } });
@@ -100,7 +100,7 @@ describe("legacy continuation persisted authority", () => {
     const second = (await f.runs()).find(r => r.status === "scheduled_retry")!;
     expect(await f.createRecovery().legacyRepairDispatchBlock(second.id)).toBeNull();
     if (gate === "approval") await db.insert(issueThreadInteractions).values({ issueId: f.issueId, kind: "request_confirmation", status: "pending", payload: { version: 1, prompt: "Continue?" } });
-    if (gate === "budget") await db.update(companies).set({ status: "paused", pauseReason: "budget" });
+    if (gate === "budget") await db.update(organizations).set({ status: "paused", pauseReason: "budget" });
     if (gate === "pause") await db.update(agents).set({ status: "paused" }).where(eq(agents.id, f.agentId));
     if (gate === "reassigned") await db.update(issues).set({ assigneeAgentId: null }).where(eq(issues.id, f.issueId));
     expect(await f.createRecovery().legacyRepairDispatchBlock(second.id)).not.toBeNull();

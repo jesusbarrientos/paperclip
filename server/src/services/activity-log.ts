@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agentApiKeys, companies, heartbeatRuns, issues } from "@paperclipai/db";
+import { activityLog, agentApiKeys, organizations, heartbeatRuns, issues } from "@paperclipai/db";
 import { isUuidLike, PLUGIN_EVENT_TYPES, type PluginEventType } from "@paperclipai/shared";
 import type { PluginEvent } from "@paperclipai/plugin-sdk";
 import { publishLiveEvent } from "./live-events.js";
@@ -138,8 +138,8 @@ export async function resolveResponsibleUserIdForActivity(db: Db, input: LogActi
   }
 
   const company = await db
-    .select({ defaultResponsibleUserId: companies.defaultResponsibleUserId })
-    .from(companies)
+    .select({ defaultResponsibleUserId: organizations.defaultResponsibleUserId })
+    .from(organizations)
     .limit(1)
     .then((rows) => rows[0] ?? null);
   return readNonEmptyString(company?.defaultResponsibleUserId);

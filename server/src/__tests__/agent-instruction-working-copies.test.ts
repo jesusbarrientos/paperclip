@@ -10,7 +10,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, companies, authUsers, companyMemberships, principalPermissionGrants, heartbeatRuns, agentInstructionWorkingCopies, createDb } from "@paperclipai/db";
+import { agents, organizations, authUsers, companyMemberships, principalPermissionGrants, heartbeatRuns, agentInstructionWorkingCopies, createDb } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { agentInstructionRevisionService } from "../services/agent-instruction-revisions.js";
 import { agentInstructionWorkingCopyService } from "../services/agent-instruction-working-copies.js";
@@ -43,7 +43,7 @@ describe("registered run instruction copies", () => {
     db = createDb(database.connectionString);
     copies = agentInstructionWorkingCopyService(db);
     revisions = agentInstructionRevisionService(db);
-    await db.insert(companies).values({ name: "Instruction tests", issuePrefix: "INS" });
+    await db.insert(organizations).values({ name: "Instruction tests", issuePrefix: "INS" });
   }, 90_000);
   afterAll(async () => {
     if (previousHome === undefined) delete process.env.PAPERCLIP_HOME; else process.env.PAPERCLIP_HOME = previousHome;

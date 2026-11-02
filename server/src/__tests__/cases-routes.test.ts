@@ -13,7 +13,7 @@ import {
   caseIssueLinks,
   caseLabels,
   cases,
-  companies,
+  organizations,
   createDb,
   documentAnnotationComments,
   documentAnnotationThreads,
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("cases routes", () => {
     await db.delete(heartbeatRuns);
     await db.delete(projects);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
     await db.delete(instanceSettings);
   });
 
@@ -146,7 +146,7 @@ describeEmbeddedPostgres("cases routes", () => {
   }
 
   async function seedCompany(prefix = "CASE") {
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `${prefix} Co`,
       issuePrefix: `${prefix}${randomUUID().replace(/-/g, "").slice(0, 4)}`,
     }).returning();

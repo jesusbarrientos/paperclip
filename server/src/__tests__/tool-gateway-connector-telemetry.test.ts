@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   companyMemberships,
   connectionGrants,
   createDb,
@@ -93,7 +93,7 @@ function mcpSuccessResponse(init: RequestInit): Response {
 
 async function createCompany(db: Db) {
   return db
-    .insert(companies)
+    .insert(organizations)
     .values({
       name: `Connector telemetry ${randomUUID()}`,
       issuePrefix: `CT${randomUUID().slice(0, 6).toUpperCase()}`,
@@ -279,7 +279,7 @@ describeEmbeddedPostgres("gateway connector invocation telemetry", () => {
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(companyMemberships);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {

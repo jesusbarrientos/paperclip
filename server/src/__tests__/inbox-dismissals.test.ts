@@ -6,7 +6,7 @@ import {
   activityLog,
   agents,
   approvals,
-  companies,
+  organizations,
   createDb,
   heartbeatRuns,
   inboxDismissals,
@@ -53,7 +53,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.delete(heartbeatRuns);
     await db.delete(approvals);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => {
@@ -69,7 +69,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     { userId: null, actorType: "agent", expected: 0 },
   ])("scopes failed-run badges to $userId (actor=$actorType)", async ({ userId, actorType, expected }) => {
     const companyId = randomUUID();
-    await db.insert(companies).values({ id: companyId, name: "Paperclip", issuePrefix: "PAP" });
+    await db.insert(organizations).values({ id: companyId, name: "Paperclip", issuePrefix: "PAP" });
     for (const responsibleUserId of ["user-1", "user-2", null]) {
       const agentId = randomUUID();
       await db.insert(agents).values({ id: agentId, name: "Agent", role: "engineer", status: "error" });
@@ -106,7 +106,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     const firstDismissedAt = new Date("2026-03-11T01:00:00.000Z");
     const secondDismissedAt = new Date("2026-03-11T02:00:00.000Z");
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -129,7 +129,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     const companyId = randomUUID();
     const userId = "board-user";
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",
@@ -188,7 +188,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     const hiddenRunId = randomUUID();
     const visibleRunId = randomUUID();
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix: "PAP",

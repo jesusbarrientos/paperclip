@@ -15,7 +15,7 @@ import {
   chatIdentityLinks,
   chatMessageLinks,
   chatPublications,
-  companies,
+  organizations,
   companyMemberships,
   createDb,
   heartbeatRuns,
@@ -258,7 +258,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -376,7 +376,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -496,7 +496,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -725,7 +725,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -875,7 +875,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -1016,7 +1016,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -1221,7 +1221,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const wakeReason = "issue_commented";
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -1453,7 +1453,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -1643,7 +1643,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -1855,7 +1855,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
       const heartbeat = heartbeatService(db);
 
       try {
-        await db.insert(companies).values({
+        await db.insert(organizations).values({
           id: companyId,
           name: "Paperclip",
           issuePrefix,
@@ -2307,7 +2307,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -2521,7 +2521,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -2704,7 +2704,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -2885,7 +2885,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -3047,7 +3047,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -3207,7 +3207,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -3382,7 +3382,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -3506,7 +3506,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const heartbeat = heartbeatService(db);
 
     try {
-      await db.insert(companies).values({
+      await db.insert(organizations).values({
         id: companyId,
         name: "Paperclip",
         issuePrefix,
@@ -3648,7 +3648,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     // no-ops under suppression and would leave the promoted wake at "queued".
     const heartbeat = heartbeatService(db, { runtimeEnv: {} });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -3774,7 +3774,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     // no-ops under suppression and would leave the promoted wake at "queued".
     const heartbeat = heartbeatService(db, { runtimeEnv: {} });
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,
@@ -3919,7 +3919,7 @@ describeEmbeddedPostgres("heartbeat comment wake batching", () => {
     const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
     const heartbeat = heartbeatService(db);
 
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Paperclip",
       issuePrefix,

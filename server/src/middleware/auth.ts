@@ -7,7 +7,7 @@ import {
   agentApiKeys,
   agents,
   authUsers,
-  companies,
+  organizations,
   companyMemberships,
   heartbeatRuns,
   instanceUserRoles,
@@ -748,8 +748,8 @@ async function repairCloudTenantCompanyName(
 ): Promise<void> {
   try {
     const existing = await db
-      .select({ name: companies.name })
-      .from(companies)
+      .select({ name: organizations.name })
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0]);
     if (
@@ -762,14 +762,14 @@ async function repairCloudTenantCompanyName(
     }
     await db.transaction(async (tx) => {
       const [updated] = await tx
-        .update(companies)
+        .update(organizations)
         .set({ name: input.paperclipCompanyName, updatedAt: input.now })
         .where(
           and(
-            eq(companies.name, existing.name),
+            eq(organizations.name, existing.name),
           ),
         )
-        .returning({ id: companies.id });
+        .returning({ id: organizations.id });
       if (!updated) return;
 
       await tx.insert(activityLog).values({
@@ -814,7 +814,7 @@ async function insertCloudTenantCompany(
   for (let attempt = 1; attempt <= MAX_ISSUE_PREFIX_ATTEMPTS; attempt += 1) {
     try {
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           id: cloudTenantCompanyId(input.stackId),
           name: input.companyName,
@@ -824,7 +824,7 @@ async function insertCloudTenantCompany(
           updatedAt: input.now,
         })
         .onConflictDoNothing({
-          target: companies.id,
+          target: organizations.id,
         });
       return;
     } catch (error) {
@@ -864,11 +864,11 @@ async function repairCloudTenantCompanyProvisionDefaults(
   try {
     const existing = await db
       .select({
-        name: companies.name,
-        issuePrefix: companies.issuePrefix,
-        description: companies.description,
+        name: organizations.name,
+        issuePrefix: organizations.issuePrefix,
+        description: organizations.description,
       })
-      .from(companies)
+      .from(organizations)
       .limit(1)
       .then((rows) => rows[0]);
     if (!existing) return;
@@ -881,10 +881,10 @@ async function repairCloudTenantCompanyProvisionDefaults(
       if (!legacyDescription) return;
       // The prefix was already re-derived, so only the placeholder is left.
       await db
-        .update(companies)
+        .update(organizations)
         .set({ description: null, updatedAt: input.now })
         .where(and(
-          eq(companies.description, legacyDescription),
+          eq(organizations.description, legacyDescription),
         ));
       return;
     }
@@ -894,16 +894,16 @@ async function repairCloudTenantCompanyProvisionDefaults(
       if (!candidate || candidate === legacyPrefix) return;
 
       const [updated] = await tx
-        .update(companies)
+        .update(organizations)
         .set({
           issuePrefix: candidate,
           ...(legacyDescription ? { description: null } : {}),
           updatedAt: input.now,
         })
         .where(and(
-          eq(companies.issuePrefix, legacyPrefix),
+          eq(organizations.issuePrefix, legacyPrefix),
         ))
-        .returning({ id: companies.id });
+        .returning({ id: organizations.id });
       if (!updated) return;
 
       const rekeyed = await rekeyCompanyIssueIdentifiers(tx, {

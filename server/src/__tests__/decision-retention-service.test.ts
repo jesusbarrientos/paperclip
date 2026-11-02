@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
-  companies,
+  organizations,
   createDb,
   decisionArchiveNotificationOutbox,
   decisionRetention,
@@ -31,14 +31,14 @@ describePg("decision retention", () => {
     await db.delete(activityLog);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companies);
+    await db.delete(organizations);
   });
 
   afterAll(async () => tempDb?.cleanup());
 
   async function seedReviewItems(count: number) {
     const agentId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       name: "Retention",
       issuePrefix: "RET",
       requireBoardApprovalForNewAgents: false,

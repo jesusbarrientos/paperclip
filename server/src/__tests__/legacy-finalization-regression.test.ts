@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   agents,
-  companies,
+  organizations,
   completionContracts,
   createDb,
   heartbeatRuns,
@@ -60,7 +60,7 @@ describe("P6-32 legacy finalization regression", () => {
     temporary = await startEmbeddedPostgresTestDatabase("paperclip-native-legacy-");
     db = createDb(temporary.connectionString);
     await instanceSettingsService(db).updateExperimental({ enableNativeRunner: false });
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Legacy snapshot",
       issuePrefix: "LGC",

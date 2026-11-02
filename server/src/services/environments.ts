@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   builtInManagedResources,
-  companies,
+  organizations,
   companySecretBindings,
   environmentCustomImageSetupSessions,
   environmentLeases,

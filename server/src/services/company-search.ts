@@ -5,7 +5,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   assets,
-  companies,
+  organizations,
   documents,
   issueAttachments,
   issueDocuments,
@@ -988,8 +988,8 @@ export function companySearchService(db: Db) {
 
       const [company, issueSearchData, artifactRows, agentRows, projectRows, artifactCount, agentCount, projectCount] = await Promise.all([
         db
-          .select({ issuePrefix: companies.issuePrefix })
-          .from(companies)
+          .select({ issuePrefix: organizations.issuePrefix })
+          .from(organizations)
           .limit(1)
           .then((rows) => rows[0] ?? null),
         fetchIssueSearchData(),

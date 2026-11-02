@@ -15,7 +15,7 @@ import {
   approvals,
   toolActionRequests,
   toolPolicies,
-  companies,
+  organizations,
   companyMemberships,
   connectionGrants,
   createDb,
@@ -74,7 +74,7 @@ const actor = { actorType: "user" as const, actorId: "browser-reviewer" };
     });
     async function fixture(personal = false) {
       const [company] = await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           name: "Browser fixture",
           issuePrefix: `BU${randomUUID().slice(0, 6)}`,

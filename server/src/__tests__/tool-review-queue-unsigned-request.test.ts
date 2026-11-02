@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  companies,
+  organizations,
   createDb,
   toolApplications,
   toolActionRequests,
@@ -45,7 +45,7 @@ describeEmbeddedPostgres("tool review queue vs unsigned ask-first request", () =
 
   it("hides an unsigned pending request from the queue, keeps it pending, and lets approve succeed once it is signed", async () => {
     vi.stubEnv("PAPERCLIP_TOOL_ACTION_SIGNING_SECRET", signingSecret);
-    const [company] = await db.insert(companies).values({
+    const [company] = await db.insert(organizations).values({
       name: `Review Queue ${randomUUID()}`,
       issuePrefix: `RQ${randomUUID().slice(0, 6).toUpperCase()}`,
     }).returning();
