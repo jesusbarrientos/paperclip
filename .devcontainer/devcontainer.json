@@ -1,0 +1,35 @@
+{
+  "name": "Paperclip",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "node",
+  "runArgs": ["--init"],
+  "mounts": [
+    // pnpm keeps every package under the root node_modules/.pnpm; per-package
+    // node_modules are only symlinks into it. A volume here keeps Linux-native
+    // binaries (embedded-postgres, esbuild) off the macOS bind mount.
+    "source=paperclip-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/node_modules,type=volume",
+    // PAPERCLIP_HOME: embedded PostgreSQL data and instance config.
+    "source=paperclip-home-${devcontainerId},target=/home/node/.paperclip,type=volume",
+    "source=paperclip-claude-${devcontainerId},target=/home/node/.claude,type=volume",
+    "source=paperclip-codex-${devcontainerId},target=/home/node/.codex,type=volume"
+  ],
+  "containerEnv": {
+    // Same filesystem as node_modules so pnpm can hardlink instead of copy.
+    "npm_config_store_dir": "${containerWorkspaceFolder}/node_modules/.pnpm-store"
+  },
+  "postCreateCommand": "sudo chown node:node node_modules && pnpm install --frozen-lockfile",
+  "forwardPorts": [3100, 3101, 6006],
+  "portsAttributes": {
+    "3100": { "label": "Paperclip API + UI", "onAutoForward": "notify" },
+    "3101": { "label": "UI preview (dev:mobile)", "onAutoForward": "silent" },
+    "6006": { "label": "Storybook", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["vitest.explorer", "bradlc.vscode-tailwindcss"]
+    }
+  }
+}
