@@ -1,9 +1,9 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { startReviewProvider } from "../fixtures/connection-review-provider";
+import { ensureOrganization } from "./helpers/organization";
 
 type Json = Record<string, unknown>;
-type Seed = { companyId: string; prefix: string };
 type Agent = { id: string; name: string };
 
 async function json<T = Json>(
@@ -16,22 +16,12 @@ async function json<T = Json>(
   return (await response.json()) as T;
 }
 
-async function newCompany(request: APIRequestContext): Promise<Seed> {
-  const company = await json<{ id: string; issuePrefix: string }>(
-    await request.post("/api/companies", {
-      data: { name: `Connection review E2E ${Date.now()}` },
-    }),
-  );
-  return { companyId: company.id, prefix: company.issuePrefix };
-}
-
 async function createAgent(
   request: APIRequestContext,
-  companyId: string,
   name: string,
 ): Promise<Agent> {
   return await json<Agent>(
-    await request.post(`/api/companies/${companyId}/agents`, {
+    await request.post("/api/agents", {
       data: {
         name,
         role: "qa",
@@ -122,7 +112,7 @@ for (const journey of [
           await route.fulfill({ json: [] });
         } else await route.continue();
       });
-      await page.routeWebSocket("**/api/companies/*/events/ws", (socket) => {
+      await page.routeWebSocket("**/api/events/ws", (socket) => {
         const server = socket.connectToServer();
         server.onMessage((message) => {
           if (suppressReviewEvents && String(message).includes("issue.thread_interaction_")) return;
@@ -132,9 +122,18 @@ for (const journey of [
     }
     const provider = await startReviewProvider();
     try {
-      const seed = await newCompany(request);
-      const agent = await createAgent(request, seed.companyId, "Page reader");
-      await page.goto(`/${seed.prefix}/apps`);
+      await ensureOrganization(request);
+      const agent = await createAgent(request, "Page reader");
+      const listConnections = async () =>
+        (
+          await json<{ connections: Array<{ id: string }> }>(
+            await request.get("/api/tools/connections"),
+          )
+        ).connections;
+      const existingConnectionIds = new Set(
+        (await listConnections()).map((row) => row.id),
+      );
+      await page.goto("/apps");
       const connector = page
         .getByRole("list", { name: "Connector list" })
         .getByRole("listitem")
@@ -153,17 +152,16 @@ for (const journey of [
       await expect(
         page.getByRole("heading", { name: /is ready/i }),
       ).toBeVisible({ timeout: 30_000 });
-      const {
-        connections: [connection],
-      } = await json<{ connections: Array<{ id: string }> }>(
-        await request.get(`/api/companies/${seed.companyId}/tools/connections`),
-      );
+      const connection = (await listConnections()).find(
+        (row) => !existingConnectionIds.has(row.id),
+      )!;
+      expect(connection).toBeTruthy();
       await json(
         await request.put(`/api/tool-connections/${connection.id}/installs`, {
           data: { installs: [{ targetType: "agent", targetId: agent.id }] },
         }),
       );
-      await page.goto(`/${seed.prefix}/apps/${connection.id}/permissions`);
+      await page.goto(`/apps/${connection.id}/permissions`);
       await page
         .getByRole("radio", { name: "List fixture pages: Ask first" })
         .click();
@@ -185,15 +183,15 @@ for (const journey of [
         );
       await configureAgent(journey === "failure" ? "fail" : "recent");
       const issue = await json<{ id: string; identifier: string }>(
-        await request.post(`/api/companies/${seed.companyId}/issues`, {
+        await request.post("/api/issues", {
           data: {
-            title: "Read recent pages",
+            title: `Read recent pages ${Date.now()}`,
             status: "in_progress",
             assigneeAgentId: agent.id,
           },
         }),
       );
-      await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+      await page.goto(`/issues/${issue.identifier}`);
       await expect(
         page.getByRole("button", { name: "Approve & run", exact: true }),
       ).toBeVisible({ timeout: 45_000 });
@@ -224,7 +222,7 @@ for (const journey of [
         page.getByRole("button", { name: "Approve & run", exact: true }),
       ).toBeVisible();
       const queue = await context.newPage();
-      await queue.goto(`/${seed.prefix}/apps/review`);
+      await queue.goto(`/apps/review`);
       await expect(
         queue.getByRole("button", { name: "Decline", exact: true }),
       ).toBeVisible({ timeout: 20_000 });
@@ -326,9 +324,9 @@ for (const journey of [
       if (journey === "always") {
         await configureAgent("different search options");
         const later = await json<{ id: string }>(
-          await request.post(`/api/companies/${seed.companyId}/issues`, {
+          await request.post("/api/issues", {
             data: {
-              title: "Read pages with different arguments",
+              title: `Read pages with different arguments ${Date.now()}`,
               status: "in_progress",
               assigneeAgentId: agent.id,
             },
@@ -359,7 +357,6 @@ for (const journey of [
           {
             source: "local MCP fixture; no live Notion",
             journey,
-            ...seed,
             issue,
             agent,
             providerCalls: calls(),

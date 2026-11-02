@@ -14,7 +14,7 @@ This is the billable browser acceptance campaign system for Paperclip runner
 profiles. It is deliberately separate from `tests/e2e`: every independently
 scheduled execution gets
 a fresh Paperclip home, embedded Postgres database, instance configuration,
-port, workspace, company, encrypted secrets, environment, and agent.
+port, workspace, organization, encrypted secrets, environment, and agent.
 
 ## Native procedure guidance comparison (explicit only)
 
@@ -24,8 +24,8 @@ cells on native Codex, ACPX Claude, and OpenCode.
 Both variants use the same Studio Lead persona, original user requests,
 artifact oracle, lifecycle checks, models and permissions. Each cell permits
 one attempt, a 12-minute deadline, at most 12 story run records, and a
-1,000-cent company hard stop; the lead also has a 1,000-cent hard stop. Worker
-runs count toward the company budget. The suite is excluded from `--all`.
+1,000-cent organization hard stop; the lead also has a 1,000-cent hard stop. Worker
+runs count toward the organization budget. The suite is excluded from `--all`.
 
 Compare frozen branches on the same master with identical fixture sources.
 Retain each original grade, source SHA, harness digest, actual run inventory,
@@ -155,7 +155,7 @@ To judge an older retained probe separately:
 node cli/node_modules/tsx/dist/cli.mjs tests/runner-e2e/completion-judge.ts --evidence /path/to/completion-update.json --max-dollars 0.50 --approve-external-judge yes
 ```
 
-The multi-task fixture records the other explicitly delegated task and its saved output as related ground truth, so a joint reply is checked against both real results. Company boundaries and document ownership are validated; unrelated tasks are never added to the judge input.
+The multi-task fixture records the other explicitly delegated task and its saved output as related ground truth, so a joint reply is checked against both real results. Document ownership is validated; unrelated tasks are never added to the judge input.
 
 The busy-chat case holds the real source conversation's document-save response after commit, using the existing isolated-server transport gate. It arms only that conversation, verifies the committed document and active source run, waits for the worker's real Done transition and public deferred-wake receipt, then releases the tool response. This avoids depending on a provider keeping a shell job in the foreground. The production server and task outcomes are unchanged by the fixture.
 
@@ -200,7 +200,7 @@ Shell variables take precedence over the local file. The recognized names are:
 
 The image must be an immutable `image@sha256:...` reference. The launcher
 reports missing variable names but never prints values. It passes raw provider
-keys only to Playwright, which posts each value once to the company-secrets API.
+keys only to Playwright, which posts each value once to the secrets API.
 Paperclip receives secret references in agent/environment payloads. Provider
 keys, Daytona keys, `DATABASE_URL`, and `DATABASE_MIGRATION_URL` are removed
 from the Paperclip child process.
@@ -426,7 +426,7 @@ provider tool response. Existing native tool-receipt tests cover that boundary.
 Claude. `enable-disable-resume` uses the Experimental settings UI to enable
 Agent Chat, starts a conversation, disables new messages, verifies the public
 write endpoint rejects a send without creating work, and re-enables the same
-conversation with its remembered context. The company, credential, and native
+conversation with its remembered context. The organization, credential, and native
 agent are fixture-provisioned. This qualifies the experimental-settings path,
 not native first-run onboarding: the current production wizard offers legacy
 adapters. Native API tools are enabled by default, subject to the
@@ -453,7 +453,7 @@ pnpm test:e2e:runner -- --id agent-chat-hardening.runner-codex.local.stop-startu
 
 The independent, explicit-only `native-completion` suite qualifies native finish/block descriptions on unchanged master defaults. It preserves the original assigned-skill document journey and pairs it with whole-task blocking across three native profiles, with enforced single attempts. See [NATIVE-COMPLETION.md](NATIVE-COMPLETION.md) for admission, provenance and limits.
 
-The separate, explicit-only `native-instruction-consolidation` suite reuses those original tasks and strict graders to compare completion constraints on the production defaults at `2a8a99e4a5f69aa803b3f10b982f583e75a87042`. It declares six local cells: document completion and whole-task blocking on native Codex, ACPX Claude, and OpenCode. Each cell allows one attempt and applies a 1,000-cent company and agent budget hard stop. Its source gate rejects dirty, mixed, unknown, or unrelated source changes before credentials load. A provider-free fixture captures the complete Paperclip instruction/tool/message projection at the scripted runnerd RPC boundary on start, full-task resume and compact user-follow-up continuation for native input v4 and v5. That capture measures bytes; it does not measure vendor-owned prompts, tokens, billing, or model behavior. See the [comparison plan](../../doc/plans/2026-10-03-native-completion-consolidation.md) for exact scope and live qualification limits. Existing `native-completion` results do not qualify this new reduction.
+The separate, explicit-only `native-instruction-consolidation` suite reuses those original tasks and strict graders to compare completion constraints on the production defaults at `2a8a99e4a5f69aa803b3f10b982f583e75a87042`. It declares six local cells: document completion and whole-task blocking on native Codex, ACPX Claude, and OpenCode. Each cell allows one attempt and applies a 1,000-cent organization and agent budget hard stop. Its source gate rejects dirty, mixed, unknown, or unrelated source changes before credentials load. A provider-free fixture captures the complete Paperclip instruction/tool/message projection at the scripted runnerd RPC boundary on start, full-task resume and compact user-follow-up continuation for native input v4 and v5. That capture measures bytes; it does not measure vendor-owned prompts, tokens, billing, or model behavior. See the [comparison plan](../../doc/plans/2026-10-03-native-completion-consolidation.md) for exact scope and live qualification limits. Existing `native-completion` results do not qualify this new reduction.
 
 The corrected source variants add explicit blocker explanations and canonical document citations. Accepted feedback repeats links only for this run's current saved revisions, and Markdown navigation preserves document anchors after issue details load. Observation v3 independently requires the persisted provider final to explain missing release/deployment access and, for completion, link this task's one revisioned document on the same origin. A correct structured blocker, an unblock action alone, or an unbound/foreign document URL cannot pass. These stricter checks and browser navigation apply only to the manual instruction comparison; the existing `native-completion` suite keeps v2 checks. Task prompts and the durable-output oracle remain unchanged. Admission now requires eighteen shared runnerd RPC captures and six direct OpenCode HTTP captures using a local fake server, all provider-free. Replay of retained v2 evidence is a separate diagnostic, never a replacement for its original verdict. See the [answer correction](../../doc/plans/2026-10-04-native-completion-answer-fix.md).
 
@@ -468,7 +468,7 @@ intentional repeated comment before a changed scope. `assigned-skill-explicit-in
 creates and pins a task skill through public skill APIs, requires an explicit
 provider skill invocation, and keeps the output requirement in the skill body.
 The suite is excluded from `--all` and has no Daytona cells.
-Each cell applies a public API 1,000-cent company and agent budget hard stop
+Each cell applies a public API 1,000-cent organization and agent budget hard stop
 before task creation and records both limits in its evidence. Unknown provider
 billing or a budget incident is not admitted as a pass.
 
@@ -934,7 +934,7 @@ title field. Its ordinary writing request contains no naming or tool directions:
 the production execution prompt must cause the agent to call `set_task_title`.
 Six local cells cover standard and Ask naming plus an explicit-title preservation
 control on native Codex and Codex Mini. Each expects one provider run, has a
-six-minute attempt deadline, and applies 500-cent company and agent budget caps.
+six-minute attempt deadline, and applies 500-cent organization and agent budget caps.
 
 The oracle captures the browser's original POST and creation response, then
 requires a descriptive replacement title, cleared generation marker, unchanged
@@ -1093,7 +1093,7 @@ pnpm test:e2e:runner -- --suite first-task
 
 Default concurrency is one. Each case has a fifteen-minute attempt budget;
 individual response/outcome waits stop after five minutes. More than twelve
-company runs fails the case. All company runs (including delegated/child-agent
+runs fails the case. All runs (including delegated/child-agent
 work and failures) are retained for cleanup and billing. The existing failure
 classification separates transport/credential failures from behavior failures.
 First-response cases stop when the first provider turn settles.
@@ -1366,7 +1366,7 @@ Set an explicit `XAI_API_KEY` for this API-key profile. The manual
 `grok-qualification` suite runs the core and restart workflows on local and
 Daytona runtimes. The separate manual `grok-subscription-qualification` suite
 uses `runner-acpx-grok-subscription` and explicit `GROK_AUTH_JSON`. Its fixture
-stages that login in a private, disposable company home; this is credential
+stages that login in a private, disposable instance home; this is credential
 setup, not a test of interactive browser login. The server never inherits the
 JSON secret or an API key from the harness. See [FIXTURES.md](FIXTURES.md) and
 [SECURITY.md](SECURITY.md) for staging, cleanup, and redaction requirements.
@@ -1431,7 +1431,7 @@ The launcher binds only the selected candidate and exact discovered model in
 The server reads this operator environment at its normal runnerd construction
 boundary; agent config/environment cannot enable qualification. Normal hosts
 have no admission override. It does not bypass profile, executable, credential,
-company, tool or permission checks. Keep this variable confined to isolated
+organization, tool or permission checks. Keep this variable confined to isolated
 qualification instances. Model catalog discovery alone does not prove inference
 entitlement; all three profiles remain pending until the required live evidence
 passes. Cursor and Copilot models are the explicit September 28 authenticated
@@ -1505,7 +1505,7 @@ pnpm test:e2e:runner -- --suite blocker-guidance --max-parallel 2
 ```
 
 Each cell expects two provider turns, permits at most four recorded runs, and
-has an eight-minute deadline. Normal company-wide cancellation and isolated
+has an eight-minute deadline. Normal instance-wide cancellation and isolated
 instance cleanup apply even if a manager unexpectedly runs. All recorded runs
 contribute to the existing billing contract. Evidence includes the waiting and
 final task screenshots, saved checkpoints, final observations, source revision,
@@ -1530,7 +1530,7 @@ above. Compare only matching answer definitions, source hashes, and grader versi
 Use distinct campaign IDs for independent repetitions; do not overwrite an
 earlier campaign or treat repeated samples as infrastructure retries. Use the normal
 Product E2E report generator; retained failed attempts are part of the result.
-Before dispatch, the fixture verifies that both served company skill files match
+Before dispatch, the fixture verifies that both served skill files match
 the evaluated checkout byte for byte. The skill snapshot and provider run evidence
 are retained privately alongside the grading checkpoints for failure diagnosis.
 Claude receives a fresh provider home and config directory inside the disposable
@@ -1558,15 +1558,15 @@ recorded task status. Three CEO turns and two actual worker executions make
 **five required work turns per cell**, plus at most **two strictly attributed
 automatic task-completion turns** (seven total maximum), with a **15-minute
 deadline** and 1,000-cent
-company/CEO budget hard stops. Normal managed-account fixture cleanup and
-company-wide cancellation apply. Both cells opt into the existing native API
+organization/CEO budget hard stops. Normal managed-account fixture cleanup and
+instance-wide cancellation apply. Both cells opt into the existing native API
 tools. No model-authored code is executed by the grading host.
 
 The independent oracle checks every JSON input and computed value, authorship,
 two distinct completed tasks, project/reporting identity, exactly three user-requested
 CEO turns and one coder execution per task,
 managed execution-account attribution, original document preservation, and
-worker reuse. Bounded completion turns must have the same company, managed
+worker reuse. Bounded completion turns must have the same managed
 account, responsible user, chat generation and known completed tasks; unique
 server delivery/update receipts; valid completion timing; and a run-attributed
 chat reply. One completion turn may batch both tasks. Unknown, duplicate,

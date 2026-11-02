@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Built Storybook plus the real, public on-demand avatar endpoint.
-// Uses an isolated disposable cache; no company database or credentials.
+// Uses an isolated disposable cache; no organization database or credentials.
 import { createRequire } from "node:module";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

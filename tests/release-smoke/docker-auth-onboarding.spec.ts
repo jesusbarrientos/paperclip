@@ -32,7 +32,7 @@ const ANTHROPIC_API_KEY =
   process.env.PAPERCLIP_RELEASE_SMOKE_ANTHROPIC_API_KEY ??
   (TARGET_IS_LOOPBACK ? "sk-ant-release-smoke-placeholder" : "");
 
-const COMPANY_NAME = `Release-Smoke-${Date.now()}`;
+const ORGANIZATION_NAME = `Release-Smoke-${Date.now()}`;
 const AGENT_NAME = "Release Smoke Lead";
 // The arc asks for a name, not a role, so every onboarding hire is filed under
 // the neutral role (DEFAULT_AGENT_ROLE in ui/src/lib/onboarding-agent-role.ts).
@@ -58,41 +58,33 @@ async function getJson<T>(page: Page, url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function organizationExists(page: Page, baseUrl: string) {
+  const response = await page.request.get(`${baseUrl}/api/organization`);
+  if (response.status() === 404) return false;
+  expect(response.ok()).toBe(true);
+  return true;
+}
+
 // ONBOARDING_STORAGE_KEY in ui/src/components/OnboardingWizard.tsx.
 const ONBOARDING_DRAFT_STORAGE_KEY = "paperclip-onboarding-state";
 
 /**
- * Open the wizard on its first step and hand back the organization-name field.
+ * Open the wizard explicitly, after dropping the saved draft.
  *
- * `/onboarding` resolves to `{ initialStep: 1 }` on a self-hosted instance
- * (`resolveRouteOnboardingOptions`) and the route keeps the wizard open, so
- * this lands on "name your organization" whether or not the instance already
- * holds a company. Navigating explicitly is what keeps the spec re-runnable:
- * the release-smoke config retries once in CI, and by the second attempt the
- * instance is no longer company-less, so sign-in lands on a dashboard instead.
+ * `/onboarding` resolves to step 1 ("name your organization") while the
+ * instance has no organization, and to the agent step once it has one
+ * (`resolveRouteOnboardingOptions`). Navigating explicitly is what keeps the
+ * spec re-runnable: the release-smoke config retries once in CI, and by the
+ * second attempt the organization exists, so sign-in lands on a dashboard.
  *
- * The saved draft is dropped first. Sign-in on an instance that already holds
- * an agentless company redirects into *that* company's onboarding, which
- * persists its id into the draft; the restored draft then makes step 1 skip
- * creating a company and hire into the old one instead. That is an artifact of
- * re-running against a re-used instance, not behaviour this spec is asserting,
- * and a fresh release-smoke container never has it.
- *
- * The field is located by role. Step 1 has no id and its `<label>` is not
- * associated with the input, so the alternative is its placeholder copy — the
- * exact coupling that let this spec drift. The wizard's first screen has
- * exactly one text box, and a second one appearing there would fail Playwright's
- * strict mode loudly rather than silently matching the wrong control.
+ * The draft is dropped so a restored step from an earlier attempt cannot
+ * decide where the wizard opens. A fresh release-smoke container never has one.
  */
 async function openOnboarding(page: Page) {
   await page.evaluate((key) => {
     window.localStorage.removeItem(key);
   }, ONBOARDING_DRAFT_STORAGE_KEY);
   await page.goto("/onboarding");
-
-  const orgNameField = page.getByRole("textbox");
-  await expect(orgNameField).toBeVisible({ timeout: 20_000 });
-  return orgNameField;
 }
 
 test.describe("Docker authenticated onboarding smoke", () => {
@@ -110,24 +102,30 @@ test.describe("Docker authenticated onboarding smoke", () => {
 
     const baseUrl = new URL(page.url()).origin;
 
-    // A board with no company routes sign-in straight into onboarding rather
-    // than a dashboard — the first-run experience this suite exists to guard.
-    // Asserted only when the instance really is company-less, because a retry
-    // (or a re-used smoke container) runs against one that is not.
-    const companiesBeforeOnboarding = await getJson<Array<{ id: string }>>(
-      page,
-      `${baseUrl}/api/companies`
-    );
-    if (companiesBeforeOnboarding.length === 0) {
+    // An instance with no organization routes sign-in straight into
+    // onboarding rather than a dashboard — the first-run experience this suite
+    // exists to guard. A retry (or a re-used smoke container) already has the
+    // organization, so the wizard opens on the agent step instead.
+    const freshInstance = !(await organizationExists(page, baseUrl));
+    if (freshInstance) {
       await expect(page).toHaveURL(/\/onboarding$/, { timeout: 20_000 });
     }
 
-    // Step 1: name the organization. "Continue" creates the company itself and
+    await openOnboarding(page);
+
+    // Step 1: name the organization. "Continue" creates the organization and
     // routes straight to the agent step — onboarding no longer asks for the
     // mission (it is collected later, in the app), so step 2 is skipped.
-    const orgNameField = await openOnboarding(page);
-    await orgNameField.fill(COMPANY_NAME);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    //
+    // The field is located by role: step 1 has no id and its `<label>` is not
+    // associated with the input. The wizard's first screen has exactly one
+    // text box, so a second one would fail Playwright's strict mode loudly.
+    if (freshInstance) {
+      const orgNameField = page.getByRole("textbox");
+      await expect(orgNameField).toBeVisible({ timeout: 20_000 });
+      await orgNameField.fill(ORGANIZATION_NAME);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+    }
 
     // Step 3: name the team lead. The name is the step's only question and it
     // gates the CTA; the role picker is gone, so the hire is filed as `general`.
@@ -200,30 +198,20 @@ test.describe("Docker authenticated onboarding smoke", () => {
     await getStartedButton.click();
     await expect(page).toHaveURL(/\/issues\//, { timeout: 30_000 });
 
-    const companies = await getJson<Array<{ id: string; name: string }>>(
-      page,
-      `${baseUrl}/api/companies`
+    if (freshInstance) {
+      const organization = await getJson<{ name: string }>(
+        page,
+        `${baseUrl}/api/organization`
+      );
+      expect(organization.name).toBe(ORGANIZATION_NAME);
+    }
+
+    // The launch must have landed on the seeded task itself, not merely on
+    // some issue route. A re-run hires another lead with the same name and
+    // seeds another first task, so the task is identified by the URL.
+    const landedRef = decodeURIComponent(
+      new URL(page.url()).pathname.split("/issues/")[1] ?? ""
     );
-    const company = companies.find((entry) => entry.name === COMPANY_NAME);
-    expect(company).toBeTruthy();
-
-    const agents = await getJson<
-      Array<{ id: string; name: string; role: string; adapterType: string }>
-    >(page, `${baseUrl}/api/companies/${company!.id}/agents`);
-    const leadAgent = agents.find((entry) => entry.name === AGENT_NAME);
-    expect(leadAgent).toBeTruthy();
-    expect(leadAgent!.role).toBe(AGENT_ROLE);
-    expect(leadAgent!.adapterType).not.toBe("process");
-
-    // Onboarding deliberately writes no goal: the mission is collected later in
-    // the app, so a fresh company must come out of the wizard with an empty
-    // goal list rather than an unchosen one.
-    const goals = await getJson<Array<{ id: string }>>(
-      page,
-      `${baseUrl}/api/companies/${company!.id}/goals`
-    );
-    expect(goals).toEqual([]);
-
     const issues = await getJson<
       Array<{
         id: string;
@@ -231,17 +219,34 @@ test.describe("Docker authenticated onboarding smoke", () => {
         title: string;
         assigneeAgentId: string | null;
       }>
-    >(page, `${baseUrl}/api/companies/${company!.id}/issues`);
-    const seededIssue = issues.find((entry) => entry.title === FIRST_TASK_TITLE);
-    expect(seededIssue).toBeTruthy();
-    expect(seededIssue!.assigneeAgentId).toBe(leadAgent!.id);
-
-    // The launch must have landed on the seeded task itself, not merely on
-    // some issue route.
-    const seededRef = seededIssue!.identifier ?? seededIssue!.id;
-    expect(new URL(page.url()).pathname.endsWith(`/issues/${seededRef}`)).toBe(
-      true
+    >(page, `${baseUrl}/api/issues`);
+    const seededIssue = issues.find(
+      (entry) => (entry.identifier ?? entry.id) === landedRef
     );
+    expect(seededIssue).toBeTruthy();
+    expect(seededIssue!.title).toBe(FIRST_TASK_TITLE);
+
+    const agents = await getJson<
+      Array<{ id: string; name: string; role: string; adapterType: string }>
+    >(page, `${baseUrl}/api/agents`);
+    const leadAgent = agents.find(
+      (entry) => entry.id === seededIssue!.assigneeAgentId
+    );
+    expect(leadAgent).toBeTruthy();
+    expect(leadAgent!.name).toBe(AGENT_NAME);
+    expect(leadAgent!.role).toBe(AGENT_ROLE);
+    expect(leadAgent!.adapterType).not.toBe("process");
+
+    // Onboarding deliberately writes no goal: the mission is collected later in
+    // the app, so a fresh organization must come out of the wizard with an
+    // empty goal list rather than an unchosen one.
+    if (freshInstance) {
+      const goals = await getJson<Array<{ id: string }>>(
+        page,
+        `${baseUrl}/api/goals`
+      );
+      expect(goals).toEqual([]);
+    }
 
     // #13068 rebuilt the seeded first task as a chat with the lead: launch
     // posts a deterministic, server-owned greeting plus an opening question
@@ -266,7 +271,7 @@ test.describe("Docker authenticated onboarding smoke", () => {
     // dispatch is asynchronous, so watch the endpoint over a bounded window
     // rather than sampling it once — a launch-time wake that slips through
     // lands well within this window.
-    const runsUrl = `${baseUrl}/api/companies/${company!.id}/heartbeat-runs?agentId=${leadAgent!.id}`;
+    const runsUrl = `${baseUrl}/api/heartbeat-runs?agentId=${leadAgent!.id}`;
     const noRunDeadline = Date.now() + 15_000;
     while (Date.now() < noRunDeadline) {
       expect(await getJson<Array<{ id: string }>>(page, runsUrl)).toEqual([]);

@@ -120,7 +120,6 @@ function runProvision(baseCwd, { pathPrefix, setupWorktree, setupInstance, exist
       PAPERCLIP_WORKTREES_DIR: worktreesHome,
       PAPERCLIP_HOME: paperclipHome,
       PAPERCLIP_PROJECT_WORKSPACE_ID: "project-workspace-1",
-      PAPERCLIP_SEED_EXPECTED_COMPANY_ID: "company-1",
       ...(typeof env === "function" ? env(paperclipHome) : env),
     },
   });
@@ -143,7 +142,6 @@ function runRuntimeProvision(baseCwd, worktreeCwd, { setupInstance } = {}) {
       PAPERCLIP_WORKTREES_DIR: worktreesHome,
       PAPERCLIP_HOME: paperclipHome,
       PAPERCLIP_PROJECT_WORKSPACE_ID: "project-workspace-1",
-      PAPERCLIP_COMPANY_ID: "company-1",
     },
   });
 }
@@ -400,7 +398,6 @@ test("reconciles deployment mode from the registered source when reusing a guest
       PAPERCLIP_WORKTREES_DIR: worktreesHome,
       PAPERCLIP_HOME: paperclipHome,
       PAPERCLIP_PROJECT_WORKSPACE_ID: "project-workspace-1",
-      PAPERCLIP_SEED_EXPECTED_COMPANY_ID: "company-1",
     },
   });
 

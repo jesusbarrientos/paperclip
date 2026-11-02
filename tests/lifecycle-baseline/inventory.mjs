@@ -318,6 +318,6 @@ export const combinations = [
   ["exhaustion plus comment/new authorized request", "LCA-09"],
   ["stale plan revision approval", "LCA-05"],
   ["duplicate answer/dependency event/reconciler", "LCA-12"],
-  ["wrong-company/task or unauthorized response", "LCA-04"],
+  ["wrong-task or unauthorized response", "LCA-04"],
   ["productive continuation beyond failure retry limit", "LCA-02"],
 ];

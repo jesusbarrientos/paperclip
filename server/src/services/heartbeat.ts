@@ -11172,7 +11172,7 @@ export function heartbeatService(
     if (!identifier) return fallback;
     const prefix = identifier.split("-")[0];
     if (!prefix || !/^[A-Z][A-Z0-9]*-\d+$/.test(identifier)) return identifier;
-    return `[${identifier}](/${prefix}/issues/${identifier})`;
+    return `[${identifier}](/issues/${identifier})`;
   }
 
   function monitorRecoveryComment(input: {
@@ -13144,7 +13144,7 @@ export function heartbeatService(
   ) {
     const label = issue.identifier ?? issue.id;
     const prefix = issue.identifier?.split("-")[0] || "PAP";
-    return `[${label}](/${prefix}/issues/${label})`;
+    return `[${label}](/issues/${label})`;
   }
 
   function hasUnmanagedBackgroundTaskEvidence(

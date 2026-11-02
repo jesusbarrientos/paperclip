@@ -5,7 +5,6 @@ export interface StoryCheck {
 }
 export interface StoryIssue {
   id: string;
-  companyId: string;
   title: string;
   status: string;
   identifier?: string | null;
@@ -115,7 +114,6 @@ export interface StoryWakeDiagnostics {
 }
 export interface StoryRun {
   id: string;
-  companyId: string;
   agentId: string;
   status: string;
   runtimeMode?: string;

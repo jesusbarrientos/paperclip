@@ -36,7 +36,6 @@ export async function observeCompletionUpdate(input: {
           runs: await input.allRuns(),
           relatedTasks: await Promise.all((input.relatedWorkerIds ?? []).filter(id => id !== worker.id).map(async id => {
             const task = await input.api.get<Row>(`/api/issues/${id}`);
-            if (task.companyId !== worker.companyId) throw new Error("Related completion task escaped fixture company");
             const documents = await input.api.get<Row[]>(`/api/issues/${id}/documents`);
             return { task, documents: await Promise.all(documents.map(d => input.api.get<Row>(`/api/issues/${id}/documents/${encodeURIComponent(d.key)}`))) };
           })),
@@ -126,7 +125,6 @@ export async function runChatCompletionUpdate(context: {
 }) {
   const { input, marker } = context;
   const { api, fixtures: f, execution, page } = input;
-  const company = `/api/companies/${f.company.id}`;
   const busy = execution.task.id === "handoff-completion-busy";
   const multiple = execution.task.id === "handoff-completion-multiple";
   const restart = execution.task.id === "handoff-completion-restart";
@@ -138,11 +136,11 @@ export async function runChatCompletionUpdate(context: {
     await api.saveAgentInstructions(f.agent.id, instruction);
   }
   const config = execution.profile.buildAgent({ environmentId: f.environment.id, environmentFixtureId: "local", workspacePath: input.workspacePath, secretRefs: f.secretRefs, executionId: input.nonce });
-  const worker = await api.post<Row>(`${company}/agents`, { ...config, name: "Riley Writer", role: "engineer", reportsTo: f.agent.id });
-  const project = await api.post<Row>(`${company}/projects`, { name: "Garden welcome", description: "A non-code neighborhood garden meetup. No repository needed." });
+  const worker = await api.post<Row>("/api/agents", { ...config, name: "Riley Writer", role: "engineer", reportsTo: f.agent.id });
+  const project = await api.post<Row>("/api/projects", { name: "Garden welcome", description: "A non-code neighborhood garden meetup. No repository needed." });
   // A project task runs in its managed project workspace. The agent-home path
   // used by projectless chats is outside the native Codex workspace projection.
-  const workspace = resolveManagedProjectWorkspaceDir({ companyId: f.company.id, projectId: project.id });
+  const workspace = resolveManagedProjectWorkspaceDir({ projectId: project.id });
   const relative = path.relative(path.dirname(input.workspacePath), workspace);
   if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Completion fixture escaped isolated instance");
   const wait = await prepareChatBrief(workspace, input.nonce, 240_000);
@@ -161,7 +159,7 @@ export async function runChatCompletionUpdate(context: {
       load: async () => {
         await context.refreshIssue();
         const source = await api.get<Row>(`/api/issues/${context.issue().id}`);
-        const tasks = await api.get<Row[]>(`${company}/issues`);
+        const tasks = await api.get<Row[]>("/api/issues");
         delegated = tasks.filter(t => t.assigneeAgentId === worker.id);
         task = delegated[0];
         const runs = await context.allRuns();
@@ -228,7 +226,7 @@ export async function runChatCompletionUpdate(context: {
       await input.evidence("completion-restart-boundary.json", { worker: await api.get(`/api/issues/${task!.id}`), runs: reportingRun.runs, sourceReferenceGateReady: true });
       await input.restart();
       await writeFile(completionWait!.gate, "The organizer is ready to receive the saved result. Report the completed work now.");
-      await page.goto(`/${f.company.issuePrefix}/chats/${f.agent.id}`, { waitUntil: "commit" });
+      await page.goto(`/chats/${f.agent.id}`, { waitUntil: "commit" });
     }
     for (const [index, item] of delegated.entries()) {
       await pollUntil({ label: "delegated note completed", deadlineAt: Date.now() + 180_000, intervalMs: 1000,
@@ -242,7 +240,7 @@ export async function runChatCompletionUpdate(context: {
       expect(completionOutputUsesReleasedBrief(output.body), "worker output must use the released start time").toBe(true);
       expect(await api.get(`/api/issues/${item.id}/documents/${encodeURIComponent(output.key)}`)).toEqual(output);
     }
-    expect((await api.get<Row[]>(`${company}/issues`)).map(t => t.id).sort()).toEqual(delegated.map(t => t.id).sort());
+    expect((await api.get<Row[]>("/api/issues")).map(t => t.id).sort()).toEqual(delegated.map(t => t.id).sort());
     const comments = await api.get<Row[]>(`/api/issues/${context.issue().id}/comments?order=asc`);
     expect(comments.filter(c => c.authorUserId).map(c => c.body)).toEqual(userMessages);
     const runs = await context.allRuns();

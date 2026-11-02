@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { test, expect, type Route } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 const fulfill = (route: Route, body: unknown, status = 200) =>
   route.fulfill({
@@ -17,13 +18,9 @@ test("AgentMail setup and email work through the normal task conversation", asyn
     data: { enableChatConnectors: false },
   });
   expect(settings.ok()).toBeTruthy();
-  const created = await request.post("/api/companies", {
-    data: { name: `AgentMail browser ${Date.now()}` },
-  });
-  expect(created.ok()).toBeTruthy();
-  const company = await created.json();
+  await ensureOrganization(request);
   const agentResponse = await request.post(
-    `/api/companies/${company.id}/agents`,
+    `/api/agents`,
     {
       data: {
         name: "Mail agent",
@@ -39,14 +36,13 @@ test("AgentMail setup and email work through the normal task conversation", asyn
   expect(agentResponse.ok()).toBeTruthy();
   const agent = await agentResponse.json();
   const taskResponse = await request.post(
-    `/api/companies/${company.id}/issues`,
+    `/api/issues`,
     { data: { title: "Customer email", status: "backlog" } },
   );
   expect(taskResponse.ok()).toBeTruthy();
   const task = await taskResponse.json();
   const inbox = {
     id: randomUUID(),
-    companyId: company.id,
     connectionId: randomUUID(),
     assignedAgentId: agent.id,
     address: "agent@agentmail.to",
@@ -91,13 +87,13 @@ test("AgentMail setup and email work through the normal task conversation", asyn
   await page.route("**/api/instance/settings/experimental", (route) =>
     fulfill(route, { enableChatConnectors: false }),
   );
-  await page.route(`**/api/companies/${company.id}/tools/connections`, route =>
+  await page.route(`**/api/tools/connections`, route =>
     fulfill(route, { connections: [{
       id: organizationConnectionId, name: "AgentMail", status: "active", enabled: true,
       config: { provider: "agentmail", emailCredential: true }, createdAt: "2026-09-30T14:00:00Z",
     }] }),
   );
-  await page.route(`**/api/companies/${company.id}/chat-endpoints`, route =>
+  await page.route(`**/api/chat-endpoints`, route =>
     fulfill(route, reservedInbox ? [{ ...reservedInbox, provider: "agentmail", assignedAgentName: agent.name,
       providerAccountLabel: reservedInbox.address }] : []),
   );
@@ -197,7 +193,7 @@ test("AgentMail setup and email work through the normal task conversation", asyn
       botExternalId: inbox.address,
     }),
   );
-  await page.goto(`/${company.issuePrefix}/apps`);
+  await page.goto(`/apps`);
   await page.getByRole("button", { name: /^(Connect|Add connection) AgentMail$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Give an agent an email address" }),
@@ -282,7 +278,7 @@ test("AgentMail setup and email work through the normal task conversation", asyn
   await expect(page.getByRole("button", { name: "Reconnect inbox", exact: true })).toHaveCount(0);
   await navigation.getByRole("link", { name: "Conversations", exact: true }).click();
   await expect(page.getByRole("list", { name: "Conversations" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open task", exact: true })).toHaveAttribute("href", `/${company.issuePrefix}/issues/${task.id}`);
+  await expect(page.getByRole("link", { name: "Open task", exact: true })).toHaveAttribute("href", `/issues/${task.id}`);
   await page.reload();
   await expect(page.getByRole("list", { name: "Conversations" })).toBeVisible();
   await navigation.getByRole("link", { name: "Activity", exact: true }).click();
@@ -305,7 +301,7 @@ test("AgentMail setup and email work through the normal task conversation", asyn
   await expect(page.getByLabel("New API key", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reconnect inbox", exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("agentmail-settings-reconnect.png"), fullPage: true });
-  await page.goto(`/${company.issuePrefix}/issues/${task.identifier}`);
+  await page.goto(`/issues/${task.identifier}`);
   const email = page.getByRole("article", { name: "Email received", exact: true });
   await expect(email).toBeVisible();
   await expect(email.getByText("Can you help?", { exact: true })).toBeVisible();

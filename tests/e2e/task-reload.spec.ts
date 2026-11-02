@@ -12,11 +12,11 @@ test("saved task content survives same-URL navigation and reload with a controll
   const comment = "Persisted context remains available after a full page load.";
   try {
     // Unassigned backlog work exercises the actual UI without a provider call.
-    const issue = await json(await request.post(`/api/companies/${fixture.company.id}/issues`, {
+    const issue = await json(await request.post(`/api/issues`, {
       data: { title, status: "backlog" },
     }));
     await json(await request.post(`/api/issues/${issue.id}/comments`, { data: { body: comment } }));
-    const route = `/${fixture.company.issuePrefix}/issues/${issue.identifier}`;
+    const route = `/issues/${issue.identifier}`;
     const assertLoaded = async () => {
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText(comment, { exact: true })).toBeVisible();
@@ -48,11 +48,11 @@ test("an interrupted app bundle offers a retry that restores the saved task", as
   const title = "Recover interrupted startup";
   const comment = "This saved comment must survive a startup failure.";
   try {
-    const issue = await json(await request.post(`/api/companies/${fixture.company.id}/issues`, {
+    const issue = await json(await request.post(`/api/issues`, {
       data: { title, status: "backlog" },
     }));
     await json(await request.post(`/api/issues/${issue.id}/comments`, { data: { body: comment } }));
-    const route = `/${fixture.company.issuePrefix}/issues/${issue.identifier}`;
+    const route = `/issues/${issue.identifier}`;
     // Fail the shipped module before React (and its error boundary) can start.
     await page.route("**/assets/*.js", intercepted => intercepted.abort());
     await page.goto(route);

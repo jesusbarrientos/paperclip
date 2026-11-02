@@ -6026,7 +6026,7 @@ export function issueRoutes(
     const identifier = issue.identifier?.trim();
     if (!identifier) return `\`${issue.id}\``;
     const prefix = identifier.split("-")[0] || "PAP";
-    return `[${identifier}](/${prefix}/issues/${identifier})`;
+    return `[${identifier}](/issues/${identifier})`;
   }
 
   function appendWatchdogDiscoveryContext(input: {

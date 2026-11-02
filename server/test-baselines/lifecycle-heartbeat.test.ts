@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   agents,
-  companies,
+  organizations,
   createDb,
   issues,
   heartbeatRuns,
@@ -81,7 +81,7 @@ describe("LCA full heartbeat observation", () => {
     const companyId = randomUUID(),
       agentId = randomUUID(),
       issueId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Lifecycle fixture",
       issuePrefix: `L${companyId.slice(0, 6)}`,
@@ -89,7 +89,6 @@ describe("LCA full heartbeat observation", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Fixture worker",
       role: "engineer",
       status: "idle",
@@ -105,7 +104,6 @@ describe("LCA full heartbeat observation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Implement export",
       ...taskInput,
       status: "in_progress",
@@ -283,15 +281,15 @@ describe("LCA full heartbeat observation", () => {
         const runs = await db
           .select()
           .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, companyId));
+          .where(eq(heartbeatRuns.agentId, agentId));
         const wakes = await db
           .select()
           .from(agentWakeupRequests)
-          .where(eq(agentWakeupRequests.companyId, companyId));
+          .where(eq(agentWakeupRequests.agentId, agentId));
         const decisions = await db
           .select()
           .from(statusDecisions)
-          .where(eq(statusDecisions.companyId, companyId));
+          .where(eq(statusDecisions.issueId, issueId));
         return {
           issue: { status: issue.status, locked: !!issue.executionRunId },
           workMode: issue.workMode,
@@ -320,10 +318,10 @@ describe("LCA full heartbeat observation", () => {
           expect(pending).toHaveLength(1);
           expect(providerTurns).toBe(step);
           // A real persisted response, not summary text, owns the next run.
-          await heartbeat.dispatchPendingNativeStatusWakeups({ companyId });
+          await heartbeat.dispatchPendingNativeStatusWakeups({ });
           await heartbeat.drainActiveRunExecutions();
           expect(providerTurns).toBe(step);
-          await issueThreadInteractionService(db).answerQuestions({ id: issueId, companyId }, pending[0].id,
+          await issueThreadInteractionService(db).answerQuestions({ id: issueId }, pending[0].id,
             { answers: [{ questionId: "next", optionIds: ["continue"] }] }, { userId: "fixture-owner" });
           const delivery = questionResponseDeliveryService(db, { heartbeat });
           const delivered = await delivery.deliver(pending[0].id);
@@ -334,7 +332,7 @@ describe("LCA full heartbeat observation", () => {
           expect(providerTurns, JSON.stringify({ delivered, state: await collect() })).toBe(step + 1);
         }
       }
-      await heartbeat.dispatchPendingNativeStatusWakeups({ companyId });
+      await heartbeat.dispatchPendingNativeStatusWakeups({ });
       await heartbeat.resumeQueuedRuns();
       await heartbeat.drainActiveRunExecutions();
       const settled = await collect();
@@ -451,7 +449,7 @@ describe("LCA full heartbeat observation", () => {
         issueId = randomUUID(),
         interactionId = randomUUID();
       await db
-        .insert(companies)
+        .insert(organizations)
         .values({
           id: companyId,
           name: "Approval gate fixture",
@@ -459,7 +457,6 @@ describe("LCA full heartbeat observation", () => {
         });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
         name: "Fixture worker",
         role: "engineer",
         status: gate === "paused" ? "paused" : "idle",
@@ -477,7 +474,6 @@ describe("LCA full heartbeat observation", () => {
         .insert(issues)
         .values({
           id: issueId,
-          companyId,
           title: "Approved work",
           status: "in_review",
           assigneeAgentId: agentId,
@@ -485,7 +481,6 @@ describe("LCA full heartbeat observation", () => {
       const resolvedAt = new Date();
       await db.insert(issueThreadInteractions).values({
         id: interactionId,
-        companyId,
         issueId,
         kind: "request_confirmation",
         status: "accepted",
@@ -536,7 +531,7 @@ describe("LCA full heartbeat observation", () => {
         const runs = await db
           .select()
           .from(heartbeatRuns)
-          .where(eq(heartbeatRuns.companyId, companyId));
+          .where(eq(heartbeatRuns.agentId, agentId));
         observe("LCA-04", `${mode}:approved:${gate}`, {
           admitted: run !== null,
           runs: runs.map((r) => ({ status: r.status, errorCode: r.errorCode })),
@@ -555,7 +550,7 @@ describe("LCA full heartbeat observation", () => {
       agentId = randomUUID(),
       issueId = randomUUID(),
       sourceRunId = randomUUID();
-    await db.insert(companies).values({
+    await db.insert(organizations).values({
       id: companyId,
       name: "Exhausted fixture",
       issuePrefix: `E${companyId.slice(0, 6)}`,
@@ -563,7 +558,6 @@ describe("LCA full heartbeat observation", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
       name: "Fixture worker",
       role: "engineer",
       status: "idle",
@@ -579,7 +573,6 @@ describe("LCA full heartbeat observation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
       title: "Continue export",
       status: "in_progress",
       assigneeAgentId: agentId,
@@ -587,7 +580,6 @@ describe("LCA full heartbeat observation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId,
       agentId,
       invocationSource: "automation",
       status: "failed",
@@ -622,7 +614,6 @@ describe("LCA full heartbeat observation", () => {
       });
       await db.insert(issueComments).values({
         id: randomUUID(),
-        companyId,
         issueId,
         authorAgentId: agentId,
         body: "I will inspect the repository. No approval required.",
@@ -637,7 +628,6 @@ describe("LCA full heartbeat observation", () => {
       const commentId = randomUUID();
       await db.insert(issueComments).values({
         id: commentId,
-        companyId,
         issueId,
         authorUserId: "fixture-owner",
         body: "Please continue this task now.",
@@ -655,7 +645,7 @@ describe("LCA full heartbeat observation", () => {
       const runs = await db
         .select()
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, companyId));
+        .where(eq(heartbeatRuns.agentId, agentId));
       const fresh = runs.filter((r) => r.id !== sourceRunId);
       observe("LCA-09", "exhausted-comment-versus-user-request", {
         before,

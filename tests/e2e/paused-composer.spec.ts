@@ -1,4 +1,5 @@
 import { test, expect, type APIResponse } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 async function json(response: APIResponse) {
   const body = await response.json();
@@ -9,19 +10,21 @@ async function json(response: APIResponse) {
 for (const classic of [false, true]) {
   test(`paused composer: ${classic ? "classic" : "task chat"} preserves drafts and requires resume`, async ({ page, request }) => {
     test.setTimeout(120_000);
-    const company = await json(await request.post("/api/companies", { data: { name: `Paused composer ${Date.now()}` } }));
+    await ensureOrganization(request);
+    let agentId: string | undefined;
     const settings = await json(await request.get("/api/instance/settings/experimental"));
     try {
       await json(await request.patch("/api/instance/settings/experimental", { data: { enableClassicTaskInterface: classic } }));
-      const agent = await json(await request.post(`/api/companies/${company.id}/agents`, { data: {
+      const agent = await json(await request.post(`/api/agents`, { data: {
         name: "Paused composer fixture", role: "engineer", adapterType: "process",
         adapterConfig: { command: "/usr/bin/true" },
         runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: false } },
       } }));
-      const task = await json(await request.post(`/api/companies/${company.id}/issues`, { data: {
-        title: "Review the paused composer", status: "backlog", assigneeAgentId: agent.id,
+      agentId = agent.id;
+      const task = await json(await request.post(`/api/issues`, { data: {
+        title: "Review the paused composer", status: "backlog", assigneeAgentId: agent.id, allowDuplicate: true,
       } }));
-      await page.goto(`/${company.issuePrefix}/issues/${task.identifier}`);
+      await page.goto(`/issues/${task.identifier}`);
       const editor = (classic ? page.getByTestId("issue-chat-composer") : page).getByRole("textbox", { name: "editable markdown" });
       await editor.fill("Keep this draft until I resume.");
       await page.getByRole("button", { name: "More task actions", exact: true }).click();
@@ -53,10 +56,10 @@ for (const classic of [false, true]) {
       await page.getByRole("button", { name: "More task actions", exact: true }).click();
       await page.getByRole("button", { name: "Pause work", exact: true }).click();
       await expect(takeover).toBeVisible();
-      const child = await json(await request.post(`/api/companies/${company.id}/issues`, { data: {
-        title: "Child held by parent", parentId: task.id, status: "backlog", assigneeAgentId: agent.id,
+      const child = await json(await request.post(`/api/issues`, { data: {
+        title: "Child held by parent", parentId: task.id, status: "backlog", assigneeAgentId: agent.id, allowDuplicate: true,
       } }));
-      await page.goto(`/${company.issuePrefix}/issues/${child.identifier}`);
+      await page.goto(`/issues/${child.identifier}`);
       await expect(takeover).toContainText("Subtree is paused.");
       await expect(editor).toHaveCount(0);
       expect((await request.post(`/api/issues/${child.id}/comments`, { data: { body: "Still paused" } })).status()).toBe(409);
@@ -65,11 +68,11 @@ for (const classic of [false, true]) {
       await takeover.getByRole("button", { name: "Resume subtree" }).click();
       await page.getByRole("dialog").getByRole("checkbox").uncheck();
       await page.getByRole("dialog").getByRole("button", { name: "Resume subtree", exact: true }).click();
-      await page.goto(`/${company.issuePrefix}/issues/${child.identifier}`);
+      await page.goto(`/issues/${child.identifier}`);
       await expect(takeover).toHaveCount(0);
       await expect(editor).toBeVisible();
     } finally {
-      await request.patch(`/api/companies/${company.id}`, { data: { status: "archived" } });
+      if (agentId) await request.post(`/api/agents/${agentId}/terminate`);
       await request.patch("/api/instance/settings/experimental", { data: { enableClassicTaskInterface: settings.enableClassicTaskInterface } });
     }
   });

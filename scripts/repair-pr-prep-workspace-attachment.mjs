@@ -7,7 +7,7 @@
 //     workspaceStrategy: { type: "git_worktree", existingBranch: "<branch>" } }
 // Dispatch then attaches a git worktree on exactly that branch and ignores a
 // mismatched inherited reuse_existing binding. The script only PATCHes issues
-// through the company-scoped API; it never runs git and never mutates or
+// through the issues API; it never runs git and never mutates or
 // deletes any branch.
 //
 // Usage:

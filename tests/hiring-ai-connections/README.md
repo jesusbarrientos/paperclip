@@ -1,7 +1,9 @@
 # AI connections through hiring
 
 Paid, opt-in acceptance against a separate loopback `local_trusted` instance. Each
-scenario creates its own company and accounts. It never edits an existing company.
+scenario needs a fresh instance: it creates the organization when none exists and
+its own accounts, and fails up front if the instance already holds a Claude or
+Codex AI connection. Run one scenario per instance with `--grep`.
 Do not start the server with provider API keys: ambient credentials could mask
 missing managed-connection bindings.
 
@@ -16,7 +18,7 @@ restarted. In a separate shell, export `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`,
 
 ```sh
 HIRING_AI_LIVE=1 HIRING_AI_TEST_URL=http://127.0.0.1:3100 \
-  pnpm exec playwright test --config tests/hiring-ai-connections/playwright.config.ts --grep 'local:'
+  pnpm exec playwright test --config tests/hiring-ai-connections/playwright.config.ts --grep 'local: legacy: Claude'
 ```
 
 For both Claude and Codex, the browser creates a task instructing the real parent to
@@ -65,7 +67,7 @@ HIRING_AI_LIVE=1 HIRING_AI_ENVIRONMENT=daytona \
 
 The same tests install the plugin only in the disposable instance, create a Daytona
 environment, and assign it to the parent and both hires. Successful runs must report
-that environment. The finalizer cancels remaining active runs in the test company
+that environment. The finalizer cancels remaining active runs in the instance
 and deletes the environment and its leases. Task history and encrypted connections
 remain in the disposable data directory for inspection.
 

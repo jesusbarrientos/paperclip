@@ -76,7 +76,7 @@ rejects mutable tag or branch references.
 Explicit Grok subscription campaigns may select `GROK_AUTH_JSON` from the same
 protected paid environment. Deliver it only to that subscription profile's paid
 test step. Prefer a dedicated test-account login and refresh it before a campaign.
-The fixture stores only the selected login in its disposable company home, rejects
+The fixture stores only the selected login in its disposable instance home, rejects
 ambient/redirected homes, and removes the login during teardown. Token fragments
 and account identifiers inside its JSON join the evidence redaction set. The
 subscription suite remains manual-only and never falls back to `XAI_API_KEY`.
@@ -109,7 +109,7 @@ private home/workspace credential-persistence scanning so its evaluation focuses
 on onboarding behavior. Artifact redaction and publication scanning remain in
 force for every suite.
 The Paperclip server process also receives none; the browser posts each value
-once to the encrypted company secret API and agents/environments retain only
+once to the encrypted secrets API and agents/environments retain only
 secret references.
 
 The context-integrity catalog lists six pending Kimi/Grok cells for discovery:
@@ -295,9 +295,9 @@ The explicit-only `extended-harnesses` launcher removes ambient candidate
 admission, then authorizes only selected candidate/model pairs in its isolated
 server process. The server never reads admission from agent configuration,
 resolved credential bindings, or provider environment. Invalid, duplicate and
-mismatched authorization fails closed. Verified packaging and normal company
+mismatched authorization fails closed. Verified packaging and normal organization
 and tool governance still apply. `CURSOR_AUTH_TOKEN` and
-`COPILOT_GITHUB_TOKEN` enter via encrypted company secret references, and all
+`COPILOT_GITHUB_TOKEN` enter via encrypted secret references, and all
 Cursor, Copilot, GitHub and GH environment variables are stripped from the
 server environment. GitHub PAT shapes are included in retained-evidence scans.
 Candidates have no automatic infrastructure retries; spending must be reconciled

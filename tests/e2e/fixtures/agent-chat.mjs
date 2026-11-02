@@ -106,7 +106,7 @@ if (command.action === "hold") {
     const project = command.projectId
       ? await api(`/projects/${command.projectId}`)
       : command.direct
-        ? await api(`/companies/${task.companyId}/projects`, "POST", args)
+        ? await api("/projects", "POST", args)
         : await mcp("create_project", args);
     const retry = command.projectId
       ? project
@@ -119,7 +119,7 @@ if (command.action === "hold") {
       const tasks = [];
       for (let index = 0; index < (command.split ? 2 : 1); index++) {
         const input = {
-          title: `Execution ${index + 1}`,
+          title: `Execution ${index + 1} for ${task.id}`,
           projectId: project.id,
           initialPlan: `${plan}\nPart ${index + 1}`,
           idempotencyKey: `${current.id}-${index}`,

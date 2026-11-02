@@ -8,7 +8,6 @@ fi
 
 : "${PAPERCLIP_API_URL:?Set PAPERCLIP_API_URL for the target dev instance.}"
 : "${PAPERCLIP_API_KEY:?Set PAPERCLIP_API_KEY for the target dev instance.}"
-: "${PAPERCLIP_COMPANY_ID:?Set PAPERCLIP_COMPANY_ID for the target dev company.}"
 
 read -r -a PC_CMD <<< "${PAPERCLIPAI_CMD:-pnpm --silent paperclipai}"
 RUN_KEY="${PIPELINE_SMOKE_KEY:-$(date +%Y%m%d%H%M%S)}"
@@ -23,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 pc_json() {
-  "${PC_CMD[@]}" "$@" --json -C "$PAPERCLIP_COMPANY_ID"
+  "${PC_CMD[@]}" "$@" --json
 }
 
 api_json() {
@@ -48,10 +47,10 @@ pick_agent_id() {
     echo "$DRAFTING_AGENT_ID"
     return
   fi
-  local company_agent_id
-  company_agent_id="$(pc_json agent list 2>/dev/null | jq -r 'map(select(.status != "terminated"))[0].id // empty')"
-  if [[ -n "$company_agent_id" ]]; then
-    echo "$company_agent_id"
+  local agent_id
+  agent_id="$(pc_json agent list 2>/dev/null | jq -r 'map(select(.status != "terminated"))[0].id // empty')"
+  if [[ -n "$agent_id" ]]; then
+    echo "$agent_id"
     return
   fi
   echo ""

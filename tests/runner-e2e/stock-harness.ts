@@ -43,7 +43,7 @@ export interface StockHarnessEvidence {
   schema: "paperclip.stock-harness.v1";
   generation: "legacy" | "native";
   agentId: string;
-  budgets: { companyMonthlyCents: unknown; agentMonthlyCents: unknown };
+  budgets: { organizationMonthlyCents: unknown; agentMonthlyCents: unknown };
   bundle: { entryFile?: string; files: Array<{ path: string; content: string }> };
   invocations: Array<{ runId: string; prompt: unknown; promptMetrics?: Record<string, unknown>; conversationMode?: boolean }>;
   runIds: string[];
@@ -53,8 +53,8 @@ export function gradeStockHire(evidence: Pick<StockHarnessEvidence, "bundle" | "
   instructionVariant = readStockInstructionVariant()) {
   const checks: Array<{ id: string; passed: boolean; detail: string }> = [];
   const check = (id: string, passed: boolean, detail: string) => checks.push({ id, passed, detail });
-  check("budget-hard-stops", evidence.budgets.companyMonthlyCents === 1_000 && evidence.budgets.agentMonthlyCents === 1_000,
-    "Public company and agent records must both retain the 1,000-cent monthly hard stops.");
+  check("budget-hard-stops", evidence.budgets.organizationMonthlyCents === 1_000 && evidence.budgets.agentMonthlyCents === 1_000,
+    "Public organization and agent records must both retain the 1,000-cent monthly hard stops.");
   check("default-hire-bundle", evidence.bundle.entryFile === "AGENTS.md" &&
     evidence.bundle.files.length === 1 && evidence.bundle.files[0]?.path === "AGENTS.md" &&
     evidence.bundle.files[0]?.content === instructionVariant.content,
@@ -111,15 +111,14 @@ export function gradeStockHarness(evidence: StockHarnessEvidence, instructionVar
 export async function captureStockHarness(input: {
   api: { get<T>(path: string): Promise<T> };
   agentId: string;
-  companyId: string;
   generation: "legacy" | "native";
   runIds: string[];
 }): Promise<StockHarnessEvidence> {
   const bundle = await input.api.get<{ entryFile: string; files: Array<{ path: string }> }>(
     `/api/agents/${input.agentId}/instructions-bundle`,
   );
-  const [company, agent] = await Promise.all([
-    input.api.get<{ budgetMonthlyCents: unknown }>(`/api/companies/${input.companyId}`),
+  const [organization, agent] = await Promise.all([
+    input.api.get<{ budgetMonthlyCents: unknown }>("/api/organization"),
     input.api.get<{ budgetMonthlyCents: unknown }>(`/api/agents/${input.agentId}`),
   ]);
   const files = await Promise.all(bundle.files.map(async file => {
@@ -130,21 +129,21 @@ export async function captureStockHarness(input: {
   }));
   const events = await Promise.all(input.runIds.map(async runId => ({
     runId,
-    run: await input.api.get<{ id: string; companyId: string; agentId: string; contextSnapshot?: { conversationMode?: boolean } }>(
+    run: await input.api.get<{ id: string; agentId: string; contextSnapshot?: { conversationMode?: boolean } }>(
       `/api/heartbeat-runs/${runId}`,
     ),
     rows: await input.api.get<Array<{ eventType?: string; payload?: Record<string, unknown> }>>(
       `/api/heartbeat-runs/${runId}/events?limit=1000`,
     ),
   })));
-  if (events.some(({ runId, run }) => run.id !== runId || run.companyId !== input.companyId || run.agentId !== input.agentId ||
+  if (events.some(({ runId, run }) => run.id !== runId || run.agentId !== input.agentId ||
       !run.contextSnapshot || typeof run.contextSnapshot !== "object" || Array.isArray(run.contextSnapshot) ||
       (run.contextSnapshot.conversationMode !== undefined && typeof run.contextSnapshot.conversationMode !== "boolean"))) {
-    throw new Error("Stock invocation mode receipt is missing or bound to a different run/company/agent.");
+    throw new Error("Stock invocation mode receipt is missing or bound to a different run/agent.");
   }
   return {
     schema: "paperclip.stock-harness.v1", generation: input.generation,
-    budgets: { companyMonthlyCents: company.budgetMonthlyCents, agentMonthlyCents: agent.budgetMonthlyCents },
+    budgets: { organizationMonthlyCents: organization.budgetMonthlyCents, agentMonthlyCents: agent.budgetMonthlyCents },
     agentId: input.agentId, bundle: { entryFile: bundle.entryFile, files }, runIds: input.runIds,
     invocations: events.flatMap(({ runId, rows, run }) => rows.filter(row => row.eventType === "adapter.invoke")
       .map(row => ({ runId, prompt: row.payload?.prompt, promptMetrics: row.payload?.promptMetrics as Record<string, unknown> | undefined,

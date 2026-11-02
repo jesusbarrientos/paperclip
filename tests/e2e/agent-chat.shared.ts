@@ -6,6 +6,7 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 // Per-file Playwright configuration (test.use, test.setTimeout) must stay in
 // the spec files themselves: calling test.use() from a shared helper makes
@@ -17,11 +18,11 @@ export async function json(response: Awaited<ReturnType<APIRequestContext["get"]
   return response.json();
 }
 export async function setup(request: APIRequestContext) {
-  const company = await json(
-    await request.post("/api/companies", {
-      data: { name: `Agent Chat ${Date.now()}` },
-    }),
-  );
+  await ensureOrganization(request);
+  const startedAt = Date.now();
+  // The organization is shared with every other spec, so agent names carry a
+  // per-setup tag and reads below are scoped to what this setup created.
+  const tag = startedAt.toString(36);
   const original = await json(
     await request.get("/api/instance/settings/experimental"),
   );
@@ -34,9 +35,9 @@ export async function setup(request: APIRequestContext) {
   for (const name of ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"])
     agents.push(
       await json(
-        await request.post(`/api/companies/${company.id}/agents`, {
+        await request.post("/api/agents", {
           data: {
-            name,
+            name: `${name} ${tag}`,
             adapterType: "process",
             adapterConfig: {
               command: process.execPath,
@@ -51,29 +52,36 @@ export async function setup(request: APIRequestContext) {
       ),
     );
   const agent = agents[0];
-  const chatPath = `/api/companies/${company.id}/chats/${agent.id}`;
-  const route = `/${company.issuePrefix}/chats/${agent.id}`;
+  const agentIds = new Set<string>(agents.map((row: any) => row.id));
+  const chatPath = `/api/chats/${agent.id}`;
+  const route = `/chats/${agent.id}`;
+  const createdSinceSetup = (row: any) => Date.parse(row.createdAt) >= startedAt;
+  const tasks = async (): Promise<any[]> =>
+    (await json(await request.get("/api/issues"))).filter(createdSinceSetup);
+  const projects = async (): Promise<any[]> =>
+    (await json(await request.get("/api/projects"))).filter(createdSinceSetup);
+  const runs = async (): Promise<any[]> =>
+    (await json(await request.get("/api/heartbeat-runs"))).filter((run: any) =>
+      agentIds.has(run.agentId),
+    );
   return {
-    company,
+    tag,
     agents,
     agent,
     chatPath,
     route,
+    tasks,
+    projects,
+    runs,
     restore: async () => {
       try {
         const chat = await request.get(chatPath);
         const history = chat.ok() ? await chat.json() : null;
-        const tasks = await json(
-          await request.get(`/api/companies/${company.id}/issues`),
-        );
-        const projects = await json(
-          await request.get(`/api/companies/${company.id}/projects`),
-        );
-        const ledger = await json(
-          await request.get(`/api/companies/${company.id}/heartbeat-runs`),
-        );
+        const taskRows = await tasks();
+        const projectRows = await projects();
+        const ledger = await runs();
         const documents = await Promise.all(
-          [...(history ? [history] : []), ...tasks].map(async (task: any) => ({
+          [...(history ? [history] : []), ...taskRows].map(async (task: any) => ({
             taskId: task.id,
             documents: await json(
               await request.get(`/api/issues/${task.id}/documents`),
@@ -86,8 +94,8 @@ export async function setup(request: APIRequestContext) {
             JSON.stringify(
               {
                 chat: history,
-                tasks,
-                projects,
+                tasks: taskRows,
+                projects: projectRows,
                 documents,
                 comments: history
                   ? await json(
@@ -113,10 +121,10 @@ export async function setup(request: APIRequestContext) {
           ),
         });
       } finally {
-        const runs = await json(
-          await request.get(`/api/companies/${company.id}/live-runs`),
+        const liveRuns = (await json(await request.get("/api/live-runs"))).filter(
+          (run: any) => agentIds.has(run.agentId),
         );
-        for (const run of runs)
+        for (const run of liveRuns)
           await json(
             await request.post(`/api/heartbeat-runs/${run.id}/cancel`),
           );

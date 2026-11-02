@@ -13,7 +13,7 @@ export const origin = `http://127.0.0.1:${process.env.PAPERCLIP_RUNNER_E2E_PORT 
 export const resource = origin + "/mcp/paperclip";
 export interface Team { id: string; name: string; issuePrefix: string }
 export interface Agent { id: string; name: string; status: string }
-export interface Task { id: string; companyId: string; title: string; status: string; assigneeAgentId: string | null }
+export interface Task { id: string; title: string; status: string; assigneeAgentId: string | null }
 export interface Run { id: string; agentId: string; status: string }
 export interface Document { body: string; createdByAgentId: string | null; latestRevisionId: string }
 export interface Comment { id: string; body: string; authorUserId: string | null; authorAgentId: string | null }
@@ -56,7 +56,7 @@ export async function connect(context: BrowserContext, team: Team, write = true,
   if (page) {
     await page.goto(request.consentUrl);
     await expect(page.getByRole("heading", { name: /^Connect .+ to Paperclip$/ })).toBeVisible();
-    await page.getByRole("radio", { name: team.name, exact: true }).check();
+    await expect(page.getByText(team.name, { exact: true })).toBeVisible();
     if (write) await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Connect organization", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Assistant connected" })).toBeVisible();
@@ -64,7 +64,7 @@ export async function connect(context: BrowserContext, team: Team, write = true,
     // Leave the secret-bearing callback before any later assertions/evidence.
     await page.goto(origin + "/assistant-connections");
   } else {
-    ({ redirectUrl } = await api<{ redirectUrl: string }>(context, "POST", `/api/mcp/requests/${request.requestId}/consent`, { decision: "approve", companyId: team.id, allowWrites: write }));
+    ({ redirectUrl } = await api<{ redirectUrl: string }>(context, "POST", `/api/mcp/requests/${request.requestId}/consent`, { decision: "approve", allowWrites: write }));
   }
   const callback = new URL(redirectUrl);
   secrets.push(request.verifier, callback.searchParams.get("code") ?? "");
@@ -105,7 +105,7 @@ export async function mcpEventRpc(tokens: Tokens, method: string, args: Record<s
   return body.result;
 }
 
-export interface ReceivedTaskEvent { eventId: string; name: string; timestamp: string; data: { companyId: string; taskId: string; status?: string }; cursor: null }
+export interface ReceivedTaskEvent { eventId: string; name: string; timestamp: string; data: { taskId: string; status?: string }; cursor: null }
 interface EventReceiver {
   url: string; secret: string; events: ReceivedTaskEvent[]; readonly verified: number;
   readonly duplicateCount: number; startupAttempts: number; startupFailures: string[]; close: () => Promise<void>;

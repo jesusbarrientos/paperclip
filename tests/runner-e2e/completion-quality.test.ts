@@ -53,8 +53,8 @@ describe("completion semantic qualification", () => {
     expect(completionQualityStatus([{ ...product, status: "failed" }])).toBe("unqualified");
     expect(completionQualityStatus([])).toBe("unqualified");
   });
-  const twoReplies = { ...observation, worker: { ...observation.worker, companyId: "fixture" },
-    relatedTasks: [{ task: { id: "second", companyId: "fixture", status: "done", completedAt: observation.worker.completedAt },
+  const twoReplies = { ...observation,
+    relatedTasks: [{ task: { id: "second", status: "done", completedAt: observation.worker.completedAt },
       documents: [{ id: "second-doc", issueId: "second", key: "result", body: "Second result" }] }],
     comments: [...observation.comments, { ...observation.comments[0], id: "reply-again", createdAt: "2026-09-01T00:02:00Z" }],
   };
@@ -104,13 +104,11 @@ describe("completion semantic qualification", () => {
     ]) expect(() => validateCompletionQuality({ criteria, reports: inventory }, twoReplies)).toThrow(/inventory/);
   });
   it("grounds a joint reply in the other delegated task's result without including foreign or plan documents", () => {
-    const input = { ...observation, worker: { ...observation.worker, companyId: "fixture" }, relatedTasks: [
-      { task: { id: "second", companyId: "fixture", status: "done", completedAt: observation.worker.completedAt, title: "PRIVATE TITLE" },
+    const input = { ...observation, relatedTasks: [
+      { task: { id: "second", status: "done", completedAt: observation.worker.completedAt, title: "PRIVATE TITLE" },
         documents: [{ id: "second-doc", issueId: "second", key: "welcome", body: "Another saved welcome note. Contact alice@example.com." },
           { id: "plan", issueId: "second", key: "plan", body: "PRIVATE PLAN" },
           { id: "foreign-doc", issueId: "elsewhere", key: "welcome", body: "PRIVATE OTHER TASK" }] },
-      { task: { id: "foreign", companyId: "other", status: "done", completedAt: observation.worker.completedAt },
-        documents: [{ id: "foreign-doc", issueId: "foreign", key: "welcome", body: "PRIVATE COMPANY" }] },
     ] };
     const evidence = JSON.parse(completionQualityRequest(input).input);
     expect(evidence.relatedTasks).toHaveLength(1);

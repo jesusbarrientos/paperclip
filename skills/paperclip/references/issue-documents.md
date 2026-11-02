@@ -36,9 +36,7 @@ Construct a clickable Markdown link from the current issue and successful write
 receipt, then add it to the completion comment or response:
 
 ```javascript
-const issuePath = issue.identifier
-  ? `/${issue.identifier.split("-")[0]}/issues/${issue.identifier}`
-  : `/issues/${issue.id}`;
+const issuePath = `/issues/${issue.identifier ?? issue.id}`;
 const documentUrl = `${issuePath}#document-${saved.key}`;
 const comment = `Saved [Task report](${documentUrl}).`;
 ```

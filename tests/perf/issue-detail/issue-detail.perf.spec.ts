@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium, expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { ensureOrganization } from "../../e2e/helpers/organization";
 
 const requestedRuns = Number(process.env.PAPERCLIP_ISSUE_PERF_RUNS ?? 5);
 const RUNS = Number.isFinite(requestedRuns) ? Math.max(5, Math.floor(requestedRuns)) : 5;
@@ -48,8 +49,6 @@ type RunMetrics = {
 };
 
 type Seed = {
-  companyId: string;
-  prefix: string;
   issueId: string;
   identifier: string;
   title: string;
@@ -81,14 +80,10 @@ function formatBytes(value: number): string {
 }
 
 async function seed(request: Page["request"]): Promise<Seed> {
-  const companyResponse = await request.post("/api/companies", {
-    data: { name: `Issue Perf ${Date.now()}` },
-  });
-  expect(companyResponse.ok(), await companyResponse.text()).toBe(true);
-  const company = await companyResponse.json();
+  await ensureOrganization(request, { name: "Issue Perf" });
 
   const title = `Issue detail performance baseline ${Date.now()}`;
-  const issueResponse = await request.post(`/api/companies/${company.id}/issues`, {
+  const issueResponse = await request.post("/api/issues", {
     data: {
       title,
       description: "A seeded issue description used to measure the first meaningful issue-detail content paint.\n\n".repeat(12),
@@ -107,8 +102,6 @@ async function seed(request: Page["request"]): Promise<Seed> {
   }
 
   return {
-    companyId: company.id,
-    prefix: company.issuePrefix ?? company.prefix,
     issueId: issue.id,
     identifier: issue.identifier,
     title,
@@ -246,7 +239,7 @@ async function runScenario(browser: Browser, baseURL: string, seedData: Seed, pr
   const tracePath = path.join(OUTPUT_DIR, `${scenario.slice(0, 2).toLowerCase()}-${profile.name}-run-${run}.trace.json`);
 
   if (scenario.startsWith("S1")) {
-    await page.goto(`/${seedData.prefix}/issues`);
+    await page.goto("/issues");
     const issueLink = page.locator("[data-inbox-issue-link]", { hasText: seedData.title }).first();
     await expect(issueLink).toBeVisible({ timeout: PAGE_READY_TIMEOUT_MS });
     network.clear();
@@ -255,7 +248,7 @@ async function runScenario(browser: Browser, baseURL: string, seedData: Seed, pr
     });
     await issueLink.click();
   } else {
-    await page.goto(`/${seedData.prefix}/issues/${seedData.identifier}`);
+    await page.goto(`/issues/${seedData.identifier}`);
   }
 
   await expect(page.getByTestId("issue-detail-header")).toBeVisible({ timeout: PAGE_READY_TIMEOUT_MS });

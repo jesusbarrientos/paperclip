@@ -3,16 +3,16 @@ import type { RunnerApi } from "./api.js";
 import type { LiveFixtureValues } from "./live-fixtures.js";
 import type { CredentialName, MatrixExecution } from "./types.js";
 
-/** Provision only credentials for the UI-created company. The production wizard
+/** Provision only credentials for the UI-created organization. The production wizard
  * remains the sole creator/configurer of its first agent and onboarding task. */
 export async function provisionFirstTaskFixtures(input: {
   api: Pick<RunnerApi, "get" | "postSensitive">;
   execution: MatrixExecution;
   nonce: string;
-  company: LiveFixtureValues["company"];
+  organization: LiveFixtureValues["organization"];
   credentials: Partial<Record<CredentialName, string>>;
 }): Promise<LiveFixtureValues> {
-  const { api, execution, nonce, company, credentials } = input;
+  const { api, execution, nonce, organization, credentials } = input;
   if (
     !["first-task", "completion-updates", "confirmation-replies"].includes(execution.suite.id) || execution.task.flow !== "first_task" ||
     execution.environment.id !== "local" ||
@@ -31,13 +31,13 @@ export async function provisionFirstTaskFixtures(input: {
   const value = credentials[credential];
   if (!value) throw new Error(`Missing credential ${credential}`);
   const environments = await api.get<Array<LiveFixtureValues["environment"]>>(
-    `/api/companies/${company.id}/environments?driver=local`,
+    "/api/environments?driver=local",
   );
   const environment = environments.find((e) => e.driver === "local");
   if (!environment)
     throw new Error("Onboarding fixture local environment missing");
   const secret = await api.postSensitive<{ id: string }>(
-    `/api/companies/${company.id}/secrets`,
+    "/api/secrets",
     {
       name: `First task ${credential}`,
       key: credential,
@@ -45,7 +45,7 @@ export async function provisionFirstTaskFixtures(input: {
     },
   );
   return {
-    company,
+    organization,
     environment,
     secretRefs: {
       [credential]: {
@@ -54,7 +54,7 @@ export async function provisionFirstTaskFixtures(input: {
         version: "latest",
       },
     },
-    agent: { id: "", name: `Garden lead ${nonce}`, companyId: company.id },
+    agent: { id: "", name: `Garden lead ${nonce}` },
     teardown: async () => {}, // Existing launcher removes the complete isolated instance.
   };
 }

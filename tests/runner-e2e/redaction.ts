@@ -45,7 +45,7 @@ export function isEphemeralCodexRuntimeAuthFile(
 ) {
   const relative = path.relative(paperclipHome, file).split(path.sep).join("/");
   return (
-    /^instances\/[^/]+\/companies\/[^/]+\/agents\/[^/]+\/codex-home\/auth\.json$/.test(
+    /^instances\/[^/]+\/organization\/agents\/[^/]+\/codex-home\/auth\.json$/.test(
       relative,
     ) ||
     /^instances\/[^/]+\/runtime\/paperclip-runner\/durable-sessions\/[^/]+\/codex-home\/auth\.json$/.test(

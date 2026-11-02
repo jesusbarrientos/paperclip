@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, request as pwRequest, test, type APIRequestContext, type APIResponse, type Locator, type Page } from "@playwright/test";
 import { createLocalAgentJwt } from "../../server/src/agent-auth-jwt";
+import { ensureOrganization } from "./helpers/organization";
 
 const PORT = Number(process.env.PAPERCLIP_E2E_PORT ?? 3199);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -42,20 +43,11 @@ async function expectError(response: APIResponse, label: string, status: number,
   if (message) expect(body.error ?? body.message ?? "", `${label} message`).toMatch(message);
 }
 
-async function createCompany(board: APIRequestContext) {
-  const response = await board.post("/api/companies", {
-    data: { name: `E2E Pipelines ${Date.now()}` },
-  });
-  await expectOk(response, "create company");
-  return response.json() as Promise<{ id: string; issuePrefix: string }>;
-}
-
-async function createCompanyAgent(
+async function createAgent(
   board: APIRequestContext,
-  companyId: string,
   input: { name: string; role: string; title?: string; capabilities?: string },
 ) {
-  const response = await board.post(`/api/companies/${companyId}/agents`, {
+  const response = await board.post(`/api/agents`, {
     data: {
       name: input.name,
       role: input.role,
@@ -69,15 +61,15 @@ async function createCompanyAgent(
   return response.json() as Promise<{ id: string }>;
 }
 
-async function createPipelineWriterAgentKey(board: APIRequestContext, companyId: string) {
-  await createCompanyAgent(board, companyId, {
+async function createPipelineWriterAgentKey(board: APIRequestContext) {
+  await createAgent(board, {
     name: "Pipeline CEO",
     role: "ceo",
     title: "CEO",
     capabilities: "Approves agent join requests during e2e setup.",
   });
 
-  const inviteResponse = await board.post(`/api/companies/${companyId}/invites`, {
+  const inviteResponse = await board.post(`/api/invites`, {
     data: {
       allowedJoinTypes: "agent",
       defaultsPayload: {
@@ -103,18 +95,18 @@ async function createPipelineWriterAgentKey(board: APIRequestContext, companyId:
   await expectOk(acceptResponse, "accept pipeline-writer invite");
   const accepted = await acceptResponse.json() as { id: string };
 
-  const approveResponse = await board.post(`/api/companies/${companyId}/join-requests/${accepted.id}/approve`);
+  const approveResponse = await board.post(`/api/join-requests/${accepted.id}/approve`);
   await expectOk(approveResponse, "approve pipeline-writer join");
   const approved = await approveResponse.json() as { createdAgentId: string };
 
   const runId = randomUUID();
-  const token = createLocalAgentJwt(approved.createdAgentId, companyId, "process", runId);
+  const token = createLocalAgentJwt(approved.createdAgentId, "process", runId);
   if (!token) throw new Error("PAPERCLIP_AGENT_JWT_SECRET is required for pipeline writer JWT setup");
   return { agentId: approved.createdAgentId, runId, token };
 }
 
-async function createPipeline(board: APIRequestContext, companyId: string) {
-  const response = await board.post(`/api/companies/${companyId}/pipelines`, {
+async function createPipeline(board: APIRequestContext) {
+  const response = await board.post(`/api/pipelines`, {
     data: {
       key: "content-production",
       name: "Content production",
@@ -131,8 +123,8 @@ async function createPipeline(board: APIRequestContext, companyId: string) {
   return response.json() as Promise<{ id: string; name: string }>;
 }
 
-async function createPrimitivePipeline(board: APIRequestContext, companyId: string) {
-  const response = await board.post(`/api/companies/${companyId}/pipelines`, {
+async function createPrimitivePipeline(board: APIRequestContext) {
+  const response = await board.post(`/api/pipelines`, {
     data: {
       key: `primitive-gates-${Date.now()}`,
       name: "Primitive gates",
@@ -280,9 +272,9 @@ test.describe("Pipelines tutorial UI flow", () => {
 
   test("covers agent fan-out, drift acknowledgement gates, child-terminal gates, and stale approvals", async () => {
     const board = await pwRequest.newContext({ baseURL: BASE_URL });
-    const company = await createCompany(board);
-    const pipeline = await createPrimitivePipeline(board, company.id);
-    const key = await createPipelineWriterAgentKey(board, company.id);
+    await ensureOrganization(board);
+    const pipeline = await createPrimitivePipeline(board);
+    const key = await createPipelineWriterAgentKey(board);
     const agentApi = await pwRequest.newContext({
       baseURL: BASE_URL,
       extraHTTPHeaders: {
@@ -437,27 +429,21 @@ test.describe("Pipelines tutorial UI flow", () => {
 
   test("walks setup, intake, board moves, item detail, review queue, and learnings", async ({ page }) => {
     const board = await pwRequest.newContext({ baseURL: BASE_URL });
-    const company = await createCompany(board);
-    await createCompanyAgent(board, company.id, {
+    await ensureOrganization(board);
+    await createAgent(board, {
       name: "Pipeline Writer",
       role: "engineer",
       title: "Pipeline Writer",
       capabilities: "Runs pipeline drafting automation during e2e coverage.",
     });
-    const pipeline = await createPipeline(board, company.id);
+    const pipeline = await createPipeline(board);
     await expectOk(
       await board.patch("/api/instance/settings/experimental", { data: { enablePipelines: true } }),
       "enable pipelines experimental flag",
     );
 
     try {
-      await page.goto("/");
-      await page.evaluate((companyId) => {
-        window.localStorage.setItem("paperclip.selectedCompanyId", companyId);
-      }, company.id);
-      const companyPath = `/${company.issuePrefix}`;
-
-    await page.goto(`${companyPath}/pipelines/${pipeline.id}/settings`);
+    await page.goto(`/pipelines/${pipeline.id}/settings`);
     await expect(page.getByLabel("Pipeline name")).toHaveValue("Content production");
 
     await page.getByRole("button", { name: "Pick agent" }).click();
@@ -518,7 +504,7 @@ test.describe("Pipelines tutorial UI flow", () => {
     expect(assets?.kind).toBe("review");
     expect(published).toBeTruthy();
 
-    await page.goto(`${companyPath}/pipelines/${pipeline.id}`);
+    await page.goto(`/pipelines/${pipeline.id}`);
     await page.getByRole("link", { name: "Add items" }).click();
     await expect(page.getByRole("heading", { name: "Build your list, then submit it all at once" }).first()).toBeVisible();
 
@@ -599,7 +585,7 @@ test.describe("Pipelines tutorial UI flow", () => {
     });
     await suggestMove(board, root.id, assets!.key, "Draft is ready for the next review.");
 
-    await page.goto(`${companyPath}/pipelines/${pipeline.id}/items/${root.id}`);
+    await page.goto(`/pipelines/${pipeline.id}/items/${root.id}`);
     await expect(page.getByRole("heading", { name: "Pipeline primitives launch" }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Ready to move to Assets?" })).toBeVisible();
     await expect(page.getByText("Draft is ready for the next review.")).toBeVisible();
@@ -612,7 +598,7 @@ test.describe("Pipelines tutorial UI flow", () => {
     await expect(page.getByText("Move approved")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Ready to move to Assets?" })).toBeHidden();
 
-    await page.goto(`${companyPath}/review-queue`);
+    await page.goto(`/review-queue`);
     await expect(page.getByRole("heading", { name: "Review queue" }).first()).toBeVisible();
     await expect(page.getByText("Needs your attention")).toBeVisible();
     await expect(page.getByText("Final calls")).toBeVisible();
@@ -645,7 +631,7 @@ test.describe("Pipelines tutorial UI flow", () => {
       sentBackStage: configured.stages.find((stage) => stage.key === "drafting")!.id,
     });
 
-    await page.goto(`${companyPath}/learnings`);
+    await page.goto(`/learnings`);
     await expect(page.getByRole("heading", { name: "Learnings" }).first()).toBeVisible();
     await expect(page.getByText("Tighten the framing before publishing.")).toBeVisible();
     await expect(page.getByText(overrideReason)).toBeVisible();

@@ -12,7 +12,6 @@
     "tests/e2e/applications-crud.spec.ts": 10924,
     "tests/e2e/apps-dark-mode-shots.spec.ts": 27798,
     "tests/e2e/apps-prosumer-mcp-flow.spec.ts": 19557,
-    "tests/e2e/archived-company-url.spec.ts": 11149,
     "tests/e2e/board-attachment-receipts.spec.ts": 102785,
     "tests/e2e/chat-adapters-ui-messaging.spec.ts": 241600,
     "tests/e2e/chat-adapters-ui-providers.spec.ts": 200200,

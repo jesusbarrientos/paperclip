@@ -14,7 +14,7 @@ import type { runPublicMcpFlow } from "./public-mcp-flow.js";
  * No Paperclip transport or tool exists until a browser approves device OAuth. */
 export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPublicMcpFlow>[0]) {
   const { page, api, fixtures, execution, nonce } = input;
-  const team = fixtures.company;
+  const team = fixtures.organization;
   const kind = execution.task.id;
   const chatHandoff = kind === "invitation-cold-start";
   const denied = kind === "invitation-denied", unavailable = kind === "invitation-unavailable-host";
@@ -30,8 +30,8 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
   const humanDecisions: Array<{ afterTurn: number; decision: "approved" | "declined"; verificationUrl: string }> = [];
   const turns: AssistantTurn[] = [], checks: Array<{ id: string; passed: boolean; detail: string }> = [];
   const check = (id: string, passed: boolean, detail: string) => checks.push({ id, passed, detail });
-  const tasks = () => api.get<any[]>(`/api/companies/${team.id}/issues?limit=100`);
-  const connections = () => api.get<Array<{ id: string; companyId: string; revokedAt: string | null }>>("/api/mcp/connections");
+  const tasks = () => api.get<any[]>("/api/issues?limit=100");
+  const connections = () => api.get<Array<{ id: string; revokedAt: string | null }>>("/api/mcp/connections");
   const beforeGrants = await connections();
   const title = execution.task.buildTitle(nonce), marker = execution.task.buildVisibleMarker(nonce);
   let issue: any, runs: any[] = [];
@@ -46,8 +46,8 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
   ].filter(tool => !chatHandoff || tool.name !== "request_user_approval");
   const toolCall = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     if (name === "fetch_setup_instructions") {
-      const expected = mcpSetupUrl(resource, team.id);
-      if (args.url !== expected && args.url !== expected.replace("/mcp/setup?", "/mcp/setup.md?")) return { error: "Use the invitation's setup URL." };
+      const expected = mcpSetupUrl(resource);
+      if (args.url !== expected && args.url !== expected.replace("/mcp/setup", "/mcp/setup.md")) return { error: "Use the invitation's setup URL." };
       const response = await fetch(String(args.url), { headers: { Accept: "text/markdown" }, redirect: "error" });
       if (!response.ok) throw new Error(`Public setup fetch failed: HTTP ${response.status}`);
       fetched = true; return { markdown: await response.text() };
@@ -64,7 +64,7 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
       if (verificationUrl) return { verificationUrl, userCode };
       const registration = await oauthPost("register", { client_name: "Invitation evaluation host", redirect_uris: [], response_types: [], grant_types: ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"] });
       expect(registration.status).toBe(201); clientId = (await registration.json()).client_id;
-      const response = await oauthPost("device_authorization", { client_id: clientId, resource, company_id: team.id, scope: "paperclip:read paperclip:write offline_access" });
+      const response = await oauthPost("device_authorization", { client_id: clientId, resource, scope: "paperclip:read paperclip:write offline_access" });
       expect(response.status).toBe(200);
       const body = await response.json(); deviceCode = body.device_code; input.secrets.push(deviceCode);
       userCode = body.user_code; verificationUrl = body.verification_uri_complete;
@@ -101,7 +101,7 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
   try {
     // Negative cases still use one independently created worker fixture to retain
     // the suite's worker billing/terminal-state contract; it is not assistant work.
-    if (negative) issue = await api.post(`/api/companies/${team.id}/issues`, { title, description: execution.task.buildPrompt(nonce), status: "todo", assigneeAgentId: fixtures.agent.id });
+    if (negative) issue = await api.post("/api/issues", { title, description: execution.task.buildPrompt(nonce), status: "todo", assigneeAgentId: fixtures.agent.id });
     const invitation = mcpInvitation(resource, { id: team.id, name: team.name });
     const workRequest = `After approval, verify the connected person and organization, then delegate exactly one task titled "${title}" to "${fixtures.agent.name}": ${execution.task.buildPrompt(nonce)} I authorize its execution budget. If setup is unavailable or I decline, stop and explain the next step; do not change any work.`;
     let answer = await converse(`${invitation}\n${workRequest}`);
@@ -115,7 +115,7 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
     }
     const savedConfig = JSON.parse(await readFile(configPath, "utf8"));
     const grants = (await connections()).filter(grant => !beforeGrants.some(old => old.id === grant.id) && !grant.revokedAt);
-    const invitationEvidence = { kind, companyId: team.id, fetched, configured, approved, configurationWrites, existingPreserved: Object.entries(existing).every(([name, value]) => JSON.stringify(savedConfig[name]) === JSON.stringify(value)), grants, turns, humanDecisions };
+    const invitationEvidence = { kind, fetched, configured, approved, configurationWrites, existingPreserved: Object.entries(existing).every(([name, value]) => JSON.stringify(savedConfig[name]) === JSON.stringify(value)), grants, turns, humanDecisions };
     await input.evidence("public-mcp-invitation.json", { host: "evaluation-owned MCP host; vendor clients verified separately", initialPaperclipTools: 0, fixtureWorker: negative, ...invitationEvidence });
     check("invitation-authority", gradeInvitation(invitationEvidence), "Public instructions, isolated host configuration and independently listed grants establish the actual approval boundary.");
     if (negative) check("honest-setup-limitation", describesInvitationLimitation(answer.final), "The assistant describes the observed refusal or unsupported host.");
@@ -129,16 +129,16 @@ export async function runPublicMcpInvitationFlow(input: Parameters<typeof runPub
       reject: value => value.found.length > 1 || value.runs.length > 1 ? "duplicate work" : value.runs.some(run => ["failed", "cancelled", "timed_out"].includes(run.status)) ? "worker execution failed" : undefined,
     });
     const document = await api.get<Document>(`/api/issues/${issue.id}/documents/report`);
-    for (const result of gradeDelegation({ expected: { companyId: team.id, agentId: fixtures.agent.id, title, marker }, tasks: await tasks(), runs, document })) check(result.id, result.passed, "Independent task, run and agent-authored report observations.");
+    for (const result of gradeDelegation({ expected: { agentId: fixtures.agent.id, title, marker }, tasks: await tasks(), runs, document })) check(result.id, result.passed, "Independent task, run and agent-authored report observations.");
     if (!negative) {
       if (kind === "invitation-reconnect") { await client!.close(); client = await mcp(tokens!); }
       const later = await converse(`Find "${title}" and quote its saved report, including its reference. Do not create or change work.`, true);
-      check("later-report-retrieved", gradeReportRetrieval({ companyId: team.id, taskId: issue.id, marker, ...later }), "A separate paid conversation reads the persisted result without setup or new consent.");
+      check("later-report-retrieved", gradeReportRetrieval({ taskId: issue.id, marker, ...later }), "A separate paid conversation reads the persisted result without setup or new consent.");
     }
     runs = await Promise.all(runs.map(run => api.get<any>(`/api/heartbeat-runs/${run.id}`)));
     check("paid-worker-model", runs.length === 1 && runs[0]?.usageJson?.model === execution.profile.model && runs[0]?.runtimeMode === execution.profile.expectedRuntimeMode, "The independently metered worker matches the selected profile.");
     input.observe(issue, runs);
-    await page.goto(origin + `/${team.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+    await page.goto(origin + `/issues/${issue.identifier ?? issue.id}`);
     await expect(page.getByText(marker, { exact: false }).first()).toBeVisible();
     await input.capture("public-mcp-invitation-result", "Invitation workflow durable task", "final-state.png");
     await input.evidence("api-state.json", { issue, runs, checks });

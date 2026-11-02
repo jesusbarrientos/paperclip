@@ -415,8 +415,8 @@ export function connectionIntentService(db: Db) {
           methods: methods.map(method => ({ key: method.key, label: method.label ?? method.key, auth: method.auth,
             purpose: method.purpose ?? "tool",
             ...(method.purpose === "channel" && method.provider ? {
-              setupPath: `/${company.prefix}/apps/chat/connect?${new URLSearchParams({ provider: method.provider, purpose: "chat", agentId: agent.id })}`,
-            } : method.purpose === "ai" ? { setupPath: `/${company.prefix}/apps/connect?${new URLSearchParams({ source: service })}` } : {}),
+              setupPath: `/apps/chat/connect?${new URLSearchParams({ provider: method.provider, purpose: "chat", agentId: agent.id })}`,
+            } : method.purpose === "ai" ? { setupPath: `/apps/connect?${new URLSearchParams({ source: service })}` } : {}),
           })),
         };
       }

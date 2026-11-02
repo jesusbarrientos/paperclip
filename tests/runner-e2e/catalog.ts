@@ -1144,7 +1144,7 @@ export const runnerSuites: readonly RunnerSuiteFixture[] = [
   },
   {
     id: "grok-subscription-qualification", label: "Grok Build Subscription Qualification", manualOnly: true,
-    description: "Explicit company subscription login across Grok browser workflows in local and Daytona environments.",
+    description: "Explicit organization subscription login across Grok browser workflows in local and Daytona environments.",
     groups: ["native"],
     profiles: [nativeProfile({
       id: "runner-acpx-grok-subscription", label: "Grok Build Subscription",

@@ -13,14 +13,12 @@ BOOTSTRAP_FIXTURE_KEY=not-a-provider-key \
 PATH="$PWD/tests/e2e/workspace-bootstrap/bin:$PATH" \
 NODE_ENV=test \
 node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts test-drive \
-  --harness codex --api-key-env BOOTSTRAP_FIXTURE_KEY \
-  --company-name 'Workspace Recovery QA' --no-browser
+  --harness codex --api-key-env BOOTSTRAP_FIXTURE_KEY --no-browser
 ```
 
 Set `BOOTSTRAP_REAL_GIT` to the absolute Git executable if it is not
 `/usr/bin/git`. Do not point this fixture at a normal development or production
-instance. The seeder checks the loopback host, trusted-local mode, and company
-name. It does not create tasks; each test creates its task through the UI.
+instance. The seeder checks the loopback host and trusted-local mode. It does not create tasks; each test creates its task through the UI.
 
 Use the ready URL printed by test-drive:
 

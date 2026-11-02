@@ -53,15 +53,15 @@ describe("workflow timeout classification", () => {
 describe("review continuation deadline", () => {
   function fixture(now: number) {
     const issues: StoryIssue[] = [
-      { id: "parent", companyId: "company", title: "parent", status: "blocked", blockedTransitionAt: new Date(now - 1000).toISOString() },
-      { id: "child", parentId: "parent", companyId: "company", title: "child", status: "done", interactions: [{
+      { id: "parent", title: "parent", status: "blocked", blockedTransitionAt: new Date(now - 1000).toISOString() },
+      { id: "child", parentId: "parent", title: "child", status: "done", interactions: [{
         id: "review", issueId: "child", kind: "request_confirmation", status: "accepted",
         addresseeAgentId: "lead", resolvedByAgentId: "lead", resolvedByRunId: "review-run",
         resolvedAt: new Date(now).toISOString(), result: { version: 1, outcome: "accepted" },
         payload: { target: { type: "custom", key: "native_completion_review", revisionId: "decision" } },
       }] },
     ];
-    const runs = [{ id: "review-run", companyId: "company", agentId: "lead", status: "succeeded", finishedAt: new Date(now).toISOString() }];
+    const runs = [{ id: "review-run", agentId: "lead", status: "succeeded", finishedAt: new Date(now).toISOString() }];
     return { issues, runs };
   }
 

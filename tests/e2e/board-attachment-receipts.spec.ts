@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   expect,
   test,
@@ -6,6 +5,7 @@ import {
   type Locator,
   type Page,
 } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 // Real local Board UI, upload storage, comment HTTP routes, and disposable DB.
 // Only the interface flag and explicit transport/upload rejection faults are mocked.
@@ -27,17 +27,14 @@ async function body<T>(
 }
 
 async function setup(page: Page, request: APIRequestContext, classic: boolean) {
-  const company = await body<{ id: string; issuePrefix: string }>(
-    await request.post("/api/companies", {
-      data: { name: `Board receipt browser ${randomUUID()}` },
-    }),
-  );
+  await ensureOrganization(request);
   const issue = await body<{ id: string; identifier: string }>(
-    await request.post(`/api/companies/${company.id}/issues`, {
+    await request.post(`/api/issues`, {
       data: {
         title: "Inspect the newly uploaded Board files",
         status: "todo",
         assigneeUserId: "local-board",
+        allowDuplicate: true,
       },
     }),
   );
@@ -47,7 +44,7 @@ async function setup(page: Page, request: APIRequestContext, classic: boolean) {
       body: JSON.stringify({ enableClassicTaskInterface: classic }),
     }),
   );
-  await page.goto(`/${company.issuePrefix}/issues/${issue.identifier}`);
+  await page.goto(`/issues/${issue.identifier}`);
   await expect(
     page.getByRole("heading", {
       name: "Inspect the newly uploaded Board files",
@@ -66,7 +63,6 @@ async function setup(page: Page, request: APIRequestContext, classic: boolean) {
     : page.getByTestId("task-chat-composer-send");
   await expect(editor).toBeVisible();
   return {
-    company,
     issue,
     composer,
     editor,
@@ -373,7 +369,7 @@ for (const classic of [false, true])
     });
     let arrived = false;
     await page.route(
-      `**/api/companies/${fixture.company.id}/issues/${fixture.issue.id}/attachments`,
+      `**/api/issues/${fixture.issue.id}/attachments`,
       async (route) => {
         const response = await route.fetch();
         arrived = true;
@@ -424,7 +420,7 @@ test("legacy failed upload can be removed before sending the retained text", asy
   const fixture = await setup(page, request, true);
   await fixture.editor.fill("Keep this text after removing the failed file.");
   await page.route(
-    `**/api/companies/${fixture.company.id}/issues/${fixture.issue.id}/attachments`,
+    `**/api/issues/${fixture.issue.id}/attachments`,
     (route) =>
       route.fulfill({
         status: 500,

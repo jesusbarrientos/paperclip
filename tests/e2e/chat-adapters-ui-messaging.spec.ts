@@ -4,7 +4,7 @@ import {
   fulfill,
   installChatControlPlaneMock,
   json,
-  seedCompanyAndAgent,
+  seedAgents,
   PROVIDERS,
   bodyOf,
   type Seed,
@@ -20,7 +20,7 @@ test.describe("chat destination partial updates", () => {
   let seed: Seed;
 
   test.beforeAll(async ({ request }) => {
-    seed = await seedCompanyAndAgent(request);
+    seed = await seedAgents(request);
   });
 
   for (const initiallyEnabled of [false, true]) {
@@ -34,7 +34,7 @@ test.describe("chat destination partial updates", () => {
         enableChatConnectors: true,
       });
       mock.setStatus("active");
-      const settingsUrl = `/${seed.prefix}/apps/chat/endpoint-discord/settings`;
+      const settingsUrl = `/apps/chat/endpoint-discord/settings`;
       const primarySwitch = (view: Page) =>
         view.getByRole("switch", { name: `Enable ${provider.resourceLabel}` });
       const secondarySwitch = (view: Page) =>
@@ -108,7 +108,7 @@ test.describe("chat destination partial updates", () => {
         await route.fallback();
       },
     );
-    await page.goto(`/${seed.prefix}/apps/chat/endpoint-discord/settings`);
+    await page.goto(`/apps/chat/endpoint-discord/settings`);
     const primary = page.getByRole("switch", { name: "Enable #general" });
     const secondary = page.getByRole("switch", { name: "Enable #support" });
     await expect(primary).not.toBeChecked();
@@ -183,7 +183,7 @@ test.describe("chat destination partial updates", () => {
       resourceCount: 501,
     });
     mock.setStatus("active");
-    await page.goto(`/${seed.prefix}/apps/chat/endpoint-discord/settings`);
+    await page.goto(`/apps/chat/endpoint-discord/settings`);
     await expect(page.getByRole("switch", { name: /^Enable / })).toHaveCount(
       501,
     );
@@ -212,19 +212,18 @@ test.describe("Board send delivery refresh", () => {
     for (const entry of [
       "uuid",
       "uppercase-uuid",
-      "wrong-prefix-identifier",
+      "identifier",
     ] as const) {
-      test(`opens external task links in their own organization and uploads safely (${entry}, classic=${classic})`, async ({
+      test(`opens external task links and uploads safely (${entry}, classic=${classic})`, async ({
         page,
         request,
       }) => {
-        const selected = await seedCompanyAndAgent(request);
-        const target = await seedCompanyAndAgent(request);
-        const issue = await json<{ id: string; identifier: string }>(
-          await request.post(`/api/companies/${target.companyId}/issues`, {
-            data: { title: "Organization-bound task link", status: "backlog" },
+        await seedAgents(request);
+        const issue = await json<{ id: string; identifier: string; title: string }>(
+          await request.post("/api/issues", {
+            data: { title: `Organization-bound task link ${Date.now()}`, status: "backlog" },
           }),
-          "create linked task in another organization",
+          "create linked task",
         );
         await page.route("**/api/instance/settings/experimental", (route) =>
           fulfill(route, {
@@ -232,24 +231,16 @@ test.describe("Board send delivery refresh", () => {
             enableClassicTaskInterface: classic,
           }),
         );
-        await page.goto(`/${selected.prefix}/issues`);
-        await expect
-          .poll(() =>
-            page.evaluate(() =>
-              localStorage.getItem("paperclip.selectedCompanyId"),
-            ),
-          )
-          .toBe(selected.companyId);
         await page.goto(
           entry === "uuid"
             ? `/issues/${issue.id}`
             : entry === "uppercase-uuid"
               ? `/issues/${issue.id.toUpperCase()}`
-              : `/${selected.prefix}/issues/${issue.identifier}?external=chat#files`,
+              : `/issues/${issue.identifier}?external=chat#files`,
         );
         await expect(
           page.getByRole("heading", {
-            name: "Organization-bound task link",
+            name: issue.title,
             exact: true,
           }),
         ).toBeVisible();
@@ -257,8 +248,8 @@ test.describe("Board send delivery refresh", () => {
           .soft(page)
           .toHaveURL(
             new RegExp(
-              `/${target.prefix}/issues/${issue.identifier}${
-                entry === "wrong-prefix-identifier"
+              `/issues/${issue.identifier}${
+                entry === "identifier"
                   ? "\\?external=chat#files"
                   : ""
               }$`,
@@ -269,7 +260,7 @@ test.describe("Board send delivery refresh", () => {
           name: classic ? "task-link-report.txt" : "task-link-image.png",
           mimeType: classic ? "text/plain" : "image/png",
           buffer: classic
-            ? Buffer.from("Synthetic cross-organization upload proof.\n")
+            ? Buffer.from("Synthetic task-link upload proof.\n")
             : Buffer.from(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfFoAAAAASUVORK5CYII=",
                 "base64",
@@ -286,7 +277,7 @@ test.describe("Board send delivery refresh", () => {
         const responsePromise = page.waitForResponse(
           (response) =>
             response.request().method() === "POST" &&
-            /\/api\/companies\/[^/]+\/issues\/[^/]+\/attachments$/.test(
+            /\/api\/issues\/[^/]+\/attachments$/.test(
               new URL(response.url()).pathname,
             ),
         );
@@ -296,7 +287,7 @@ test.describe("Board send delivery refresh", () => {
         expect
           .soft(new URL(response.url()).pathname)
           .toBe(
-            `/api/companies/${target.companyId}/issues/${issue.id}/attachments`,
+            `/api/issues/${issue.id}/attachments`,
           );
         const attachments = await json<
           {
@@ -322,13 +313,6 @@ test.describe("Board send delivery refresh", () => {
             "read linked task comments",
           ),
         ).toHaveLength(0);
-        await expect
-          .poll(() =>
-            page.evaluate(() =>
-              localStorage.getItem("paperclip.selectedCompanyId"),
-            ),
-          )
-          .toBe(target.companyId);
       });
     }
   }
@@ -337,10 +321,10 @@ test.describe("Board send delivery refresh", () => {
     page,
     request,
   }) => {
-    const seed = await seedCompanyAndAgent(request);
+    const seed = await seedAgents(request);
     const issue = await json<{ id: string; identifier: string }>(
-      await request.post(`/api/companies/${seed.companyId}/issues`, {
-        data: { title: "Connected banner layout", status: "backlog" },
+      await request.post("/api/issues", {
+        data: { title: `Connected banner layout ${Date.now()}`, status: "backlog" },
       }),
       "create connected banner task",
     );
@@ -357,7 +341,7 @@ test.describe("Board send delivery refresh", () => {
         assignedAgentLocked: true,
       }),
     );
-    await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     const banner = page.getByRole("region", {
       name: "External conversation",
       exact: true,
@@ -407,10 +391,10 @@ test.describe("Board send delivery refresh", () => {
     page,
     request,
   }) => {
-    const seed = await seedCompanyAndAgent(request);
+    const seed = await seedAgents(request);
     const issue = await json<{ id: string; identifier: string }>(
-      await request.post(`/api/companies/${seed.companyId}/issues`, {
-        data: { title: "Upload channel files", status: "backlog" },
+      await request.post("/api/issues", {
+        data: { title: `Upload channel files ${Date.now()}`, status: "backlog" },
       }),
       "create upload task",
     );
@@ -455,7 +439,7 @@ test.describe("Board send delivery refresh", () => {
           published: 0,
         }),
     );
-    await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     await page
       .getByRole("button", { name: "Send to channel", exact: true })
       .click();
@@ -556,10 +540,10 @@ test.describe("Board send delivery refresh", () => {
     page,
     request,
   }, testInfo) => {
-    const seed = await seedCompanyAndAgent(request);
+    const seed = await seedAgents(request);
     const issue = await json<{ id: string; identifier: string }>(
-      await request.post(`/api/companies/${seed.companyId}/issues`, {
-        data: { title: "Rejected channel selection", status: "backlog" },
+      await request.post("/api/issues", {
+        data: { title: `Rejected channel selection ${Date.now()}`, status: "backlog" },
       }),
       "create rejected-send task",
     );
@@ -624,7 +608,7 @@ test.describe("Board send delivery refresh", () => {
         );
       },
     );
-    await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     const banner = page.getByRole("region", { name: "External conversation" });
     await banner
       .getByRole("button", { name: "Send to channel", exact: true })
@@ -715,10 +699,10 @@ test.describe("Board send delivery refresh", () => {
       page,
       request,
     }, testInfo) => {
-      const seed = await seedCompanyAndAgent(request);
+      const seed = await seedAgents(request);
       const issue = await json<{ id: string; identifier: string }>(
-        await request.post(`/api/companies/${seed.companyId}/issues`, {
-          data: { title: "Teams consent receipt", status: "backlog" },
+        await request.post("/api/issues", {
+          data: { title: `Teams consent receipt ${Date.now()}`, status: "backlog" },
         }),
         "create consent receipt task",
       );
@@ -735,7 +719,7 @@ test.describe("Board send delivery refresh", () => {
       const statusReads: string[] = [];
       let terminal = false;
       const publicationsPath = `/api/chat-endpoints/${endpointId}/conversations/${conversationId}/publications`;
-      const storageKey = `paperclip:board-send:v1:${JSON.stringify([seed.companyId, issue.id, endpointId, conversationId])}`;
+      const storageKey = `paperclip:board-send:v1:${JSON.stringify([issue.id, endpointId, conversationId])}`;
       await page.route("**/api/instance/settings/experimental", (route) =>
         fulfill(route, { enableChatConnectors: true }),
       );
@@ -817,7 +801,7 @@ test.describe("Board send delivery refresh", () => {
           canDismiss: terminal,
         });
       });
-      await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+      await page.goto(`/issues/${issue.identifier}`);
       const banner = page.getByRole("region", {
         name: "External conversation",
         exact: true,
@@ -1010,10 +994,10 @@ test.describe("Board send delivery refresh", () => {
       page,
       request,
     }) => {
-      const seed = await seedCompanyAndAgent(request);
+      const seed = await seedAgents(request);
       const issue = await json<{ id: string; identifier: string }>(
-        await request.post(`/api/companies/${seed.companyId}/issues`, {
-          data: { title: "Board delivery refresh", status: "backlog" },
+        await request.post("/api/issues", {
+          data: { title: `Board delivery refresh ${Date.now()}`, status: "backlog" },
         }),
         "create board-send task",
       );
@@ -1056,7 +1040,6 @@ test.describe("Board send delivery refresh", () => {
               ? [
                   {
                     id: publicationId,
-                    companyId: seed.companyId,
                     issueId: issue.id,
                     authorAgentId: null,
                     authorUserId: "local-board",
@@ -1083,7 +1066,6 @@ test.describe("Board send delivery refresh", () => {
           await fulfill(route, [
             {
               id: attachmentId,
-              companyId: seed.companyId,
               issueId: issue.id,
               issueCommentId: sends ? publicationId : null,
               assetId: attachmentId,
@@ -1101,7 +1083,6 @@ test.describe("Board send delivery refresh", () => {
             },
             {
               id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-              companyId: seed.companyId,
               issueId: issue.id,
               issueCommentId: null,
               assetId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
@@ -1152,7 +1133,7 @@ test.describe("Board send delivery refresh", () => {
           published: status === "published" ? 2 : 1,
         });
       });
-      await page.goto(`/${seed.prefix}/issues/${issue.identifier}`);
+      await page.goto(`/issues/${issue.identifier}`);
       await page
         .getByRole("button", { name: "Send to channel", exact: true })
         .click();
@@ -1295,10 +1276,10 @@ test.describe("Exact failed chat run retry", () => {
     "This chat source is no longer authorized. Open the task to review its current channel access before retrying.";
 
   test.beforeAll(async ({ request }) => {
-    seed = await seedCompanyAndAgent(request);
+    seed = await seedAgents(request);
     issue = await json<typeof issue>(
-      await request.post(`/api/companies/${seed.companyId}/issues`, {
-        data: { title: "Exact chat retry destination", status: "backlog" },
+      await request.post("/api/issues", {
+        data: { title: `Exact chat retry destination ${Date.now()}`, status: "backlog" },
       }),
       "create exact-retry task",
     );
@@ -1312,7 +1293,6 @@ test.describe("Exact failed chat run retry", () => {
         const now = Date.now();
         const run = {
           id: failedRunId,
-          companyId: seed.companyId,
           agentId: seed.agentId,
           status: "failed",
           invocationSource: "assignment",
@@ -1351,7 +1331,6 @@ test.describe("Exact failed chat run retry", () => {
           },
         };
         const requests: Array<{
-          companyId: string | null;
           body: Record<string, unknown>;
         }> = [];
         const destinations: string[] = [];
@@ -1368,7 +1347,7 @@ test.describe("Exact failed chat run retry", () => {
             });
             return;
           }
-          if (pathname === `/api/companies/${seed.companyId}/heartbeat-runs`) {
+          if (pathname === "/api/heartbeat-runs") {
             await fulfill(route, [run]);
             return;
           }
@@ -1380,7 +1359,7 @@ test.describe("Exact failed chat run retry", () => {
             pathname === `/api/heartbeat-runs/${failedRunId}/events` ||
             pathname ===
               `/api/heartbeat-runs/${failedRunId}/workspace-operations` ||
-            pathname === `/api/companies/${seed.companyId}/provider-traces`
+            pathname === "/api/provider-traces"
           ) {
             await fulfill(route, []);
             return;
@@ -1408,7 +1387,6 @@ test.describe("Exact failed chat run retry", () => {
           if (pathname === `/api/agents/${seed.agentId}/wakeup`) {
             expect(route.request().method()).toBe("POST");
             requests.push({
-              companyId: url.searchParams.get("companyId"),
               body: bodyOf(route),
             });
             if (outcome === "denied") {
@@ -1435,8 +1413,8 @@ test.describe("Exact failed chat run retry", () => {
 
         const startPath =
           surface === "agent run"
-            ? `/${seed.prefix}/agents/${seed.agentId}/runs/${failedRunId}`
-            : `/${seed.prefix}/inbox/all`;
+            ? `/agents/${seed.agentId}/runs/${failedRunId}`
+            : `/inbox/all`;
         await page.goto(startPath);
         const retry = page
           .getByRole("button", { name: "Retry", exact: true })
@@ -1445,7 +1423,6 @@ test.describe("Exact failed chat run retry", () => {
         await retry.click();
         await expect.poll(() => requests.length).toBe(1);
         expect(requests[0]).toEqual({
-          companyId: seed.companyId,
           body: {
             source: "on_demand",
             triggerDetail: "manual",
@@ -1472,7 +1449,7 @@ test.describe("Exact failed chat run retry", () => {
           await expect(page).toHaveURL(
             surface === "agent run"
               ? new RegExp(
-                  `/${seed.prefix}/agents/(${seed.agentId}|maya)/runs/${failedRunId}$`,
+                  `/agents/(${seed.agentId}|maya)/runs/${failedRunId}$`,
                 )
               : new RegExp(`${startPath}$`),
           );
@@ -1484,7 +1461,7 @@ test.describe("Exact failed chat run retry", () => {
         } else {
           await expect(page).toHaveURL(
             new RegExp(
-              `/${seed.prefix}/issues/(${issue.id}|${issue.identifier})$`,
+              `/issues/(${issue.id}|${issue.identifier})$`,
             ),
           );
           await expect(

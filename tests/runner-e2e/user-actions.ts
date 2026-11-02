@@ -2,14 +2,13 @@ import { expect, type Page } from "@playwright/test";
 
 export async function createTaskThroughUi(input: {
   page: Page;
-  issuePrefix: string;
   agentName: string;
   title: string;
   prompt: string;
   workMode: "standard" | "planning" | "ask";
   projectName?: string;
 }) {
-  const issuesUrl = `/${encodeURIComponent(input.issuePrefix)}/issues`;
+  const issuesUrl = "/issues";
   const newTask = input.page.getByRole("button", { name: "New Task" }).first();
   let bootstrapError: unknown;
   for (let bootstrapAttempt = 1; bootstrapAttempt <= 3; bootstrapAttempt += 1) {

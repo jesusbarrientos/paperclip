@@ -282,8 +282,7 @@ describeEmbeddedPostgres("summary slot service", () => {
       expect(issueRow.description).toContain("Implement summary cards");
       expect(issueRow.description).toContain("### Recently done");
       expect(issueRow.description).toContain("Ship the previous summary");
-      expect(issueRow.description).toContain(`/${issuePrefix(companyId)}/issues/`);
-      expect(issueRow.description).not.toContain("/PAP/issues/");
+      expect(issueRow.description).toContain("](/issues/");
       expect(issueRow.description).not.toContain("Other project issue");
     });
 

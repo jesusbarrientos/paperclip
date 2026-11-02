@@ -4,18 +4,18 @@ import { rehydrateRunnerdItemNotification } from "../../packages/paperclip-runne
 import { gradeNativeCompletion as gradeLegacyNativeCompletion, gradeNativeCompletionFinalAnswer as gradeNativeCompletion, type NativeCompletionObservation } from "./native-completion-scoring.js";
 type Row = Record<string, unknown>;
 function sample(blocked = true, compatibility = false): NativeCompletionObservation {
-  const body = blocked ? "Deployment remains blocked until access is granted. Release Owner must Grant deployment access. BLOCKED_probe" : "Saved [the requested document](/RUN/issues/RUN-1#document-output).";
+  const body = blocked ? "Deployment remains blocked until access is granted. Release Owner must Grant deployment access. BLOCKED_probe" : "Saved [the requested document](/issues/RUN-1#document-output).";
   const result = { reportedWorkDisposition: blocked ? "blocked" : "done", ...(blocked ? { blocker: { owner: { name: "Release Owner" }, unblockAction: "Grant deployment access", scope: "task_wide" } } : {}) };
   const event = (seq: number, eventType: string, payload: Row, sourceKind = "runner"): Row => ({ seq, eventType, protocolSchemaVersion: 1,
     sourceEventId: `event${seq}`, sourceInstanceId: sourceKind, sourceSeq: seq,
     payload: { prpEvent: { schema: "paperclip.prp.event.v1", schemaVersion: 1, runId: "run", eventType,
       sourceKind, sourceEventId: `event${seq}`, sourceInstanceId: sourceKind, sourceSeq: seq, payload } } });
   const tool = blocked ? "paperclip_block" : "paperclip_finish";
-  return { caseId: blocked ? "native-blocked-report" : "assigned-skill-explicit-invocation", companyId: "company", agentId: "agent", marker: "BLOCKED_probe",
-    issue: { id: "issue", companyId: "company", assigneeAgentId: "agent", status: result.reportedWorkDisposition },
-    runs: [{ id: "run", nativeIssueId: "issue", companyId: "company", agentId: "agent", status: "succeeded", runtimeMode: "native", resultJson: { nativeResult: result } }],
+  return { caseId: blocked ? "native-blocked-report" : "assigned-skill-explicit-invocation", agentId: "agent", marker: "BLOCKED_probe",
+    issue: { id: "issue", assigneeAgentId: "agent", status: result.reportedWorkDisposition },
+    runs: [{ id: "run", nativeIssueId: "issue", agentId: "agent", status: "succeeded", runtimeMode: "native", resultJson: { nativeResult: result } }],
     comments: [{ createdByRunId: "run", authorAgentId: "agent", body }],
-    documentLinkContext: { appOrigin: "https://paperclip.example", issuePrefix: "RUN", issueIdentifier: "RUN-1",
+    documentLinkContext: { appOrigin: "https://paperclip.example", issueIdentifier: "RUN-1",
       documents: blocked ? [] : [{ key: "output", latestRevisionId: "revision", latestRevisionNumber: 1 }] },
     initial: { issueIds: [], agentIds: ["agent"] }, state: { issueIds: ["issue"], agentIds: ["agent"], documentCount: blocked ? 0 : 1, interactionCount: 0 }, workspaceChanged: false,
     events: [compatibility ? event(1, "item.started", { kind: "tool_call", item: { type: "tool_call", id: "tool", name: tool } }) : event(1, "tool.execution.started", { name: tool, executionId: "tool" }), event(2, "run.result.proposed", result),
@@ -48,7 +48,7 @@ describe("native completion independent oracle", () => {
   it.each(["missing-link", "wrong-document", "wrong-reply-run", "missing-link-context", "missing-revision"])("rejects a saved document with %s in the final", scenario => {
     const value = sample(false);
     if (scenario === "missing-link" || scenario === "wrong-document") {
-      const text = scenario === "missing-link" ? "Saved the requested document." : "Saved [document](/RUN/issues/RUN-1#document-other).";
+      const text = scenario === "missing-link" ? "Saved the requested document." : "Saved [document](/issues/RUN-1#document-other).";
       (payload(value, 3).item as Row).text = text; value.comments[0]!.body = text;
     }
     if (scenario === "wrong-reply-run") value.comments[0]!.createdByRunId = "other";
@@ -97,12 +97,11 @@ describe("native completion independent oracle", () => {
     if (name === "contradictory-result-name") (payload(value, 2).item as Row).name = "write_document";
     expect(gradeNativeCompletion(value).checks.find(check => check.id === "final-after-tool-result")?.passed).toBe(false);
   });
-  it.each(["extra-run", "retry", "continuation", "wrong-account", "wrong-agent", "wrong-disposition", "punctuated-action", "wrong-scope", "missing-final", "summary-fallback", "pre-tool-final", "post-admission-call", "missing-acceptance", "runner-acceptance", "failed-terminal", "event-gap", "binding-mismatch", "extra-task", "extra-agent", "extra-document", "interaction", "changed-workspace", "process-call", "marker-only", "contradiction", "wrong-reply-run"])("rejects %s", name => {
+  it.each(["extra-run", "retry", "continuation", "wrong-agent", "wrong-disposition", "punctuated-action", "wrong-scope", "missing-final", "summary-fallback", "pre-tool-final", "post-admission-call", "missing-acceptance", "runner-acceptance", "failed-terminal", "event-gap", "binding-mismatch", "extra-task", "extra-agent", "extra-document", "interaction", "changed-workspace", "process-call", "marker-only", "contradiction", "wrong-reply-run"])("rejects %s", name => {
     const value = sample(); const run = value.runs[0]!;
     if (name === "extra-run") value.runs = [run, { ...run, id: "extra" }];
     if (name === "retry") run.retryOfRunId = "prior";
     if (name === "continuation") run.continuationAttempt = 1;
-    if (name === "wrong-account") run.companyId = "other";
     if (name === "wrong-agent") run.agentId = "other";
     if (name === "wrong-disposition") value.issue.status = "done";
     if (name === "punctuated-action") ((run.resultJson as Row).nativeResult as {blocker: {unblockAction: string}}).blocker.unblockAction = "Grant deployment access.";

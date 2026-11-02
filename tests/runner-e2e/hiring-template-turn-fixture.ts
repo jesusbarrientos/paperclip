@@ -1,6 +1,6 @@
 // Test-only public lifecycle facts shared by turn and outcome calibrations.
 interface FixtureIdentity {
-  runId: string; companyId: string; responsibleUserId: string; status: string;
+  runId: string; responsibleUserId: string; status: string;
   cause: string; messageId: string | null; acceptedAt: string;
 }
 interface FixtureUpdate {
@@ -8,7 +8,7 @@ interface FixtureUpdate {
   url: string; hasSavedDocuments: boolean;
 }
 interface FixtureRun {
-  id: string; companyId: string; agentId: string; responsibleUserId: string;
+  id: string; agentId: string; responsibleUserId: string;
   invocationSource: string; triggerDetail: string; status: string; runtimeMode: string;
   startedAt: string; finishedAt: string; retryOfRunId: string | null;
   processLossRetryCount: number; scheduledRetryAttempt: number; continuationAttempt: number;
@@ -23,7 +23,7 @@ interface FixtureRun {
   [key: string]: unknown;
 }
 interface FixtureComment {
-  id: string; companyId: string; issueId: string; authorUserId: string | null;
+  id: string; issueId: string; authorUserId: string | null;
   authorAgentId: string | null; body: string; createdAt: string;
   createdByRunId?: string; conversationSessionGeneration?: number | null;
 }
@@ -53,16 +53,16 @@ export function createHiringTemplateTurnFixture(notificationCount = 2) {
   if (!Number.isInteger(notificationCount) || notificationCount < 0 || notificationCount > 2)
     throw new RangeError("The positive lifecycle fixture accepts zero, one or two notification turns.");
   const timestamp = hiringTurnFixtureTimestamp;
-  const company = "company", user = "board", lead = "lead", coder = "coder", chat = "chat";
+  const user = "board", lead = "lead", coder = "coder", chat = "chat";
   const binding = { provider: "anthropic", method: "api_key", mode: "responsible_user" };
   function run(id: string, agentId: string, issueId: string, reason: string, start: number, finish: number, source?: string): FixtureRun {
     const invocationSource = reason === "issue_commented" ? "on_demand"
       : reason === "issue_assigned" ? "assignment" : "automation";
     const triggerDetail = reason === "issue_commented" ? "manual" : "system";
-    return { id, companyId: company, agentId, responsibleUserId: user, invocationSource, triggerDetail,
+    return { id, agentId, responsibleUserId: user, invocationSource, triggerDetail,
       status: "succeeded", runtimeMode: "native", startedAt: timestamp(start), finishedAt: timestamp(finish),
       retryOfRunId: null, processLossRetryCount: 0, scheduledRetryAttempt: 0, continuationAttempt: 0,
-      identityHistory: [{ runId: id, companyId: company, responsibleUserId: user, status: "accepted",
+      identityHistory: [{ runId: id, responsibleUserId: user, status: "accepted",
         cause: reason, messageId: null, acceptedAt: timestamp(start) }],
       contextSnapshot: { source, issueId, wakeReason: reason, wakeSource: invocationSource,
         wakeTriggerDetail: triggerDetail, conversationSessionGeneration: 0, wakeCommentIds: [],
@@ -75,14 +75,14 @@ export function createHiringTemplateTurnFixture(notificationCount = 2) {
     const id = `request-${i + 1}`;
     r.contextSnapshot.wakeCommentId = id;
     r.contextSnapshot.wakeCommentIds = [id];
-    r.identityHistory.push({ runId: r.id, companyId: company, responsibleUserId: user, status: "accepted",
+    r.identityHistory.push({ runId: r.id, responsibleUserId: user, status: "accepted",
       cause: "instruction", messageId: id, acceptedAt: r.startedAt });
-    return { id, companyId: company, issueId: chat, authorUserId: user, authorAgentId: null,
+    return { id, issueId: chat, authorUserId: user, authorAgentId: null,
       body: `Fixture request ${i + 1}`, createdAt: timestamp([0, 20, 50][i]!) };
   });
   const workers = [run("worker-first", coder, "first-task", "issue_assigned", 4, 12, "paperclip_runner.create_task"),
     run("worker-reuse", coder, "second-task", "issue_assigned", 25, 40, "paperclip_runner.create_task")];
-  const tasks = workers.map((r, i) => ({ id: r.contextSnapshot.issueId, companyId: company, projectId: "project",
+  const tasks = workers.map((r, i) => ({ id: r.contextSnapshot.issueId, projectId: "project",
     title: r.contextSnapshot.issueId, parentId: null as string | null, status: "done", identifier: `RUN-${i + 2}`, responsibleUserId: user,
     assigneeAgentId: coder, createdByAgentId: lead, createdByUserId: null as string | null, originRunId: requested[i]!.id,
     createdAt: timestamp([2, 22][i]!), completedAt: timestamp([11, 39][i]!) }));
@@ -94,17 +94,17 @@ export function createHiringTemplateTurnFixture(notificationCount = 2) {
     r.contextSnapshot.chatCompletionDeliveryIds = covered.map(t => `delivery-${t.id}`);
     r.contextSnapshot.chatCompletionUpdates = covered.map(t => ({ id: t.id, identifier: t.identifier,
       status: "done", completedAt: t.completedAt, url: `/issues/${t.identifier}`, hasSavedDocuments: true }));
-    comments.push({ id: `reply-${i + 1}`, companyId: company, issueId: chat, authorAgentId: lead,
+    comments.push({ id: `reply-${i + 1}`, issueId: chat, authorAgentId: lead,
       authorUserId: null, createdByRunId: r.id, body: "The saved fixture is complete.",
       conversationSessionGeneration: null, createdAt: r.finishedAt });
     notifications.push(r);
   }
   const runs = [...requested, ...workers, ...notifications];
   const evidence = { leadId: lead, chatIssueId: chat, hireName: "Fixture Coder", projectId: "project", connectionId: "account", binding,
-    agents: [{ id: lead, companyId: company, name: "Fixture CEO" }, { id: coder, companyId: company, name: "Fixture Coder" }],
+    agents: [{ id: lead, name: "Fixture CEO" }, { id: coder, name: "Fixture Coder" }],
     first: { issueId: tasks[0]!.id }, second: { issueId: tasks[1]!.id }, runs, tasks,
     readRuns: notifications.map(run => ({ runId: run.id, agentId: run.agentId, events: hiringNotificationActionEvents() })) };
-  const apiState = { issue: { id: chat, companyId: company, conversationUserId: user,
+  const apiState = { issue: { id: chat, conversationUserId: user,
     conversationAgentId: lead, conversationSessionGeneration: 0 }, comments, runs: structuredClone(runs) };
   return { evidence, apiState };
 }

@@ -1,23 +1,12 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { listenOnFetchAllowedPort } from "./fetch-allowed-port";
+import { ensureOrganization } from "./helpers/organization";
 
 // Not-connected apps keep their identity on the Permissions page. Reconnecting
 // must revive the same application/connection, not duplicate it.
 
 const SCREENSHOT_DIR = "test-results";
-
-type Seed = { companyId: string; prefix: string };
-
-async function newCompany(request: APIRequestContext, label: string): Promise<Seed> {
-  const res = await request.post("/api/companies", { data: { name: `Apps navigation ${label} ${Date.now()}` } });
-  expect(res.ok(), `create company failed ${res.status()}: ${await res.text()}`).toBe(true);
-  const company = await res.json();
-  return {
-    companyId: company.id,
-    prefix: company.issuePrefix ?? company.prefix ?? company.urlKey ?? "E2E",
-  };
-}
 
 type MockMcpServer = { url: string; close: () => Promise<void> };
 
@@ -65,15 +54,14 @@ test.describe.serial("not-connected app page", () => {
   test.setTimeout(240_000);
 
   let mock: MockMcpServer;
-  let seed: Seed;
   let applicationId: string;
   let connectionId: string;
 
   test.beforeAll(async ({ request }) => {
     mock = await startMockMcp();
-    seed = await newCompany(request, "app-page");
+    await ensureOrganization(request);
 
-    const connect = await request.post(`/api/companies/${seed.companyId}/tools/apps/connect`, {
+    const connect = await request.post(`/api/tools/apps/connect`, {
       data: { link: mock.url, name: "Bla", credentialValues: { "credentials.authorization": "qa-token" } },
     });
     expect(connect.ok(), `connect failed ${connect.status()}: ${await connect.text()}`).toBe(true);
@@ -96,7 +84,7 @@ test.describe.serial("not-connected app page", () => {
   });
 
   test("not-connected row opens the app page, not the generic wizard", async ({ page }) => {
-    await page.goto(`/${seed.prefix}/apps/connections`);
+    await page.goto(`/apps/connections`);
     const row = page
       .getByRole("list", { name: "Connector list" })
       .getByRole("listitem")
@@ -107,7 +95,7 @@ test.describe.serial("not-connected app page", () => {
     await expect(connectButton).toBeVisible();
 
     await connectButton.click();
-    await expect(page).toHaveURL(new RegExp(`/${seed.prefix}/apps/app/${applicationId}/permissions$`), { timeout: 20_000 });
+    await expect(page).toHaveURL(new RegExp(`/apps/app/${applicationId}/permissions$`), { timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Bla" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
@@ -115,7 +103,7 @@ test.describe.serial("not-connected app page", () => {
   });
 
   test("reconnect prefills the wizard and revives the same application", async ({ page, request }) => {
-    await page.goto(`/${seed.prefix}/apps/app/${applicationId}`);
+    await page.goto(`/apps/app/${applicationId}`);
     await page.getByRole("button", { name: "Reconnect", exact: true }).click();
     await expect(page).toHaveURL(/\/apps\/connect\?/, { timeout: 20_000 });
     await expect(page.getByText("Connect your own MCP server")).toBeVisible({ timeout: 20_000 });
@@ -127,7 +115,7 @@ test.describe.serial("not-connected app page", () => {
     // check can commit the restored connection transactionally.
     await expect(page.getByRole("heading", { name: "Bla is ready." })).toBeVisible({ timeout: 30_000 });
 
-    const apps = await request.get(`/api/companies/${seed.companyId}/tools/applications`);
+    const apps = await request.get(`/api/tools/applications`);
     const appsBody = await apps.json();
     const matching = (appsBody.applications as Array<{ id: string; name: string }>).filter(
       (app) => app.name === "Bla",
@@ -135,7 +123,7 @@ test.describe.serial("not-connected app page", () => {
     expect(matching).toHaveLength(1);
     expect(matching[0].id).toBe(applicationId);
 
-    const conns = await request.get(`/api/companies/${seed.companyId}/tools/connections`);
+    const conns = await request.get(`/api/tools/connections`);
     const connsBody = await conns.json();
     const appConns = (connsBody.connections as Array<{ id: string; applicationId: string; status: string }>).filter(
       (c) => c.applicationId === applicationId,
@@ -151,16 +139,16 @@ test.describe.serial("not-connected app page", () => {
     const revive = await request.patch(`/api/tool-applications/${applicationId}`, { data: { status: "active" } });
     expect(revive.ok(), `revive failed ${revive.status()}: ${await revive.text()}`).toBe(true);
 
-    await page.goto(`/${seed.prefix}/apps/app/${applicationId}`);
+    await page.goto(`/apps/app/${applicationId}`);
     await expect(page).toHaveURL(
-      new RegExp(`/${seed.prefix}/apps/app/${applicationId}/permissions$`),
+      new RegExp(`/apps/app/${applicationId}/permissions$`),
       { timeout: 20_000 },
     );
     await expect(page.getByText("Not connected", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reconnect" })).toBeVisible();
 
-    await page.goto(`/${seed.prefix}/apps/connections`);
+    await page.goto(`/apps/connections`);
     const row = page
       .getByRole("list", { name: "Connector list" })
       .getByRole("listitem")

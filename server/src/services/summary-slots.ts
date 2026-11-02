@@ -385,7 +385,7 @@ export function summarySlotService(db: Db) {
             const identifier = row.identifier ?? "Unnumbered issue";
             const companyPrefix = row.identifier?.split("-", 1)[0];
             const issueLink = companyPrefix
-              ? `[${identifier}](/${companyPrefix}/issues/${identifier})`
+              ? `[${identifier}](/issues/${identifier})`
               : identifier;
             return `- ${issueLink} — ${row.title} (${row.priority}; updated ${row.updatedAt.toISOString()})`;
           })

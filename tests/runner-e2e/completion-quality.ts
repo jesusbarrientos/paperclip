@@ -30,8 +30,7 @@ export function completionQualityEvidence(o: CompletionObservation, secrets: rea
   if (o.worker.status !== "done" || !o.worker.completedAt || !o.documents.length) throw new Error("Completed work and saved output are required for semantic qualification");
   const comments = o.comments.filter(c => c.issueId === o.sourceId && c.authorAgentId && c.createdAt >= o.worker.completedAt);
   if (!comments.length) throw new Error("Missing completion response; delivery fails before semantic qualification");
-  const related = (o.relatedTasks ?? []).filter(({ task }) => typeof o.worker.companyId === "string" && task.companyId === o.worker.companyId &&
-    task.id !== o.worker.id && task.status === "done" && task.completedAt);
+  const related = (o.relatedTasks ?? []).filter(({ task }) => task.id !== o.worker.id && task.status === "done" && task.completedAt);
   const knownTasks = [o.worker, ...related.map(r => r.task)];
   const renderedLinks = (replyId: string) => (o.renderedLinks ?? []).flatMap(link => {
     if (link.commentId !== replyId || !link.href.startsWith("/") || link.href.startsWith("//")) return [];
@@ -188,7 +187,6 @@ export function completionQualityControls(observation: CompletionObservation) {
   const reply = observation.comments.find(c => c.id === original.id)!;
   const accurate = `The requested work is finished and saved. Open /issues/${observation.worker.id} for the result.`;
   const stale = `I have handed off the work. It will run next. Ask me later to get the finished result.`;
-  const companyId = observation.worker.companyId ?? "calibration-company";
   const relatedId = `${observation.worker.id}-calibration-related`;
   return [
     { name: "accurate", expectedPass: true, bodies: [accurate] },
@@ -215,8 +213,7 @@ export function completionQualityControls(observation: CompletionObservation) {
     { name: "recap-with-new-result", expectedPass: true, bodies: [accurate, `The separate task ${relatedId} has now finished too; its newly saved result is at /issues/${relatedId}. Both that task and the earlier task ${observation.worker.id} are complete.`] },
   ].map(c => ({ name: c.name, expectedPass: c.expectedPass, observation: { ...observation,
     ...(["distinct-tasks", "recap-with-new-result", "pending-then-joint", "joint-then-repeated"].includes(c.name) ? {
-      worker: { ...observation.worker, companyId },
-      relatedTasks: [{ task: { id: relatedId, companyId, status: "done", completedAt: observation.worker.completedAt },
+      relatedTasks: [{ task: { id: relatedId, status: "done", completedAt: observation.worker.completedAt },
         documents: [{ id: `${relatedId}-doc`, issueId: relatedId, key: "result", body: "A separate task's saved result." }] }],
     } : {}),
     renderedLinks: c.name === "rendered-task-link" ? [{ commentId: `${reply.id}-control-0`, href: `/issues/${observation.worker.id}` }] : [],

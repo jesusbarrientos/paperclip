@@ -21,7 +21,7 @@ import {
   safeEndpointSummary,
 } from "./notion-generic-live-lib.mjs";
 
-const TARGET_COMPANY_PREFIX = "PAP";
+const TARGET_ISSUE_PREFIX = "PAP";
 const TARGET_AGENT_NAME = "CodexCoderPro";
 const NOTION_RESOURCE = "https://mcp.notion.com/mcp";
 const NOTION_GET_SELF = "notion-get-self";
@@ -264,7 +264,7 @@ async function fetchNotionVerificationCodeFromAgentMail({ notBefore }) {
 
 async function completeNotionAuthorization(page, config, credential, connectionId) {
   const paperclipOrigin = new URL(config.baseUrl).origin;
-  const permissionsPath = `/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/permissions`;
+  const permissionsPath = `/apps/${connectionId}/permissions`;
   const deadline = Date.now() + 6 * 60_000;
   const verificationNotBefore = new Date();
   let providerSeen = false;
@@ -417,13 +417,13 @@ function catalogFacts(catalog, checkpoint) {
   return { active, getSelf, createPages };
 }
 
-async function finishAgentOnlySetup(request, config, companyId, connectionId, catalog, agentId) {
+async function finishAgentOnlySetup(request, config, connectionId, catalog, agentId) {
   const facts = catalogFacts(catalog, "D.catalog-policy");
   await apiJson(
     request,
     config,
     "POST",
-    `/api/companies/${companyId}/tools/apps/${connectionId}/finish`,
+    `/api/tools/apps/${connectionId}/finish`,
     {
       enabledCatalogEntryIds: [facts.getSelf.id],
       askFirstCatalogEntryIds: [],
@@ -481,7 +481,6 @@ async function createAndWaitForProofIssue(request, config, input, checkpoint) {
 async function cleanupConnection(
   request,
   config,
-  companyId,
   connectionId,
   connectionName,
   { requireInstalled = false } = {},
@@ -502,7 +501,7 @@ async function cleanupConnection(
     request,
     config,
     "GET",
-    `/api/companies/${companyId}/tools/connections`,
+    "/api/tools/connections",
     undefined,
     "F.cleanup-verification",
   );
@@ -516,7 +515,7 @@ async function cleanupConnection(
     request,
     config,
     "GET",
-    `/api/companies/${companyId}/tools/profiles`,
+    "/api/tools/profiles",
     undefined,
     "F.cleanup-verification",
   );
@@ -527,7 +526,7 @@ async function cleanupConnection(
     request,
     config,
     "GET",
-    `/api/companies/${companyId}/tools/action-requests?status=pending`,
+    "/api/tools/action-requests?status=pending",
     undefined,
     "F.cleanup-verification",
   );
@@ -557,7 +556,7 @@ async function runSmoke({ config, chromium }) {
     passed: false,
     startedAt: startedAt.toISOString(),
     completedAt: null,
-    target: { companyPrefix: TARGET_COMPANY_PREFIX, resource: NOTION_RESOURCE },
+    target: { issuePrefix: TARGET_ISSUE_PREFIX, resource: NOTION_RESOURCE },
     importPreview: null,
     connection: null,
     oauthProof: null,
@@ -574,7 +573,6 @@ async function runSmoke({ config, chromium }) {
   let context;
   let credential = null;
   let connectionId = null;
-  let companyId = null;
   let cleanupComplete = false;
   let caughtFailure = null;
   let activeCheckpoint = "A.paperclip-login";
@@ -590,17 +588,15 @@ async function runSmoke({ config, chromium }) {
 
     await loginPaperclipBoard(page, context, config);
 
-    activeCheckpoint = "A.company-selection";
-    const companies = await apiJson(context.request, config, "GET", "/api/companies", undefined, "A.company-selection");
-    const company = asArray(companies, "companies").find((candidate) => candidate.issuePrefix === TARGET_COMPANY_PREFIX);
-    if (!company) fail("A.company-selection", "pap_company_missing");
-    companyId = company.id;
+    activeCheckpoint = "A.organization";
+    const organization = await apiJson(context.request, config, "GET", "/api/organization", undefined, "A.organization");
+    if (organization?.issuePrefix !== TARGET_ISSUE_PREFIX) fail("A.organization", "pap_organization_missing");
     activeCheckpoint = "A.agent-selection";
     const agents = await apiJson(
       context.request,
       config,
       "GET",
-      `/api/companies/${companyId}/agents`,
+      "/api/agents",
       undefined,
       "A.agent-selection",
     );
@@ -612,7 +608,7 @@ async function runSmoke({ config, chromium }) {
       context.request,
       config,
       "GET",
-      `/api/companies/${companyId}/tools/connections`,
+      "/api/tools/connections",
       undefined,
       "A.connection-isolation",
     );
@@ -621,7 +617,7 @@ async function runSmoke({ config, chromium }) {
       fail("A.connection-isolation", "connection_name_collision");
     }
 
-    // Fetch only after URL, health, Paperclip login, company, agent, and binding
+    // Fetch only after URL, health, Paperclip login, organization, agent, and binding
     // metadata have all passed. The value remains in this process and is never
     // written to browser artifacts or command arguments.
     activeCheckpoint = "A.secret-binding";
@@ -630,7 +626,7 @@ async function runSmoke({ config, chromium }) {
     activeCheckpoint = "B.paste-config";
     await gotoWithVisibleMarker(
       page,
-      new URL(`/${TARGET_COMPANY_PREFIX}/apps/advanced/paste-config`, config.baseUrl).toString(),
+      new URL("/apps/advanced/paste-config", config.baseUrl).toString(),
       () => page.getByRole("heading", { name: "Advanced setup", exact: true }),
       "B.paste-config",
       "advanced_setup_missing",
@@ -641,7 +637,7 @@ async function runSmoke({ config, chromium }) {
     await configTextarea.fill(exactConfig);
     const importResponsePromise = page.waitForResponse((response) =>
       response.request().method() === "POST"
-      && new URL(response.url()).pathname === `/api/companies/${companyId}/tools/mcp/import-json`,
+      && new URL(response.url()).pathname === "/api/tools/mcp/import-json",
     );
     await page.getByRole("button", { name: /^check config$/i }).click();
     const importResponse = await importResponsePromise;
@@ -660,7 +656,7 @@ async function runSmoke({ config, chromium }) {
       context.request,
       config,
       "GET",
-      `/api/companies/${companyId}/tools/connections`,
+      "/api/tools/connections",
       undefined,
       "B.import-preview",
     );
@@ -702,7 +698,7 @@ async function runSmoke({ config, chromium }) {
         context.request,
         config,
         "GET",
-        `/api/companies/${companyId}/tools/connections`,
+        "/api/tools/connections",
         undefined,
         "B.generic-connect",
       );
@@ -729,7 +725,7 @@ async function runSmoke({ config, chromium }) {
       context.request,
       config,
       "GET",
-      `/api/companies/${companyId}/tools/applications`,
+      "/api/tools/applications",
       undefined,
       "B.generic-connect",
     );
@@ -778,7 +774,7 @@ async function runSmoke({ config, chromium }) {
     activeCheckpoint = "C.notion-login";
     await completeNotionAuthorization(page, config, credential, connectionId);
     activeCheckpoint = "C.oauth-callback";
-    const permissionsPath = `/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/permissions`;
+    const permissionsPath = `/apps/${connectionId}/permissions`;
     await page.goto(new URL(permissionsPath, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
     await expectVisible(page.getByText("OAuth connected", { exact: true }), "C.oauth-callback", "connected_state_missing", 45_000);
     await expectVisible(page.getByText("Unverified server", { exact: true }), "C.oauth-callback", "unverified_badge_missing");
@@ -843,7 +839,7 @@ async function runSmoke({ config, chromium }) {
       "D.catalog-refresh",
     );
     const catalog = asArray(refreshed, "catalog");
-    const facts = await finishAgentOnlySetup(context.request, config, companyId, connectionId, catalog, agent.id);
+    const facts = await finishAgentOnlySetup(context.request, config, connectionId, catalog, agent.id);
 
     activeCheckpoint = "D.connection-active";
     connection = await apiJson(context.request, config, "GET", `/api/tool-connections/${connectionId}`, undefined, "D.connection-active");
@@ -854,7 +850,7 @@ async function runSmoke({ config, chromium }) {
       context.request,
       config,
       "GET",
-      `/api/companies/${companyId}/tools/connections`,
+      "/api/tools/connections",
       undefined,
       "D.connection-active",
     );
@@ -917,7 +913,7 @@ async function runSmoke({ config, chromium }) {
       catalogRefresh: "succeeded",
     };
 
-    await page.goto(new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/permissions`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
+    await page.goto(new URL(`/apps/${connectionId}/permissions`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
     await expectVisible(page.getByText("Who can use it", { exact: true }), "D.permissions-ui", "permissions_panel_missing");
     const getSelfPermission = page.locator(`[data-action-id="${facts.getSelf.id}"] select`);
     const createPagesPermission = page.locator(`[data-action-id="${facts.createPages.id}"] select`);
@@ -931,7 +927,7 @@ async function runSmoke({ config, chromium }) {
     summary.screenshots.push(permissionsShot);
 
     activeCheckpoint = "D.test-panel";
-    await page.goto(new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/test`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
+    await page.goto(new URL(`/apps/${connectionId}/test`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
     await expectVisible(page.getByLabel("Choose which agent to test as"), "D.test-panel", "agent_picker_missing");
     await page.getByLabel("Choose which agent to test as").click();
     await page.getByLabel("Search agents").fill(TARGET_AGENT_NAME);
@@ -1055,13 +1051,13 @@ async function runSmoke({ config, chromium }) {
       durationMs: agentEvent.latencyMs,
     };
 
-    await page.goto(new URL(`/${TARGET_COMPANY_PREFIX}/issues/${proofIssue.child.identifier}`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
+    await page.goto(new URL(`/issues/${proofIssue.child.identifier}`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
     await expectVisible(page.getByText(proofIssue.child.title, { exact: true }).first(), "F.child-screenshot", "child_issue_missing");
     const childShot = "04-fresh-agent-proof.png";
     await safeScreenshot(page, screenshotFile(outputDirectory, childShot), config, credential, "F.child-screenshot");
     summary.screenshots.push(childShot);
 
-    await page.goto(new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/activity`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
+    await page.goto(new URL(`/apps/${connectionId}/activity`, config.baseUrl).toString(), { waitUntil: "domcontentloaded" });
     await expectVisible(page.getByText(NOTION_GET_SELF, { exact: false }).first(), "F.activity-screenshot", "get_self_activity_missing");
     const activityShot = "05-redacted-audit.png";
     await safeScreenshot(page, screenshotFile(outputDirectory, activityShot), config, credential, "F.activity-screenshot");
@@ -1071,7 +1067,6 @@ async function runSmoke({ config, chromium }) {
     summary.cleanup = await cleanupConnection(
       context.request,
       config,
-      companyId,
       connectionId,
       connectionName,
       { requireInstalled: true },
@@ -1128,9 +1123,9 @@ async function runSmoke({ config, chromium }) {
         ? new SmokeFailure(activeCheckpoint, error.code)
         : new SmokeFailure(activeCheckpoint, "unexpected_error");
   } finally {
-    if (connectionId && companyId && context && !cleanupComplete) {
+    if (connectionId && context && !cleanupComplete) {
       try {
-        summary.cleanup = await cleanupConnection(context.request, config, companyId, connectionId, connectionName);
+        summary.cleanup = await cleanupConnection(context.request, config, connectionId, connectionName);
         cleanupComplete = true;
       } catch {
         summary.cleanup = { completed: false, code: "cleanup_failed" };

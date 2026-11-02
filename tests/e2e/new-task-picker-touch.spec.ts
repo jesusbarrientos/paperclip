@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { expect, test, type APIResponse, type Locator, type Page } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 async function json(response: APIResponse) {
   expect(response.ok(), await response.text()).toBe(true);
@@ -59,11 +59,9 @@ test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true
 
 test("new-task assignee and model sheets scroll by touch and retain the selected values", async ({ page, request, browserName }, testInfo) => {
   test.skip(browserName !== "chromium", "Native touch drags use Chromium's input protocol.");
-  const company = await json(await request.post("/api/companies", {
-    data: { name: `Touch pickers ${randomUUID()}` },
-  }));
+  await ensureOrganization(request);
   for (let index = 1; index <= 22; index += 1) {
-    await json(await request.post(`/api/companies/${company.id}/agents`, {
+    await json(await request.post(`/api/agents`, {
       data: {
         name: `Touch Agent ${String(index).padStart(2, "0")}`, role: "engineer",
         adapterType: "codex_local", adapterConfig: { model: "gpt-6-sol" },
@@ -72,13 +70,13 @@ test("new-task assignee and model sheets scroll by touch and retain the selected
     }));
   }
   // Keep the provider catalog deterministic; task UI, agents, and drafts are real.
-  await page.route(`**/api/companies/${company.id}/adapters/codex_local/models*`, (route) => route.fulfill({
+  await page.route(`**/api/adapters/codex_local/models*`, (route) => route.fulfill({
     json: Array.from({ length: 24 }, (_, index) => ({
       id: `touch-model-${String(index + 1).padStart(2, "0")}`,
       label: `Touch Model ${String(index + 1).padStart(2, "0")}`,
     })),
   }));
-  await page.goto(`/${company.issuePrefix}/dashboard`);
+  await page.goto(`/dashboard`);
   await page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("button", { name: "New Task", exact: true }).tap();
   const draft = page.getByRole("textbox", { name: "editable markdown" });
   await draft.fill("Keep this touch selection draft");

@@ -2,9 +2,9 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { listenOnFetchAllowedPort } from "./fetch-allowed-port";
 import { send } from "./agent-chat.shared";
+import { ensureOrganization } from "./helpers/organization";
 
 type Json = Record<string, unknown>;
-type Seed = { companyId: string; prefix: string };
 type Agent = { id: string; name: string };
 
 async function json<T = Json>(
@@ -17,22 +17,12 @@ async function json<T = Json>(
   return (await response.json()) as T;
 }
 
-async function newCompany(request: APIRequestContext): Promise<Seed> {
-  const company = await json<{ id: string; issuePrefix: string }>(
-    await request.post("/api/companies", {
-      data: { name: `Connection intent E2E ${Date.now()}` },
-    }),
-  );
-  return { companyId: company.id, prefix: company.issuePrefix };
-}
-
 async function createAgent(
   request: APIRequestContext,
-  companyId: string,
   name: string,
 ): Promise<Agent> {
   return await json<Agent>(
-    await request.post(`/api/companies/${companyId}/agents`, {
+    await request.post("/api/agents", {
       data: {
         name,
         role: "qa",
@@ -182,8 +172,10 @@ test("AgentMail request shows a durable inline key card in agent chat", async ({
     await json(await request.patch("/api/instance/settings/experimental", { data: {
       enableAgentChat: true, enableChatConnectors: true, enableClassicTaskInterface: false,
     } }));
-    const seed = await newCompany(request);
-    const agent = await createAgent(request, seed.companyId, "Email requester");
+    await ensureOrganization(request);
+    const inboxesBefore = await json<unknown[]>(await request.get("/api/email/inboxes"));
+    const connectionsBefore = await json<{ connections: unknown[] }>(await request.get("/api/tools/connections"));
+    const agent = await createAgent(request, "Email requester");
     // Script only the agent's choice of tool; persistence, routes, and UI are real.
     const script = `
 const headers = { authorization: "Bearer " + process.env.PAPERCLIP_API_KEY, "content-type": "application/json", "x-paperclip-run-id": process.env.PAPERCLIP_RUN_ID };
@@ -204,10 +196,10 @@ if (result.state !== "needs_user_action") throw new Error("Expected an inline ca
     await json(await request.patch(`/api/agents/${agent.id}`, { data: {
       adapterConfig: { command: process.execPath, args: ["--input-type=module", "-e", script] }, replaceAdapterConfig: true,
     } }));
-    await page.goto(`/${seed.prefix}/chats/${agent.id}`);
+    await page.goto(`/chats/${agent.id}`);
     await send(page, "Get yourself an email address with AgentMail.");
-    await waitForAgentRun(request, seed.companyId, agent.id);
-    const chat = await json<{ id: string }>(await request.get(`/api/companies/${seed.companyId}/chats/${agent.id}`));
+    await waitForAgentRun(request, agent.id);
+    const chat = await json<{ id: string }>(await request.get(`/api/chats/${agent.id}`));
     const interactions = await json<Array<{ id: string; kind: string; status: string; addresseeUserId: string; payload: Json }>>(
       await request.get(`/api/issues/${chat.id}/interactions`),
     );
@@ -234,9 +226,9 @@ if (result.state !== "needs_user_action") throw new Error("Expected an inline ca
       const rows = await json<Array<{ status: string }>>(await request.get(`/api/issues/${chat.id}/interactions`));
       return rows.map(row => row.status);
     }).toEqual(["rejected"]);
-    expect(await json(await request.get(`/api/companies/${seed.companyId}/email/inboxes`))).toEqual([]);
-    const connections = await json<{ connections: unknown[] }>(await request.get(`/api/companies/${seed.companyId}/tools/connections`));
-    expect(connections.connections).toEqual([]);
+    expect(await json(await request.get("/api/email/inboxes"))).toEqual(inboxesBefore);
+    const connections = await json<{ connections: unknown[] }>(await request.get("/api/tools/connections"));
+    expect(connections.connections).toEqual(connectionsBefore.connections);
   } finally {
     await json(await request.patch("/api/instance/settings/experimental", { data: {
       enableAgentChat: settings.enableAgentChat, enableChatConnectors: settings.enableChatConnectors,
@@ -247,7 +239,6 @@ if (result.state !== "needs_user_action") throw new Error("Expected an inline ca
 
 async function waitForAgentRun(
   request: APIRequestContext,
-  companyId: string,
   agentId: string,
 ) {
   let terminalRun: { id: string; status: string } | null = null;
@@ -256,7 +247,7 @@ async function waitForAgentRun(
       async () => {
         const runs = await json<Array<{ id: string; status: string }>>(
           await request.get(
-            `/api/companies/${companyId}/heartbeat-runs?agentId=${agentId}&limit=10`,
+            `/api/heartbeat-runs?agentId=${agentId}&limit=10`,
           ),
         );
         terminalRun =
@@ -279,15 +270,18 @@ test("store setup and task connection intent share one fake provider through con
   test.setTimeout(180_000);
   const provider = await startFakeProvider();
   try {
-    const seed = await newCompany(request);
-    const holder = await createAgent(
-      request,
-      seed.companyId,
-      "Existing access holder",
-    );
+    await ensureOrganization(request);
+    const holder = await createAgent(request, "Existing access holder");
 
+    const connectionIdsBefore = new Set(
+      (
+        await json<{ connections: Array<{ id: string }> }>(
+          await request.get("/api/tools/connections"),
+        )
+      ).connections.map((row) => row.id),
+    );
     // Entry point one: connect and test the provider through the Connections store.
-    await page.goto(`/${seed.prefix}/apps`);
+    await page.goto("/apps");
     await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible({
       timeout: 30_000,
     });
@@ -311,9 +305,12 @@ test("store setup and task connection intent share one fake provider through con
 
     const connections = await json<{
       connections: Array<{ id: string; name: string; config: Json }>;
-    }>(await request.get(`/api/companies/${seed.companyId}/tools/connections`));
-    expect(connections.connections).toHaveLength(1);
-    const connection = connections.connections[0]!;
+    }>(await request.get("/api/tools/connections"));
+    const created = connections.connections.filter(
+      (row) => !connectionIdsBefore.has(row.id),
+    );
+    expect(created).toHaveLength(1);
+    const connection = created[0]!;
     const connectionId = connection.id;
     await json(
       await request.patch(`/api/tool-connections/${connectionId}`, {
@@ -334,7 +331,7 @@ test("store setup and task connection intent share one fake provider through con
       }),
     );
 
-    await page.goto(`/${seed.prefix}/apps/${connectionId}/permissions`);
+    await page.goto(`/apps/${connectionId}/permissions`);
     const actionRow = page.locator("[data-action-id]").filter({ hasText: "List fixture pages" });
     await actionRow.getByRole("button", { name: "Test", exact: true }).click();
     await expect(
@@ -351,11 +348,7 @@ test("store setup and task connection intent share one fake provider through con
 
     // Entry point two: a scripted agent requests Notion, then the same shared
     // provider is reused from the task dialog and appears in the fresh run.
-    const scout = await createAgent(
-      request,
-      seed.companyId,
-      "Connection requester",
-    );
+    const scout = await createAgent(request, "Connection requester");
     await json(
       await request.patch(`/api/agents/${scout.id}`, {
         data: {
@@ -373,9 +366,9 @@ test("store setup and task connection intent share one fake provider through con
       }),
     );
     const issue = await json<{ id: string; identifier: string }>(
-      await request.post(`/api/companies/${seed.companyId}/issues`, {
+      await request.post("/api/issues", {
         data: {
-          title: "Read our Notion pages",
+          title: `Read our Notion pages ${Date.now()}`,
           status: "in_progress",
           assigneeAgentId: scout.id,
         },
@@ -384,12 +377,12 @@ test("store setup and task connection intent share one fake provider through con
     // Assigning an in-progress task is the production wake path. Waiting for
     // that run avoids creating a second artificial request from an explicit
     // heartbeat invocation.
-    const firstRun = await waitForAgentRun(request, seed.companyId, scout.id);
+    const firstRun = await waitForAgentRun(request, scout.id);
 
-    const taskUrl = `/${seed.prefix}/issues/${issue.identifier}`;
+    const taskUrl = `/issues/${issue.identifier}`;
     await page.goto(taskUrl);
     await expect(
-      page.getByText(`Grant Connection requester access to “${connection.name}”?`),
+      page.getByText(`Grant ${scout.name} access to “${connection.name}”?`),
     ).toBeVisible({ timeout: 30_000 });
     const permissions = page.getByRole("list", { name: "Tool permissions" });
     await expect(permissions.getByText("notion:list_pages", { exact: true })).toBeVisible();
@@ -414,7 +407,7 @@ test("store setup and task connection intent share one fake provider through con
         async () => {
           const runs = await json<Array<{ id: string; status: string }>>(
             await request.get(
-              `/api/companies/${seed.companyId}/heartbeat-runs?agentId=${scout.id}&limit=10`,
+              `/api/heartbeat-runs?agentId=${scout.id}&limit=10`,
             ),
           );
           return runs.find((run) => run.id !== firstRun.id)?.status ?? null;
@@ -436,7 +429,7 @@ test("store setup and task connection intent share one fake provider through con
     );
     expect(completedIssue.status).toBe("done");
     const finalRuns = await json<Array<{ id: string; status: string }>>(
-      await request.get(`/api/companies/${seed.companyId}/heartbeat-runs?agentId=${scout.id}&limit=10`),
+      await request.get(`/api/heartbeat-runs?agentId=${scout.id}&limit=10`),
     );
     expect(finalRuns).toHaveLength(2);
     expect(finalRuns.every((run) => run.status === "succeeded")).toBe(true);

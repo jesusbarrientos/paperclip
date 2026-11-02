@@ -2,11 +2,7 @@ import { expect, type Page } from "@playwright/test";
 
 /**
  * Regression guard for PAP-404: onboarding must land the user on the newly
- * created first-task detail page and must NOT bounce to the company dashboard.
- *
- * The bounce is a navigation race: the wizard `navigate(/…/issues/…)` used to
- * be clobbered by `useCompanyPageMemory`, which restores a company's remembered
- * page (falling back to `/dashboard`) on a non-`route_sync` selection change.
+ * created first-task detail page and must NOT bounce to the dashboard.
  *
  * react-router-dom drives client-side navigation through the History API, so a
  * Playwright `framenavigated` listener never fires for these SPA transitions.

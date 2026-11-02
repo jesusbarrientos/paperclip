@@ -255,13 +255,13 @@ describe("production hiring fixture wiring and source observations", () => {
     const get = async (path: string) => {
       if (path.endsWith("/instructions-bundle")) return { mode: "managed", entryFile: "AGENTS.md", files: Object.keys(files).map(path => ({ path })) };
       if (path.includes("instructions-bundle/file?")) return { content: files[new URL(path, "http://fixture").searchParams.get("path")!] };
-      if (path === "/api/companies/company/skills") return [{ id: "creator", key: HIRING_TEMPLATE_SKILL_KEY }];
-      if (path === "/api/agents/lead/skills?companyId=company") return { desiredSkills: [HIRING_TEMPLATE_SKILL_KEY] };
-      if (path.startsWith("/api/companies/company/skills/creator/files?")) return { content: await readFile(new URL(`../../skills/paperclip-create-agent/${new URL(path, "http://fixture").searchParams.get("path")}`, import.meta.url), "utf8") };
+      if (path === "/api/skills") return [{ id: "creator", key: HIRING_TEMPLATE_SKILL_KEY }];
+      if (path === "/api/agents/lead/skills") return { desiredSkills: [HIRING_TEMPLATE_SKILL_KEY] };
+      if (path.startsWith("/api/skills/creator/files?")) return { content: await readFile(new URL(`../../skills/paperclip-create-agent/${new URL(path, "http://fixture").searchParams.get("path")}`, import.meta.url), "utf8") };
       throw new Error(`Unexpected public read ${path}`);
     };
     const api = { get } as Pick<RunnerApi, "get">;
-    const source = await readHiringTemplateSources(api, "company", "lead");
+    const source = await readHiringTemplateSources(api, "lead");
     expect(source.leadInstructions.files).toEqual(files);
     expect(source.expectedCeoFiles).toEqual(files);
     expect(source.servedSourceHashes).toEqual(source.expectedSourceHashes);
@@ -269,7 +269,7 @@ describe("production hiring fixture wiring and source observations", () => {
     expect(source.loaderHash).toMatch(/^[a-f0-9]{64}$/);
     expect(renderHiringCoderExample(source.coderReference, "Casey", "Company", "CEO", "FIX")).not.toContain("{{");
     const wrongApi = { get: async (path: string) => path.includes("/files?") ? { content: "different revision" } : get(path) } as Pick<RunnerApi, "get">;
-    const wrongSource = await readHiringTemplateSources(wrongApi, "company", "lead");
+    const wrongSource = await readHiringTemplateSources(wrongApi, "lead");
     expect(wrongSource.servedSourceHashes).not.toEqual(wrongSource.expectedSourceHashes);
   });
 

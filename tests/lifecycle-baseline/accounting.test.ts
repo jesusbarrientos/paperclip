@@ -4,9 +4,9 @@ import { legacyDispositionEpisode, decideLegacyContinuation, type LegacyContinua
 import { observe } from "./observe.js";
 
 const base: LegacyContinuationInput = {
-  run: { id: "source", companyId: "company", agentId: "agent", status: "succeeded", runtimeMode: "legacy" },
-  issue: { id: "issue", companyId: "company", status: "in_progress", assigneeAgentId: "agent" },
-  agent: { id: "agent", companyId: "company", status: "idle" },
+  run: { id: "source", agentId: "agent", status: "succeeded", runtimeMode: "legacy" },
+  issue: { id: "issue", status: "in_progress", assigneeAgentId: "agent" },
+  agent: { id: "agent", status: "idle" },
   episode: { id: "source", attempt: 2, maxAttempts: 2 },
   gates: { stopped: false, paused: false, budgetBlocked: false, pendingWait: false, activeExecution: false, ownedLifecycle: false, conversation: false, agentInvokable: true },
 };

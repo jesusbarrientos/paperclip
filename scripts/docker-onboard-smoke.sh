@@ -291,11 +291,19 @@ auto_bootstrap_authenticated_smoke() {
     return 1
   fi
 
-  local companies_json
-  companies_json="$(get_with_cookies "$PAPERCLIP_PUBLIC_URL/api/companies")"
-  if [[ "${companies_json:0:1}" != "[" ]]; then
-    echo "Smoke bootstrap failed: board companies endpoint did not return JSON array" >&2
-    echo "$companies_json" >&2
+  local organization_response="$TMP_DIR/organization.json"
+  local organization_status
+  organization_status="$(curl -sS \
+    -o "$organization_response" \
+    -w "%{http_code}" \
+    -c "$COOKIE_JAR" \
+    -b "$COOKIE_JAR" \
+    -H "Accept: application/json" \
+    "$PAPERCLIP_PUBLIC_URL/api/organization")"
+  if [[ "$organization_status" != "200" ]] && ! grep -q '"organization_missing"' "$organization_response"; then
+    echo "Smoke bootstrap failed: board organization endpoint returned HTTP $organization_status" >&2
+    cat "$organization_response" >&2 || true
+    echo >&2
     return 1
   fi
 

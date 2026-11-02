@@ -295,8 +295,8 @@ describe("runner E2E sensitive API boundary", () => {
     vi.stubGlobal("fetch", fetchMock);
     const api = new RunnerApi({} as never);
     api.setBrowserSession("fixture.session=opaque");
-    await api.postSensitive("/api/companies/company/secrets", { value: "fixture-value" });
-    expect(fetchMock).toHaveBeenCalledWith(new URL("http://127.0.0.1:43123/api/companies/company/secrets"), expect.objectContaining({ headers: { "content-type": "application/json", Cookie: "fixture.session=opaque", Origin: "http://127.0.0.1:43123" } }));
+    await api.postSensitive("/api/secrets", { value: "fixture-value" });
+    expect(fetchMock).toHaveBeenCalledWith(new URL("http://127.0.0.1:43123/api/secrets"), expect.objectContaining({ headers: { "content-type": "application/json", Cookie: "fixture.session=opaque", Origin: "http://127.0.0.1:43123" } }));
   });
   it("keeps secret request bodies out of Playwright API tracing", async () => {
     vi.stubEnv("PAPERCLIP_RUNNER_E2E_PORT", "43123");
@@ -311,13 +311,13 @@ describe("runner E2E sensitive API boundary", () => {
     const api = new RunnerApi({ post: playwrightPost } as never);
 
     await expect(
-      api.postSensitive("/api/companies/company-id/secrets", {
+      api.postSensitive("/api/secrets", {
         value: "fixture-secret-value",
       }),
     ).resolves.toEqual({ id: "secret-id" });
     expect(playwrightPost).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      new URL("http://127.0.0.1:43123/api/companies/company-id/secrets"),
+      new URL("http://127.0.0.1:43123/api/secrets"),
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -368,18 +368,18 @@ describe("runner E2E fixture registry", () => {
     const events: string[] = [];
     const registry = new FixtureRegistry()
       .register({
-        id: "company",
+        id: "organization",
         setup: async () => {
-          events.push("setup-company");
+          events.push("setup-organization");
           return "c";
         },
         teardown: async () => {
-          events.push("teardown-company");
+          events.push("teardown-organization");
         },
       })
       .register({
         id: "agent",
-        dependencies: ["company"],
+        dependencies: ["organization"],
         setup: async () => {
           events.push("setup-agent");
           return "a";
@@ -391,20 +391,20 @@ describe("runner E2E fixture registry", () => {
     const active = await registry.setupAll();
     await active.teardown();
     expect(events).toEqual([
-      "setup-company",
+      "setup-organization",
       "setup-agent",
       "teardown-agent",
-      "teardown-company",
+      "teardown-organization",
     ]);
   });
 
   it("tears down partial setup after a failure", async () => {
     const cleanup = vi.fn();
     const registry = new FixtureRegistry()
-      .register({ id: "company", setup: async () => "c", teardown: cleanup })
+      .register({ id: "organization", setup: async () => "c", teardown: cleanup })
       .register({
         id: "agent",
-        dependencies: ["company"],
+        dependencies: ["organization"],
         setup: async () => {
           throw new Error("boom");
         },
@@ -416,7 +416,7 @@ describe("runner E2E fixture registry", () => {
   it("preserves setup and partial-cleanup failures", async () => {
     const registry = new FixtureRegistry()
       .register({
-        id: "company",
+        id: "organization",
         setup: async () => "c",
         teardown: async () => {
           throw new Error("cleanup transport returned 503");
@@ -424,7 +424,7 @@ describe("runner E2E fixture registry", () => {
       })
       .register({
         id: "agent",
-        dependencies: ["company"],
+        dependencies: ["organization"],
         setup: async () => {
           throw new Error("agent setup failed");
         },
@@ -1229,7 +1229,7 @@ describe("runner E2E evidence redaction", () => {
         root,
         path.join(
           root,
-          "instances/instance-1/companies/company-1/agents/agent-1/codex-home/auth.json",
+          "instances/instance-1/organization/agents/agent-1/codex-home/auth.json",
         ),
       ),
     ).toBe(true);

@@ -2,7 +2,7 @@ import { isAssignedSkillContext, PAPERCLIP_DOCUMENT_CASE, type ContextIntegrityC
 
 export interface ContextIntegrityCheckpoint {
   phase: "initial" | "comment-1" | "comment-2" | "comment-3" | "final";
-  issue: { id: string; status: string; identifier?: string; issuePrefix?: string; appOrigin?: string };
+  issue: { id: string; status: string; identifier?: string; appOrigin?: string };
   comments: Array<Record<string, unknown>>;
   queuedComments?: Record<string, unknown>;
   documents: Array<{ key: string; body?: string | null; latestRevisionId?: string | null; latestRevisionNumber?: number | null }>;
@@ -131,8 +131,8 @@ export function gradeContextIntegrity(input: {
   if (input.id === PAPERCLIP_DOCUMENT_CASE) {
     check("saved-document-revision", Boolean(output?.latestRevisionId) && Number.isInteger(output?.latestRevisionNumber) && Number(output?.latestRevisionNumber) > 0,
       "The public saved document must have a persisted revision and the requested content.");
-    const route = output && final?.issue.identifier && final.issue.issuePrefix
-      ? `/${final.issue.issuePrefix}/issues/${final.issue.identifier}#document-${output.key}` : undefined;
+    const route = output && final?.issue.identifier
+      ? `/issues/${final.issue.identifier}#document-${output.key}` : undefined;
     const agentComments = (final?.comments ?? []).filter(comment => comment.authorType === "agent" || Boolean(comment.authorAgentId));
     const origin = final?.issue.appOrigin;
     const usableLink = Boolean(route && origin && agentComments.some(comment => {

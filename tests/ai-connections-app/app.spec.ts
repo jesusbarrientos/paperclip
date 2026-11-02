@@ -1,25 +1,17 @@
 import { test, expect } from "@playwright/test";
 
 // Opt in against an isolated test drive; never seed or modify a production account.
-const companyId = process.env.AI_CONNECTIONS_TEST_COMPANY_ID;
-test.skip(!companyId, "Provide the isolated test-drive company ID");
-let prefix: string;
-
-test.beforeAll(async ({ request }) => {
-  const response = await request.get(`/api/companies/${companyId}`);
-  expect(response.ok()).toBe(true);
-  prefix = (await response.json()).issuePrefix;
-});
+test.skip(process.env.AI_CONNECTIONS_TEST_DRIVE !== "1", "Opt in with AI_CONNECTIONS_TEST_DRIVE=1 against an isolated test drive");
 
 test("existing Connections lists AI providers and keeps account management compact", async ({ page, request }, testInfo) => {
-  await page.goto(`/${prefix}/apps`);
+  await page.goto(`/apps`);
   for (const provider of ["Anthropic", "OpenAI", "OpenRouter", "Grok"]) {
     await expect(page.getByRole("button", { name: new RegExp(`^(Add account|Connect) ${provider}$`) })).toBeVisible();
   }
-  const { connections } = await (await request.get(`/api/companies/${companyId}/ai-connections`)).json();
+  const { connections } = await (await request.get("/api/ai-connections")).json();
   const account = connections.find((entry: { ownership: string }) => entry.ownership === "personal");
   expect(account, "The isolated drive should include an imported personal account").toBeTruthy();
-  await page.goto(`/${prefix}/apps/${account.id}/permissions`);
+  await page.goto(`/apps/${account.id}/permissions`);
   await expect(page.getByRole("heading", { name: account.name, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Personal default", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Agent usage", exact: true })).toHaveCount(0);
@@ -37,25 +29,25 @@ test("existing Connections lists AI providers and keeps account management compa
 });
 
 test("rejected API credentials do not create a connection, and cancellation returns to Connections", async ({ page, request }, testInfo) => {
-  const before = await (await request.get(`/api/companies/${companyId}/ai-connections`)).json();
-  await page.goto(`/${prefix}/apps/connect?source=openrouter&method=ai-api_key`);
+  const before = await (await request.get("/api/ai-connections")).json();
+  await page.goto(`/apps/connect?source=openrouter&method=ai-api_key`);
   await page.getByRole("button", { name: /^(Save and continue|Continue)$/ }).click();
   await page.getByLabel("Connection name").fill("Rejected browser test account");
   await page.getByRole("textbox", { name: "API key", exact: true }).fill("invalid-ai-connection-browser-test");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(/rejected|Could not verify|could not verify/);
   await expect(page.getByRole("textbox", { name: "API key", exact: true })).toHaveValue("");
-  const after = await (await request.get(`/api/companies/${companyId}/ai-connections`)).json();
+  const after = await (await request.get("/api/ai-connections")).json();
   expect(after.connections.map((entry: { id: string }) => entry.id).sort()).toEqual(before.connections.map((entry: { id: string }) => entry.id).sort());
   await page.getByRole("button", { name: "Cancel", exact: true }).last().click();
-  await expect(page).toHaveURL(new RegExp(`/${prefix}/apps$`));
+  await expect(page).toHaveURL(/\/apps$/);
 });
 
 test("legacy adoption and inline account cancellation preserve the agent configuration", async ({ page, request }, testInfo) => {
-  const agents = await (await request.get(`/api/companies/${companyId}/agents`)).json();
+  const agents = await (await request.get("/api/agents")).json();
   const agent = agents.find((entry: { adapterType: string; runtimeConfig: { aiConnection?: unknown } }) => ["claude_local", "codex_local", "grok_local"].includes(entry.adapterType) && !entry.runtimeConfig.aiConnection);
   expect(agent, "The drive should include a legacy agent for adoption review").toBeTruthy();
-  await page.goto(`/${prefix}/agents/${agent.urlKey ?? agent.id}/runtime`);
+  await page.goto(`/agents/${agent.urlKey ?? agent.id}/runtime`);
   await page.getByRole("button", { name: "Choose a managed connection", exact: true }).click();
   await expect(page.getByRole("region", { name: "AI connection", exact: true })).toBeVisible();
   await expect(page.getByText("Your personal accounts", { exact: true })).toHaveCount(0);
@@ -78,11 +70,11 @@ test("legacy adoption and inline account cancellation preserve the agent configu
 test("connection setup waits for provider details before enabling Continue", async ({ page }) => {
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
-  await page.route(`**/api/companies/${companyId}/tools/gallery`, async route => {
+  await page.route("**/api/tools/gallery", async route => {
     await held;
     await route.continue();
   });
-  await page.goto(`/${prefix}/apps/connect?source=openrouter&method=ai-api_key`);
+  await page.goto(`/apps/connect?source=openrouter&method=ai-api_key`);
   const next = page.getByRole("button", { name: /^(Save and continue|Continue)$/ });
   await expect(next).toBeDisabled();
   release();
@@ -93,15 +85,15 @@ test("connection setup waits for provider details before enabling Continue", asy
 
 test("new OpenRouter agents use the visible binding and provider model catalog", async ({ page }) => {
   let tested: { aiConnection?: unknown; adapterConfig?: { model?: string } } | undefined;
-  await page.route(`**/api/companies/${companyId}/adapters/opencode_local/models*`, async route => {
+  await page.route("**/api/adapters/opencode_local/models*", async route => {
     expect(new URL(route.request().url()).searchParams.get("provider")).toBe("openrouter");
     await route.fulfill({ json: [{ id: "openrouter/anthropic/claude-sonnet-4.5", label: "Claude Sonnet 4.5" }] });
   });
-  await page.route(`**/api/companies/${companyId}/adapters/opencode_local/test-environment`, async route => {
+  await page.route("**/api/adapters/opencode_local/test-environment", async route => {
     tested = route.request().postDataJSON();
     await route.fulfill({ json: { status: "pass", checks: [], testedAt: new Date().toISOString() } });
   });
-  await page.goto(`/${prefix}/agents/new?name=OpenRouter+binding+regression&adapterType=opencode_local`);
+  await page.goto(`/agents/new?name=OpenRouter+binding+regression&adapterType=opencode_local`);
   await expect(page.getByText("Existing authentication — not managed by Connections", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Responsible user’s connection/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Select model (required)", exact: true }).click();
@@ -113,18 +105,18 @@ test("new OpenRouter agents use the visible binding and provider model catalog",
 });
 
 test("ordinary Anthropic setup keeps the existing tool method available", async ({ page }) => {
-  await page.goto(`/${prefix}/apps/connect?source=anthropic`);
+  await page.goto(`/apps/connect?source=anthropic`);
   await page.getByRole("button", { name: /^(Save and continue|Continue)$/ }).click();
   await expect(page.getByText("How do you want to connect?", { exact: true })).toBeVisible();
   await page.getByRole("radio", { name: "Use an API key", exact: true }).click();
   await expect(page.getByLabel("Your Anthropic key", { exact: true })).toBeVisible();
   await expect(page.getByRole("radiogroup", { name: "Connect your model provider" })).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel", exact: true }).first().click();
-  await expect(page).toHaveURL(new RegExp(`/${prefix}/apps$`));
+  await expect(page).toHaveURL(/\/apps$/);
 });
 
 test("explicit OpenAI API method survives continuing and reloading", async ({ page }) => {
-  await page.goto(`/${prefix}/apps/connect?source=openai&method=ai-api_key`);
+  await page.goto(`/apps/connect?source=openai&method=ai-api_key`);
   await page.getByRole("button", { name: /^(Save and continue|Continue)$/ }).click();
   await expect(page).toHaveURL(/method=ai-api_key/);
   await page.reload();
@@ -136,7 +128,7 @@ test("explicit OpenAI API method survives continuing and reloading", async ({ pa
 
 for (const [provider, label] of [["anthropic", "Claude"], ["openai", "OpenAI"]]) {
   test(`Connections reuses the agent provider step for ${label}`, async ({ page }, testInfo) => {
-    await page.goto(`/${prefix}/apps/connect?source=${provider}&method=ai-subscription`);
+    await page.goto(`/apps/connect?source=${provider}&method=ai-subscription`);
     await page.getByRole("button", { name: /^(Save and continue|Continue)$/ }).click();
     await expect(page.getByRole("radiogroup", { name: "Connect your model provider" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Connect for tool access instead" })).toHaveCount(0);
@@ -163,7 +155,7 @@ for (const [provider, label] of [["anthropic", "Claude"], ["openai", "OpenAI"]])
     await expect(page.getByLabel("API key", { exact: true })).toBeVisible();
     await expect(page.getByText(/Provide your .* API key to connect/)).toBeVisible();
     await page.getByRole("button", { name: "Cancel", exact: true }).first().click();
-    await expect(page).toHaveURL(new RegExp(`/${prefix}/apps$`));
+    await expect(page).toHaveURL(/\/apps$/);
   });
 }
 
@@ -173,7 +165,7 @@ for (const [provider, label, adapter] of [["anthropic", "Claude", "claude_local"
   test(`Connections uses onboarding browser sign-in for ${label}`, async ({ page }, testInfo) => {
     const environmentId = "11111111-1111-4111-8111-111111111111";
     const sessionId = "22222222-2222-4222-8222-222222222222";
-    const base = `/api/companies/${companyId}`;
+    const base = "/api";
     const sessions = provider === "anthropic" ? `${base}/setup-token-login-sessions` : `${base}/adapters/${adapter}/login-sessions`;
     let starts = 0;
     let cancels = 0;
@@ -196,7 +188,7 @@ for (const [provider, label, adapter] of [["anthropic", "Claude", "claude_local"
       return route.fulfill({ json: session() });
     });
     await page.addInitScript(() => { window.open = (url) => { (window as unknown as { loginDestination: string }).loginDestination = String(url); return null; }; });
-    await page.goto(`/${prefix}/apps/connect?source=${provider}&method=ai-subscription`);
+    await page.goto(`/apps/connect?source=${provider}&method=ai-subscription`);
     await page.getByRole("button", { name: /^(Save and continue|Continue)$/ }).click();
     await page.getByRole("radio", { name: new RegExp(label) }).click();
     const signIn = page.getByRole("button", { name: `Sign in to ${label}`, exact: true });

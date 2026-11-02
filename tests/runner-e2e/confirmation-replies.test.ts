@@ -116,9 +116,9 @@ describe("confirmation-reply independent oracle", () => {
     const postSensitive = vi.fn().mockResolvedValue({ id: "secret" });
     const credential = execution.profile.credential;
     const fixtures = await provisionFirstTaskFixtures({ api: { get, postSensitive }, execution, nonce: "fixture",
-      company: { id: "company", name: "Garden" }, credentials: { [credential]: "test-credential" } });
-    expect(get).toHaveBeenCalledExactlyOnceWith("/api/companies/company/environments?driver=local");
-    expect(postSensitive).toHaveBeenCalledExactlyOnceWith("/api/companies/company/secrets", expect.objectContaining({ key: credential }));
+      organization: { id: "organization", name: "Garden" }, credentials: { [credential]: "test-credential" } });
+    expect(get).toHaveBeenCalledExactlyOnceWith("/api/environments?driver=local");
+    expect(postSensitive).toHaveBeenCalledExactlyOnceWith("/api/secrets", expect.objectContaining({ key: credential }));
     expect(fixtures.agent.id).toBe(""); // The real wizard must still create the agent.
     expect(JSON.stringify(fixtures)).not.toContain("test-credential");
   });

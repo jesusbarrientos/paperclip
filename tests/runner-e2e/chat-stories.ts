@@ -19,7 +19,7 @@ export async function enableChatThroughSettings(input: ChatFlowInput) {
 }
 
 async function setChatEnabled(input: ChatFlowInput, enabled: boolean) {
-  await input.page.goto(`/${input.fixtures.company.issuePrefix}/company/settings/instance/experimental`, { waitUntil: "domcontentloaded" });
+  await input.page.goto("/organization/settings/instance/experimental", { waitUntil: "domcontentloaded" });
   const toggle = input.page.getByRole("switch", { name: "Toggle agent chat experimental setting" });
   await setSettingsToggle(toggle, enabled);
   await expect.poll(async () => (await input.api.get<{ enableAgentChat: boolean }>("/api/instance/settings/experimental")).enableAgentChat).toBe(enabled);
@@ -114,12 +114,12 @@ export async function runChatInterruption(context: Context & { refreshIssue(): P
       comments: await comments(), runs: await allRuns(), ...(plan ? { revisedPlan: plan.body } : {}) };
     await input.evidence("chat-interruption.json", evidence);
     assertInterruptedChat(evidence);
-    expect(await input.api.get(`/api/companies/${input.fixtures.company.id}/issues`)).toEqual([]);
-    expect(await input.api.get(`/api/companies/${input.fixtures.company.id}/projects`)).toEqual([]);
+    expect(await input.api.get("/api/issues")).toEqual([]);
+    expect(await input.api.get("/api/projects")).toEqual([]);
   } finally {
     // Always release a provider that is still waiting, including failed UI runs.
     await writeFile(gate, reference, "utf8");
-    const chatPath = `/api/companies/${input.fixtures.company.id}/chats/${input.fixtures.agent.id}`;
+    const chatPath = `/api/chats/${input.fixtures.agent.id}`;
     const current = await input.api.get<ChatIssue | null>(chatPath).catch(() => null);
     await input.evidence("chat-interruption-state.json", {
       issue: current,
@@ -133,7 +133,7 @@ export async function runChatInterruption(context: Context & { refreshIssue(): P
 export async function runChatSettingsLifecycle(context: Context) {
   const { input, idle, comments, allRuns, marker } = context;
   const remembered = `REMEMBER${marker}`;
-  const route = `/${input.fixtures.company.issuePrefix}/chats/${input.fixtures.agent.id}`;
+  const route = `/chats/${input.fixtures.agent.id}`;
   await sendChatMessage(input.page, `Remember ${remembered} in this conversation. Acknowledge only; no tasks or projects.`);
   await idle(1);
   const before = { issue: context.issue(), comments: await comments(), runs: await allRuns() };
@@ -156,6 +156,6 @@ export async function runChatSettingsLifecycle(context: Context) {
   const reply = (await comments()).filter(comment => comment.authorAgentId).at(-1)?.body ?? "";
   expect(reply).toContain(remembered);
   expect(reply).toContain(marker);
-  expect(await input.api.get(`/api/companies/${input.fixtures.company.id}/issues`)).toEqual([]);
+  expect(await input.api.get("/api/issues")).toEqual([]);
   await input.evidence("chat-settings-lifecycle.json", { before, after: { issue: context.issue(), comments: await comments(), runs: await allRuns() } });
 }

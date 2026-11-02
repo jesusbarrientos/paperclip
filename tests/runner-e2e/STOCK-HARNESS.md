@@ -43,8 +43,8 @@ needed by route tests on a cold install with lifecycle scripts disabled.
 
 The direct Playwright path also requires the retained prerequisite receipt. It
 verifies the exact checkout SHA, evaluated-source fingerprint, all requested
-Vitest reports and required assertions, and the Rust result before creating a
-company. Missing, stale, partial, or failed prerequisites cannot qualify a cell.
+Vitest reports and required assertions, and the Rust result before creating the
+organization. Missing, stale, partial, or failed prerequisites cannot qualify a cell.
 Oracle/admission calibration is itself included in the prerequisite gate.
 
 ## Live matrix
@@ -64,7 +64,7 @@ existing journeys with independently calibrated graders.
 
 A full matrix expects 48 provider turns. Models, credentials, effort,
 permissions, assigned skills, environment, and managed secret references are
-inherited from the existing profile; only its QA manual is omitted. Both company
+inherited from the existing profile; only its QA manual is omitted. Both organization
 and agent receive a 1,000-cent monthly hard stop before provider execution,
 verified through public records. These limits do not predict final spend:
 attempts, retries, partial runs, unknown billing, and cleanup remain in the

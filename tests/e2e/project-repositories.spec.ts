@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 test("project creation and repository configuration persist on a short mobile viewport", async ({ page }) => {
   test.setTimeout(120_000);
-  const createdCompany = await page.request.post("/api/companies", { data: { name: "Repository UX" } });
-  expect(createdCompany.ok()).toBe(true);
-  const company = await createdCompany.json();
-  await page.goto(`/${company.issuePrefix}/projects`);
+  await ensureOrganization(page.request);
+  await page.goto(`/projects`);
   await page.getByRole("button", { name: "Add Project", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("textbox", { name: "Project name" })).toBeFocused();
@@ -15,7 +14,7 @@ test("project creation and repository configuration persist on a short mobile vi
   await expect(dialog.getByPlaceholder("https://github.com/org/repo")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Create project", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  const projects = await (await page.request.get(`/api/companies/${company.id}/projects`)).json();
+  const projects = await (await page.request.get(`/api/projects`)).json();
   const project = projects.find((item: { name: string }) => item.name === "Repository acceptance");
   expect(project).toBeTruthy();
   // Seed existing selections through the real workspace API. Provider discovery
@@ -29,12 +28,12 @@ test("project creation and repository configuration persist on a short mobile vi
   const legacy = await page.request.post(`/api/projects/${project.id}/workspaces`, { data: { name: "Legacy", repoUrl: "https://git.example/org/legacy" } });
   expect(legacy.ok()).toBe(true);
   await page.setViewportSize({ width: 390, height: 420 });
-  await page.goto(`/${company.issuePrefix}/projects/${project.id}/overview`);
+  await page.goto(`/projects/${project.id}/overview`);
   // The legacy overview route redirects first to configuration and then to
   // the canonical project key. Editing between those redirects loses the
   // draft when the project query switches keys and remounts the form.
   expect(project.urlKey).toBeTruthy();
-  await expect(page).toHaveURL((url) => url.pathname === `/${company.issuePrefix}/projects/${project.urlKey}/configuration`);
+  await expect(page).toHaveURL((url) => url.pathname === `/projects/${project.urlKey}/configuration`);
   await expect(page.getByRole("tab", { name: "Overview", exact: true })).toHaveCount(0);
   const section = page.getByRole("region", { name: "Repositories", exact: true });
   await expect(section.getByText("org/repo-40", { exact: true })).toBeVisible();
@@ -60,13 +59,13 @@ test("project creation and repository configuration persist on a short mobile vi
 });
 
 test("a short new-project dialog keeps actions visible and rejects unavailable selections without a partial project", async ({ page }) => {
-  const company = await (await page.request.post("/api/companies", { data: { name: "Repository picker" } })).json();
+  await ensureOrganization(page.request);
   const repos = Array.from({ length: 80 }, (_, index) => ({ id: String(index + 1), fullName: `org/repo-${index + 1}`, url: `https://github.com/org/repo-${index + 1}`, connections: ["Fixture account"], private: true }));
   // Only discovery is simulated. Submission reaches the real authorization
   // boundary and must reject these unavailable provider identities atomically.
-  await page.route(`**/api/companies/${company.id}/project-repositories`, (route) => route.fulfill({ json: { repositories: repos, connectionCount: 1, failedConnectionCount: 0 } }));
+  await page.route(`**/api/project-repositories`, (route) => route.fulfill({ json: { repositories: repos, connectionCount: 1, failedConnectionCount: 0 } }));
   await page.setViewportSize({ width: 390, height: 420 });
-  await page.goto(`/${company.issuePrefix}/projects`);
+  await page.goto(`/projects`);
   await page.getByRole("button", { name: "Add Project", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox", { name: "Project name" }).fill("Rejected draft");
@@ -83,6 +82,6 @@ test("a short new-project dialog keeps actions visible and rejects unavailable s
   await expect(dialog.getByRole("alert")).toContainText("no longer available");
   await expect(dialog.getByRole("textbox", { name: "Project name" })).toHaveValue("Rejected draft");
   await expect(dialog.getByText("org/repo-80", { exact: true })).toBeVisible();
-  const projects = await (await page.request.get(`/api/companies/${company.id}/projects`)).json();
-  expect(projects).toHaveLength(0);
+  const projects = await (await page.request.get(`/api/projects`)).json();
+  expect(projects.filter((item: { name: string }) => item.name === "Rejected draft")).toHaveLength(0);
 });

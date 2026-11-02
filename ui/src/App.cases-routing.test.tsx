@@ -128,4 +128,10 @@ describe("App Cases routing (PAP-13002)", () => {
     await waitForRoute(container, "CASE_DETAIL_PAGE");
     flushSync(() => root.unmount());
   });
+
+  it("strips the legacy issue-prefix segment from links written before it was removed", async () => {
+    const root = await renderAppAt(container, "/PAP/cases/PAP-C5");
+    await waitForRoute(container, "CASE_DETAIL_PAGE");
+    flushSync(() => root.unmount());
+  });
 });

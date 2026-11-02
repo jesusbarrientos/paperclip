@@ -7526,7 +7526,7 @@ export function issueService(db: Db) {
 
     const childIdentifier = child.identifier?.trim() || child.id;
     const childPrefix = childIdentifier.split("-")[0] || "PAP";
-    const body = `System relay: [${childIdentifier}](/${childPrefix}/issues/${childIdentifier}) transitioned to \`${child.status}\`.`;
+    const body = `System relay: [${childIdentifier}](/issues/${childIdentifier}) transitioned to \`${child.status}\`.`;
     const existingRelay = await dbOrTx
       .select({ id: issueComments.id })
       .from(issueComments)

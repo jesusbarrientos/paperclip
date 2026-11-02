@@ -54,7 +54,7 @@ export async function runInstructionPersistenceFlow(input: {
   const before = await api.get<Row>(filePath);
   if (typeof before.content !== "string" || !before.contentHash) throw new Error("Managed instructions must expose a current file hash");
   const expectedContent = `${before.content}\n${instructionNonceLine(persistedNonce)}`;
-  const instructionsUrl = `/${fixtures.company.issuePrefix}/agents/${fixtures.agent.id}/instructions`;
+  const instructionsUrl = `/agents/${fixtures.agent.id}/instructions`;
   const editorText = `Editor nonce: ${randomBytes(16).toString("hex")}`;
   await page.goto(instructionsUrl);
   await page.getByRole("button", { name: "Add agent file", exact: true }).click();
@@ -68,19 +68,19 @@ export async function runInstructionPersistenceFlow(input: {
   let issue: Row = {};
   let runs: Row[] = [];
   async function create(title: string, prompt: string) {
-    await createTaskThroughUi({ page, issuePrefix: fixtures.company.issuePrefix!, agentName: fixtures.agent.name, title, prompt, workMode: "standard", projectName: fixtures.project?.name });
+    await createTaskThroughUi({ page, agentName: fixtures.agent.name, title, prompt, workMode: "standard", projectName: fixtures.project?.name });
     const found = await pollUntil({ label: `instruction task ${title}`, deadlineAt: input.deadlineAt,
-      load: async () => (await api.get<Row[]>(`/api/companies/${fixtures.company.id}/issues?limit=100`)).find(row => row.title === title), accept: row => Boolean(row) });
+      load: async () => (await api.get<Row[]>("/api/issues?limit=100")).find(row => row.title === title), accept: row => Boolean(row) });
     if (!found) throw new Error("Browser-created instruction task missing");
     issue = found;
     input.observe(issue, runs);
-    await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+    await page.goto(`/issues/${issue.identifier ?? issue.id}`);
   }
   async function settle(count: number) {
     await pollUntil({ label: `instruction run ${count} completed`, deadlineAt: input.deadlineAt,
       load: async () => {
         issue = await api.get<Row>(`/api/issues/${issue.id}`);
-        const listed = await api.get<Row[]>(`/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`);
+        const listed = await api.get<Row[]>("/api/heartbeat-runs?limit=100");
         runs = await Promise.all(listed.map(row => api.get<Row>(`/api/heartbeat-runs/${row.id}`)));
         runs.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
         input.observe(issue, runs);
@@ -171,7 +171,7 @@ export async function runInstructionPersistenceFlow(input: {
     data: { path: "notes/concurrent-editor.txt", content: unrelatedContent, baseHash: null },
   });
   expect(unrelated.ok()).toBe(true);
-  await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+  await page.goto(`/issues/${issue.identifier ?? issue.id}`);
   await settle(3);
   const syncRunId = runs[2]!.id;
   const resolved = await pollUntil({ label: "last completed sync wins", deadlineAt: Math.min(input.deadlineAt, Date.now() + 30_000),
@@ -184,7 +184,7 @@ export async function runInstructionPersistenceFlow(input: {
   await page.goto(instructionsUrl);
   await expect(page.getByRole("button", { name: "Review preserved files", exact: true })).toHaveCount(0);
   checks.push({ id: "per-file-last-sync-wins", passed: true, detail: "The later agent sync replaced the concurrent browser edit to its changed entry, preserved an unrelated new file, and created no conflict candidate" });
-  await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+  await page.goto(`/issues/${issue.identifier ?? issue.id}`);
   await input.capture("last-sync-wins", "Concurrent changes synchronized per file without a conflict-review step", "last-sync-wins.png");
 
   const quotaTask = (action: string, receipt: string) => [
@@ -198,11 +198,11 @@ export async function runInstructionPersistenceFlow(input: {
   await settle(4);
   const fullRun = runs[3]!;
   expect(fullRun.resultJson?.instructionSave).toMatchObject({ state: "saved", storageWarning: expect.stringContaining("Agent storage is full") });
-  await page.goto(`/${fixtures.company.issuePrefix}/agents/${fixtures.agent.id}/runs/${fullRun.id}`);
+  await page.goto(`/agents/${fixtures.agent.id}/runs/${fullRun.id}`);
   await expect(page.getByRole("note").filter({ hasText: "Agent storage warning" })).toContainText("Runs can continue");
   // Public campaign screenshots are limited to sanitized task routes. Verify
   // the warning in the real run UI, then capture its completed task outcome.
-  await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+  await page.goto(`/issues/${issue.identifier ?? issue.id}`);
   await input.capture("storage-warning", "Task succeeded while agent storage reached its limit", "storage-warning.png");
 
   await create("Keep running while agent storage is full", quotaTask(
@@ -221,12 +221,12 @@ export async function runInstructionPersistenceFlow(input: {
   expect((await readPersonal("notes/after-quota.txt")).content).toBe("Runs still work after quota cleanup");
   const bundle = await api.get<Row>(`/api/agents/${fixtures.agent.id}/instructions-bundle`);
   expect(bundle.files.some((file: Row) => file.path === "quota-cache.bin")).toBe(false);
-  await page.goto(`/${fixtures.company.issuePrefix}/agents/${fixtures.agent.id}/runs/${cleanedRun.id}`);
+  await page.goto(`/agents/${fixtures.agent.id}/runs/${cleanedRun.id}`);
   await expect(page.getByRole("note").filter({ hasText: "Agent storage warning" })).toHaveCount(0);
   checks.push({ id: "storage-full-does-not-block-runs", passed: true, detail: "A run saved a file at quota, a subsequent run succeeded despite an oversized save rejection, and the next run removed the full file and cleared its warning; all three tasks completed" });
   await input.evidence("api-state.json", { issue, runs, checks, canonicalInstructions: resolved, attachments });
   await input.evidence("instruction-persistence.json", { checks, before, after, final, restored, board, candidates, resolved, syncEvents, runs, attachments, fullEvents });
-  await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`);
+  await page.goto(`/issues/${issue.identifier ?? issue.id}`);
   await input.capture("storage-recovered", "Agent completed a normal task and cleared storage warning after cleanup", "storage-recovered.png");
   return { issue, runs, checks };
 }

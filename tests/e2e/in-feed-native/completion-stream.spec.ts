@@ -39,7 +39,7 @@ test('a completion tool does not cut off a delayed final answer', async ({ page 
     delete env.DATABASE_URL;
     delete env.DATABASE_MIGRATION_URL;
     child = spawn(process.execPath, ['cli/node_modules/tsx/dist/cli.mjs', 'cli/src/index.ts', 'test-drive',
-      '--harness', 'codex', '--api-key-env', 'STREAM_FIXTURE_KEY', '--company-name', 'Stream completion', '--no-browser'],
+      '--harness', 'codex', '--api-key-env', 'STREAM_FIXTURE_KEY', '--no-browser'],
     { cwd: root, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout!.on('data', (chunk) => { logs += chunk.toString(); });
     child.stderr!.on('data', (chunk) => { logs += chunk.toString(); });
@@ -53,18 +53,16 @@ test('a completion tool does not cut off a delayed final answer', async ({ page 
     const health = await api('/health');
     expect(health).toMatchObject({ status: 'ok', deploymentMode: 'local_trusted', bootstrapStatus: 'ready',
       serverInfo: { git: { branchName: execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' }).trim() } } });
-    const [company] = await api('/companies');
-    const [agent] = await api(`/companies/${company.id}/agents`);
-    expect(await api(`/companies/${company.id}/issues`)).toEqual([]);
-    expect(await api(`/companies/${company.id}/heartbeat-runs`)).toEqual([]);
-    const prefix = `/${company.issuePrefix}`;
-    await page.goto(base + prefix + '/dashboard');
-    await page.goto(base + prefix + '/company/settings/instance/experimental');
+    const [agent] = await api(`/agents`);
+    expect(await api(`/issues`)).toEqual([]);
+    expect(await api(`/heartbeat-runs`)).toEqual([]);
+    await page.goto(base + '/dashboard');
+    await page.goto(base + '/organization/settings/instance/experimental');
     if (!(await api('/instance/settings/experimental')).enableNativeRunner) {
       await page.getByRole('switch', { name: 'Toggle Paperclip Runner experimental setting' }).click();
     }
     await expect.poll(async () => (await api('/instance/settings/experimental')).enableNativeRunner).toBe(true);
-    await page.goto(base + prefix + `/agents/${agent.id}/configuration`);
+    await page.goto(base + `/agents/${agent.id}/configuration`);
     await page.getByRole('button', { name: 'Codex', exact: true }).click();
     await page.getByRole('button', { name: /Paperclip Runner/ }).click();
     await page.getByRole('button', { name: 'Save changes', exact: true }).click();
@@ -75,16 +73,16 @@ test('a completion tool does not cut off a delayed final answer', async ({ page 
     await page.getByRole('button', { name: 'Assignee', exact: true }).click();
     await page.getByRole('button', { name: 'CEO', exact: true }).click();
     await page.getByRole('button', { name: 'Create Task', exact: true }).click();
-    await expect.poll(async () => (await api(`/companies/${company.id}/issues`)).length).toBe(1);
-    const [issue] = await api(`/companies/${company.id}/issues`);
-    await page.goto(`${base}${prefix}/issues/${issue.identifier}`);
-    await expect.poll(async () => (await api(`/companies/${company.id}/heartbeat-runs`))[0]?.status, { timeout: 60_000 }).toBe('succeeded');
+    await expect.poll(async () => (await api(`/issues`)).length).toBe(1);
+    const [issue] = await api(`/issues`);
+    await page.goto(`${base}/issues/${issue.identifier}`);
+    await expect.poll(async () => (await api(`/heartbeat-runs`))[0]?.status, { timeout: 60_000 }).toBe('succeeded');
     await expect(page.getByText('STREAM-42: The launch has two stages.', { exact: false }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'https://example.invalid/launch/STREAM-42', exact: true }).first()).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'editable markdown', exact: true })).toBeEditable();
     await page.reload();
     await expect(page.getByText('STREAM-42: The launch has two stages.', { exact: false }).first()).toBeVisible();
-    const runs = await api(`/companies/${company.id}/heartbeat-runs`);
+    const runs = await api(`/heartbeat-runs`);
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ status: 'succeeded' });
     const run = await api(`/heartbeat-runs/${runs[0].id}`);
@@ -93,7 +91,7 @@ test('a completion tool does not cut off a delayed final answer', async ({ page 
     const comments = await api(`/issues/${issue.id}/comments`);
     expect(comments.filter((comment: { body: string }) => comment.body.includes('STREAM-42'))).toHaveLength(1);
     await page.screenshot({ path: info.outputPath('delayed-final-answer.png'), fullPage: true });
-    await writeFile(info.outputPath('evidence.json'), JSON.stringify({ base, health, companyId: company.id, issueId: issue.id,
+    await writeFile(info.outputPath('evidence.json'), JSON.stringify({ base, health, issueId: issue.id,
       runId: run.id, dependency: 'deterministic Codex app-server fixture', delayMs: 31000,
       dataDir: logs.match(/Data directory: ([^\n\r]+)/)?.[1], presentation: run.resultJson.presentationDecision }, null, 2));
   } finally {

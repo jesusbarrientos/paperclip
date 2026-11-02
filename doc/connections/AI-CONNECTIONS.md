@@ -424,7 +424,7 @@ credentials and a supported login/runtime environment; fixtures do not prove it.
 For an isolated running test drive, also run:
 
 ```sh
-AI_CONNECTIONS_TEST_COMPANY_ID=<company-id> pnpm exec playwright test --config tests/ai-connections-app/playwright.config.ts
+AI_CONNECTIONS_TEST_DRIVE=1 pnpm exec playwright test --config tests/ai-connections-app/playwright.config.ts
 ```
 
 Set `AI_CONNECTIONS_TEST_URL` when the test drive uses a port other than 3100.
@@ -455,10 +455,10 @@ cleaned up through the existing lifecycle.
 The normal app test configuration excludes `*.live.spec.ts`. To run the destructive
 inline-repair scenario, set `AI_REPAIR_TEST_ALLOW_DESTRUCTIVE=1` and use a separate
 loopback `local_trusted` instance. Set `AI_REPAIR_TEST_DISPOSABLE_MARKER` to a fresh
-32-character lowercase hexadecimal value. The company, single Codex agent, single
-personal OpenAI API connection, and issue must all be named `AI Repair QA <marker>`
-(the issue uses that title). Supply their IDs with `AI_CONNECTIONS_TEST_COMPANY_ID`,
-`AI_REPAIR_TEST_CONNECTION_ID`, and `AI_REPAIR_TEST_ISSUE_ID`, and the disposable
+32-character lowercase hexadecimal value. The single Codex agent, single personal
+OpenAI API connection, and issue must all be named `AI Repair QA <marker>` (the
+issue uses that title). Supply their IDs with `AI_REPAIR_TEST_CONNECTION_ID` and
+`AI_REPAIR_TEST_ISSUE_ID`, and the disposable
 provider key with `AI_REPAIR_TEST_KEY`. The test verifies these boundaries before
 revoking credentials or submitting work. Delete the disposable instance and revoke
 its provider key after the test; failed tests may leave a paused task for inspection.

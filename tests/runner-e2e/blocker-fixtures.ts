@@ -17,7 +17,7 @@ export async function setupBlockerFixtures(input: {
   registry.register<{ id: string }>({ id: "manager", async setup() {
     const payload = execution.profile.buildAgent({ environmentId: fixtures.environment.id, environmentFixtureId: "local",
       workspacePath: input.workspacePath, secretRefs: fixtures.secretRefs, executionId: input.nonce });
-    return api.post(`/api/companies/${fixtures.company.id}/agents`, { ...payload,
+    return api.post("/api/agents", { ...payload,
       name: "Morgan Manager", role: "general", title: "Operations Manager",
       capabilities: "Coordinates staffing and operational work. Has no external administrator access or hiring permission." });
   } });
@@ -25,13 +25,13 @@ export async function setupBlockerFixtures(input: {
     const manager = resolved.get("manager") as { id: string };
     for (const agentId of [manager.id, fixtures.agent.id]) {
       await api.patch(`/api/agents/${agentId}/permissions`, { canCreateAgents: false, canAssignTasks: true });
-      await prepareLegacyContinuationSkill(api, fixtures.company.id, agentId);
+      await prepareLegacyContinuationSkill(api, agentId);
     }
     await api.patch(`/api/agents/${fixtures.agent.id}`, { reportsTo: manager.id });
     return true;
   } });
-  // All agents/runs live in the parent registry's isolated company. The harness
-  // cancels every company run and removes the instance after evidence capture.
+  // All agents/runs live in the parent registry's isolated instance. The harness
+  // cancels every run and removes the instance after evidence capture.
   const setup = await registry.setupAll();
   return { manager: setup.values.get("manager") as { id: string } };
 }

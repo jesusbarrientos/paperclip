@@ -798,11 +798,11 @@ function issueUiLink(
   prefix: string,
 ) {
   const label = issue.identifier ?? issue.id;
-  return `[${label}](/${prefix}/issues/${label})`;
+  return `[${label}](/issues/${label})`;
 }
 
 function runUiLink(run: { id: string; agentId: string }, prefix: string) {
-  return `[${run.id}](/${prefix}/agents/${run.agentId}/runs/${run.id})`;
+  return `[${run.id}](/agents/${run.agentId}/runs/${run.id})`;
 }
 
 function agentUiLink(
@@ -810,7 +810,7 @@ function agentUiLink(
   prefix: string,
 ) {
   if (!agent) return "unknown";
-  return `[${agent.name ?? agent.id}](/${prefix}/agents/${agent.id})`;
+  return `[${agent.name ?? agent.id}](/agents/${agent.id})`;
 }
 
 function formatIssueLinksForComment(
@@ -828,7 +828,7 @@ function formatIssueLinksForComment(
     .slice(0, 5)
     .map((identifier) => {
       const prefix = identifier.split("-")[0] || "PAP";
-      return `[${identifier}](/${prefix}/issues/${identifier})`;
+      return `[${identifier}](/issues/${identifier})`;
     })
     .join(", ");
 }

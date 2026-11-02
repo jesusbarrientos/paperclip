@@ -19,9 +19,10 @@ for (const direct of [false, true])
     const f = await setup(request);
     try {
       await page.goto(f.route);
+      const projectName = `Browser repositories ${f.tag}`;
       await send(page, {
         action: "project",
-        name: "Browser repositories",
+        name: projectName,
         direct,
         urls: [
           "https://github.com/octocat/Hello-World.git",
@@ -31,7 +32,7 @@ for (const direct of [false, true])
       });
       await idle(request, f.chatPath);
       const card = page.getByRole("article", {
-        name: "Project created: Browser repositories",
+        name: `Project created: ${projectName}`,
       });
       await expect(card).toHaveCount(1);
       await expect(
@@ -40,9 +41,7 @@ for (const direct of [false, true])
       await expect(
         card.getByRole("link", { name: "octocat/Spoon-Knife" }),
       ).toBeVisible();
-      const projects = await json(
-        await request.get(`/api/companies/${f.company.id}/projects`),
-      );
+      const projects = await f.projects();
       expect(projects).toHaveLength(1);
       expect(projects[0].workspaces).toHaveLength(2);
       if (direct) {
@@ -65,7 +64,7 @@ for (const direct of [false, true])
       await expect(card).toHaveCount(1);
       if (direct) await expect(card.getByRole("link", { name: "Additional repository" })).toBeVisible();
       await card
-        .getByRole("link", { name: "Browser repositories", exact: true })
+        .getByRole("link", { name: projectName, exact: true })
         .click();
       await expect(page).toHaveURL(/\/projects\/.*\/issues/);
       await page
@@ -96,9 +95,7 @@ test("split handoff commits relevant plans before execution and never creates ch
     await expect
       .poll(
         async () => {
-          const tasks = await json(
-            await request.get(`/api/companies/${f.company.id}/issues`),
-          );
+          const tasks = await f.tasks();
           return (
             tasks.length === 2 &&
             tasks.every((task: any) => task.status === "done")
@@ -107,9 +104,7 @@ test("split handoff commits relevant plans before execution and never creates ch
         { timeout: 60_000 },
       )
       .toBe(true);
-    const tasks = await json(
-      await request.get(`/api/companies/${f.company.id}/issues`),
-    );
+    const tasks = await f.tasks();
     for (const task of tasks) {
       expect(task.parentId).toBeNull();
       expect(task.projectId).toBeTruthy();
@@ -121,9 +116,7 @@ test("split handoff commits relevant plans before execution and never creates ch
         await request.get(`/api/issues/${task.id}/documents/output`),
       );
       expect(output.body).toContain(plan.body);
-      const runs = await json(
-        await request.get(`/api/companies/${f.company.id}/heartbeat-runs`),
-      );
+      const runs = await f.runs();
       const run = runs.find(
         (run: any) => run.contextSnapshot?.issueId === task.id,
       );
@@ -138,7 +131,7 @@ test("split handoff commits relevant plans before execution and never creates ch
     ).toContain("Welcome plan");
     expect(
       (
-        await request.post(`/api/companies/${f.company.id}/issues`, {
+        await request.post("/api/issues", {
           data: { title: "Invalid child", parentId: chat.id },
         })
       ).status(),
@@ -177,12 +170,10 @@ for (const bad of [
         page.getByRole("article", { name: /Project created:/ }),
       ).toHaveCount(0);
       expect(
-        await json(
-          await request.get(`/api/companies/${f.company.id}/projects`),
-        ),
+        await f.projects(),
       ).toHaveLength(0);
       expect(
-        await json(await request.get(`/api/companies/${f.company.id}/issues`)),
+        await f.tasks(),
       ).toHaveLength(0);
     } finally {
       await f.restore();
@@ -213,9 +204,7 @@ test("first upload creates the chat without invoking its agent; shared attachmen
     const chat = await json(await request.get(f.chatPath));
     expect(chat.id).toBeTruthy();
     expect(
-      await json(
-        await request.get(`/api/companies/${f.company.id}/heartbeat-runs`),
-      ),
+      await f.runs(),
     ).toHaveLength(0);
     await expect
       .poll(
@@ -251,9 +240,7 @@ for (const mode of ["Ask", "Plan"])
       await send(page, { action: "project", name: "Forbidden mutation" });
       await idle(request, f.chatPath);
       expect(
-        await json(
-          await request.get(`/api/companies/${f.company.id}/projects`),
-        ),
+        await f.projects(),
       ).toHaveLength(0);
       await expect(
         page.getByRole("article", { name: /Project created:/ }),
@@ -282,7 +269,7 @@ for (const mode of ["Ask", "Plan"])
         ).toBeVisible();
       }
       expect(
-        await json(await request.get(`/api/companies/${f.company.id}/issues`)),
+        await f.tasks(),
       ).toHaveLength(0);
     } finally {
       await f.restore();
@@ -305,20 +292,23 @@ for (const selection of [
     request,
   }) => {
     const f = await setup(request);
+    let connectionId: string | null = null;
+    let secretId: string | null = null;
     try {
       const secret = await json(
-        await request.post(`/api/companies/${f.company.id}/secrets`, {
+        await request.post("/api/secrets", {
           data: {
-            name: "Deterministic GitHub credential",
+            name: `Deterministic GitHub credential ${f.tag}`,
             value: "paperclip-e2e-repository-fixture",
           },
         }),
       );
-      await json(
-        await request.post(`/api/companies/${f.company.id}/tools/connections`, {
+      secretId = secret.id;
+      const connection = await json(
+        await request.post("/api/tools/connections", {
           data: {
-            name: "Fixture GitHub",
-            applicationName: "Fixture GitHub",
+            name: `Fixture GitHub ${f.tag}`,
+            applicationName: `Fixture GitHub ${f.tag}`,
             transport: "rest_api",
             authKind: "api_key",
             credentialPolicy: "shared",
@@ -338,9 +328,10 @@ for (const selection of [
           },
         }),
       );
+      connectionId = connection.id;
       const repos = await json(
         await request.get(
-          `/api/companies/${f.company.id}/project-repositories`,
+          "/api/project-repositories",
         ),
       );
       expect(repos.repositories.map((repo: any) => repo.id).sort()).toEqual([
@@ -355,7 +346,7 @@ for (const selection of [
       });
       await idle(request, f.chatPath);
       const project = (
-        await json(await request.get(`/api/companies/${f.company.id}/projects`))
+        await f.projects()
       )[0];
       expect(project).toBeTruthy();
       expect(
@@ -373,6 +364,10 @@ for (const selection of [
         }),
       ).toHaveCount(1);
     } finally {
+      // The GitHub connection is visible organization-wide and would change
+      // the GitHub catalog card other specs assert on.
+      if (connectionId) await request.delete(`/api/tool-connections/${connectionId}`);
+      if (secretId) await request.delete(`/api/secrets/${secretId}`);
       await f.restore();
     }
   });
@@ -396,7 +391,7 @@ test("plan approval hands the preserved revision to an assigned project task", a
       await request.get(`/api/issues/${chat.id}/documents/plan`),
     );
     expect(
-      await json(await request.get(`/api/companies/${f.company.id}/issues`)),
+      await f.tasks(),
     ).toHaveLength(0);
     await page
       .getByRole("button", { name: "Approve handoff", exact: true })
@@ -407,15 +402,13 @@ test("plan approval hands the preserved revision to an assigned project task", a
       .poll(
         async () =>
           (
-            await json(
-              await request.get(`/api/companies/${f.company.id}/issues`),
-            )
+            await f.tasks()
           ).filter((task: any) => task.status === "done").length,
         { timeout: 60_000 },
       )
       .toBe(1);
     const task = (
-      await json(await request.get(`/api/companies/${f.company.id}/issues`))
+      await f.tasks()
     )[0];
     expect(task.parentId).toBeNull();
     expect(task.projectId).toBeTruthy();
@@ -449,7 +442,7 @@ test("shared questions resume and existing project reuse creates no project card
   const f = await setup(request);
   try {
     const project = await json(
-      await request.post(`/api/companies/${f.company.id}/projects`, {
+      await request.post("/api/projects", {
         data: { name: "Garden club" },
       }),
     );
@@ -478,25 +471,23 @@ test("shared questions resume and existing project reuse creates no project card
       .poll(
         async () =>
           (
-            await json(
-              await request.get(`/api/companies/${f.company.id}/issues`),
-            )
+            await f.tasks()
           ).length,
       )
       .toBe(1);
     const task = (
-      await json(await request.get(`/api/companies/${f.company.id}/issues`))
+      await f.tasks()
     )[0];
     expect(task.projectId).toBe(project.id);
     expect(task.parentId).toBeNull();
     expect(
-      await json(await request.get(`/api/companies/${f.company.id}/projects`)),
+      await f.projects(),
     ).toHaveLength(1);
     await expect(
       page.getByRole("article", { name: /Project created:/ }),
     ).toHaveCount(0);
     const ordinaryChild = await json(
-      await request.post(`/api/companies/${f.company.id}/issues`, {
+      await request.post("/api/issues", {
         data: { title: "Ordinary delegation still works", parentId: task.id },
       }),
     );
@@ -594,17 +585,13 @@ test("disabling the experiment lets an active turn settle and keeps idle history
       ).status(),
     ).toBe(404);
     const before = (
-      await json(
-        await request.get(`/api/companies/${f.company.id}/heartbeat-runs`),
-      )
+      await f.runs()
     ).length;
     await page.reload();
     await expect(page.getByText(/Agent Chat is disabled/)).toBeVisible();
     expect(
       (
-        await json(
-          await request.get(`/api/companies/${f.company.id}/heartbeat-runs`),
-        )
+        await f.runs()
       ).length,
     ).toBe(before);
   } finally {

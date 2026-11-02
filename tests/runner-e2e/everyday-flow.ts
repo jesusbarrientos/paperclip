@@ -127,13 +127,12 @@ function runCommand(
 /** No DB writes, fabricated tool receipts, or corrective messages after a failed check. */
 export async function runEverydayFlow(input: Input) {
   const { page, api, fixtures, execution, nonce } = input;
-  const prefix = fixtures.company.issuePrefix!;
   const ev: EverydayEvidence = {
     schema: "paperclip.everyday-workflow.v1",
     caseId: execution.task.id,
     prompt: execution.task.buildPrompt(nonce),
     fixtureConfiguration: {
-      apiToolsEnabled: runnerApiToolsEnabled(fixtures.company.id),
+      apiToolsEnabled: runnerApiToolsEnabled(),
       aiConnection: fixtures.aiConnection,
     },
     checks: [],
@@ -205,13 +204,13 @@ export async function runEverydayFlow(input: Input) {
   }
   async function refresh() {
     const listed = await api.get<StoryRun[]>(
-      `/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`,
+      "/api/heartbeat-runs?limit=100",
     );
     ev.runs = await Promise.all(
       listed.map((r) => api.get<StoryRun>(`/api/heartbeat-runs/${r.id}`)),
     );
     const issues = await api.get<StoryIssue[]>(
-      `/api/companies/${fixtures.company.id}/issues`,
+      "/api/issues",
     );
     ev.issues = await Promise.all(
       issues.map(async (issue) => ({
@@ -238,7 +237,7 @@ export async function runEverydayFlow(input: Input) {
     return ev;
   }
   const taskUrl = (issue: StoryIssue) =>
-    `/${prefix}/issues/${issue.identifier ?? issue.id}`;
+    `/issues/${issue.identifier ?? issue.id}`;
   async function openTask(issue: StoryIssue) {
     await page.goto(taskUrl(issue), { waitUntil: "domcontentloaded" });
     if (providerChoice || nativeProviderCase) {
@@ -590,7 +589,7 @@ export async function runEverydayFlow(input: Input) {
     }
     if (!project && !caseId.startsWith("service-") && !decliningConnection && !providerChoice) {
       project = await api.post(
-        `/api/companies/${fixtures.company.id}/projects`,
+        "/api/projects",
         {
           name: `Studio project ${nonce}`,
           description: "Small software project",
@@ -623,7 +622,7 @@ export async function runEverydayFlow(input: Input) {
         secretRefs: fixtures.secretRefs,
         executionId: nonce,
       });
-      await api.post(`/api/companies/${fixtures.company.id}/agents`, {
+      await api.post("/api/agents", {
         ...config,
         name: "Riley Builder",
         role: "engineer",
@@ -642,34 +641,31 @@ export async function runEverydayFlow(input: Input) {
       review = await setupConnectionReview({
         page,
         api,
-        prefix,
-        companyId: fixtures.company.id,
         agentId: fixtures.agent.id,
         marker: `Pages: Roadmap, Meeting notes. Verification code: SERVICE_${nonce}`,
         authenticated: true,
       });
     if (providerChoice || nativeProviderCase) {
-      if (caseId === "provider-second") aggregatorFixture = await setupAggregatorFixture(api, fixtures.company.id, fixtures.agent.id, `CONTACTS_${nonce}`);
-      const state = await api.get<{connections:Row[]}>(`/api/companies/${fixtures.company.id}/tools/connections`);
+      if (caseId === "provider-second") aggregatorFixture = await setupAggregatorFixture(api, fixtures.agent.id, `CONTACTS_${nonce}`);
+      const state = await api.get<{connections:Row[]}>("/api/tools/connections");
       initialConnections = state.connections.map(c=>c.id);
     }
     if (agentmailSetup) await api.patch("/api/instance/settings/experimental", { enableChatConnectors: true });
     if (decliningConnection) {
       const state = await api.get<{ connections: Row[] }>(
-        `/api/companies/${fixtures.company.id}/tools/connections`,
+        "/api/tools/connections",
       );
       initialConnections = state.connections.map((c) => c.id);
       check(
         "connection-starts-unconfigured",
         state.connections.length === 0,
-        "This isolated company has no service connection before the request.",
+        "This isolated organization has no service connection before the request.",
       );
       if (state.connections.length)
-        throw new Error("New-connection story requires an unconnected company");
+        throw new Error("New-connection story requires an unconnected organization");
     }
     await createTaskThroughUi({
       page,
-      issuePrefix: prefix,
       agentName: fixtures.agent.name,
       title: execution.task.buildTitle(nonce),
       prompt: ev.prompt,
@@ -680,7 +676,7 @@ export async function runEverydayFlow(input: Input) {
       label: "browser-created story task",
       deadlineAt: Date.now() + 30_000,
       load: () =>
-        api.get<StoryIssue[]>(`/api/companies/${fixtures.company.id}/issues`),
+        api.get<StoryIssue[]>("/api/issues"),
       accept: (rows) =>
         rows.some((i) => i.title === execution.task.buildTitle(nonce)),
     }).then((rows) =>
@@ -1052,7 +1048,7 @@ export async function runEverydayFlow(input: Input) {
     );
     if (caseId === "create-skill-studio") {
       const createdSkills = await api.get<Row[]>(
-        `/api/companies/${fixtures.company.id}/skills`,
+        "/api/skills",
       );
       const created = createdSkills.find(
         (skill) => skill.slug === "release-readiness-checklist",
@@ -1060,7 +1056,7 @@ export async function runEverydayFlow(input: Input) {
       check(
         "skill-persisted",
         Boolean(created && String(created.name) === "release-readiness-checklist"),
-        "The runner-created skill is present in the company library after the run.",
+        "The runner-created skill is present in the organization library after the run.",
       );
       if (created) {
         await openParent();
@@ -1091,12 +1087,12 @@ export async function runEverydayFlow(input: Input) {
           label: "Skill Studio edit persisted",
           deadlineAt: Math.min(input.deadlineAt, Date.now() + 30_000),
           load: () => api.get<Row>(
-            `/api/companies/${fixtures.company.id}/skills/${encodeURIComponent(String(created.id))}`,
+            `/api/skills/${encodeURIComponent(String(created.id))}`,
           ),
           accept: (detail) => JSON.stringify(detail).includes("Studio edit marker: verified"),
         });
         const detail = await api.get<Row>(
-          `/api/companies/${fixtures.company.id}/skills/${encodeURIComponent(String(created.id))}`,
+          `/api/skills/${encodeURIComponent(String(created.id))}`,
         );
         check(
           "studio-edit-persisted",
@@ -1118,7 +1114,7 @@ export async function runEverydayFlow(input: Input) {
     }
     if (providerChoice) {
       const issue = ev.issues.find(i=>i.id===parent!.id)!;
-      const state = await api.get<{connections:Row[]}>(`/api/companies/${fixtures.company.id}/tools/connections`);
+      const state = await api.get<{connections:Row[]}>("/api/tools/connections");
       ev.checks.push(...gradeProviderOutcome({rows:issue.interactions as any, decisionId:decisionId!,
         selected:caseId === "provider-decline" ? "none" : "via:arcade:hubspot", calls:aggregatorFixture?.invocationCount() ?? 0,
         response: (issue.comments ?? []).filter((c:Row)=>c.authorAgentId).map((c:Row)=>c.body).join("\n"), marker:`CONTACTS_${nonce}`,
@@ -1156,7 +1152,7 @@ export async function runEverydayFlow(input: Input) {
       );
       if (decliningConnection) {
         const state = await api.get<{ connections: Row[] }>(
-          `/api/companies/${fixtures.company.id}/tools/connections`,
+          "/api/tools/connections",
         );
         check(
           "decline-no-connection-created",
@@ -1195,7 +1191,7 @@ export async function runEverydayFlow(input: Input) {
       }
     } else if (caseId === "hire-reuse") {
       let agents = await api.get<Row[]>(
-        `/api/companies/${fixtures.company.id}/agents`,
+        "/api/agents",
       );
       const hires = agents.filter((a) => a.name === "Morgan QA");
       check(
@@ -1241,7 +1237,7 @@ export async function runEverydayFlow(input: Input) {
       note("reuse-requested");
       await settled();
       agents = await api.get<Row[]>(
-        `/api/companies/${fixtures.company.id}/agents`,
+        "/api/agents",
       );
       check(
         "hire-reused",
@@ -1560,7 +1556,7 @@ export async function runEverydayFlow(input: Input) {
     try {
       await refresh();
       ev.agents = await api.get<Row[]>(
-        `/api/companies/${fixtures.company.id}/agents`,
+        "/api/agents",
       );
       if (ev.documents && parent)
         ev.issues.find((i) => i.id === parent!.id)!.documents = ev.documents;

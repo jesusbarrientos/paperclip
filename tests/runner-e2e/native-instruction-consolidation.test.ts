@@ -98,14 +98,14 @@ describe("native instruction comparison admission", () => {
   });
 
   it("uses the new common production default without qualifying old default evidence", () => {
-    const receipt = { schema: "paperclip.native-completion-default.v1" as const, companyId: "company", agentId: "agent", entryFile: "AGENTS.md",
-      files: [{ path: "AGENTS.md", sha256: NATIVE_INSTRUCTION_DEFAULT_SHA256, bytes: 40 }], budgets: { company: 1000, agent: 1000 } };
+    const receipt = { schema: "paperclip.native-completion-default.v1" as const, agentId: "agent", entryFile: "AGENTS.md",
+      files: [{ path: "AGENTS.md", sha256: NATIVE_INSTRUCTION_DEFAULT_SHA256, bytes: 40 }], budgets: { organization: 1000, agent: 1000 } };
     expect(gradeNativeDefault(receipt, NATIVE_INSTRUCTION_DEFAULT_SHA256).passed).toBe(true);
     expect(gradeNativeDefault(receipt).passed).toBe(false);
     receipt.files[0]!.sha256 = NATIVE_MASTER_DEFAULT_SHA256;
     expect(gradeNativeDefault(receipt, NATIVE_INSTRUCTION_DEFAULT_SHA256).passed).toBe(false);
     receipt.files[0]!.sha256 = NATIVE_INSTRUCTION_DEFAULT_SHA256;
-    receipt.budgets.company = 0;
+    receipt.budgets.organization = 0;
     expect(gradeNativeDefault(receipt, NATIVE_INSTRUCTION_DEFAULT_SHA256).passed).toBe(false);
   });
 

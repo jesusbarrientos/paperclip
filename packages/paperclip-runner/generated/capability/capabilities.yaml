@@ -1190,9 +1190,9 @@
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/issue-documents.md:49",
+      "id": "skill:skills/paperclip/references/issue-documents.md:47",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/issue-documents.md#L49:update-or-resolve-an-unclear-write",
+      "sourceAnchor": "skills/paperclip/references/issue-documents.md#L47:update-or-resolve-an-unclear-write",
       "heading": "Update or resolve an unclear write",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",

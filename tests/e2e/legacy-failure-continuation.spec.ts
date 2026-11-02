@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test, expect, type APIResponse } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 import { and, eq } from "../../server/node_modules/drizzle-orm/index.js";
 import { createDb, closeRegisteredClients, heartbeatRuns, issueRecoveryActions, issues, issueComments, agentWakeupRequests, authUsers, companyMemberships } from "../../packages/db/src/index.ts";
 
@@ -20,19 +21,21 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
     const pid = await readFile(path.join(config.database.embeddedPostgresDataDir, "postmaster.pid"), "utf8");
     const url = `postgres://paperclip:paperclip@127.0.0.1:${pid.split("\n")[3]}/paperclip`;
     const db = createDb(url);
-    const company = await json(await request.post("/api/companies", { data: { name: `Legacy recovery ${action} ${Date.now()}` } }));
+    await ensureOrganization(request);
+    let agentId: string | undefined;
     try {
       await writeFile(path.join(root, "continued"), "ready");
-      const agent = await json(await request.post(`/api/companies/${company.id}/agents`, { data: {
+      const agent = await json(await request.post(`/api/agents`, { data: {
         name: "Recovery fixture", role: "engineer", adapterType: "claude_local",
         adapterConfig: { engine: "acp", cwd: root, stateDir: path.join(root, "state"),
           agentCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.resolve("scripts/mcp-fixtures/servers/acp-stop-agent.mjs"))}`,
           env: { PAPERCLIP_STOP_FIXTURE_ROOT: root, PAPERCLIP_STOP_FIXTURE_FINISH_TASK: "1" } },
         runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true } },
       } }));
-      const issue = await json(await request.post(`/api/companies/${company.id}/issues`, { data: {
+      agentId = agent.id;
+      const issue = await json(await request.post(`/api/issues`, { data: {
         title: "Continue after startup failure", description: "Answer the pending follow-up once.",
-        status: "backlog", assigneeAgentId: agent.id,
+        status: "backlog", assigneeAgentId: agent.id, allowDuplicate: true,
       } }));
       const sourceRunId = randomUUID();
       // Seed the historical incident, then exercise all recovery through the UI.
@@ -52,8 +55,8 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
       if (action === "queued_interrupt") {
         await db.insert(authUsers).values({ id: "original-board", name: "Original author", email: "original-author@example.test",
           createdAt: new Date(), updatedAt: new Date() }).onConflictDoNothing();
-        await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user",
-          principalId: "original-board", membershipRole: "operator", status: "active" });
+        await db.insert(companyMemberships).values({ principalType: "user",
+          principalId: "original-board", membershipRole: "operator", status: "active" }).onConflictDoNothing();
       }
       if (action === "queued_interrupt" || action === "automatic_message") {
         const commentId = randomUUID();
@@ -69,8 +72,8 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
             _paperclipWakeContext: { issueId: issue.id, wakeCommentIds: [commentId], wakeCommentId: commentId } },
         });
       }
-      const taskUrl = `/${company.issuePrefix}/issues/${issue.identifier}`;
-      await page.goto(action === "inbox_retry" ? `/${company.issuePrefix}/inbox/all` : taskUrl);
+      const taskUrl = `/issues/${issue.identifier}`;
+      await page.goto(action === "inbox_retry" ? `/inbox/all` : taskUrl);
       if (action === "task_retry") {
         const notice = page.getByRole("status", { name: "Task recovery" });
         await expect(notice).toContainText("Server restarted during startup");
@@ -116,7 +119,7 @@ for (const action of ["task_retry", "thread_retry", "inbox_retry", "message", "q
       await page.reload();
       await expect(page.getByText("Answered the pending follow-up once.", { exact: false })).toBeVisible();
     } finally {
-      await request.patch(`/api/companies/${company.id}`, { data: { status: "archived" } });
+      if (agentId) await request.post(`/api/agents/${agentId}/terminate`);
       await closeRegisteredClients(url);
       await rm(root, { recursive: true, force: true });
     }

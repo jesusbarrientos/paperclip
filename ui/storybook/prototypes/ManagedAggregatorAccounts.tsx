@@ -11,12 +11,11 @@ export function ManagedAggregatorAccounts() {
   useEffect(() => {
     const previous = window.fetch;
     let mounted = true;
-    void previous("http://localhost:4310/fixture").then(response => response.json()).then(({ companyId }) => {
+    void previous("http://localhost:4310/fixture").then(() => {
       if (!mounted) return;
       window.fetch = async (input, init) => {
         const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
-        if (/^\/api\/(companies\/[^/]+\/tools|tool-connections\/)/.test(url.pathname)) {
-          url.pathname = url.pathname.replace("company-storybook", companyId);
+        if (/^\/api\/(tools|tool-connections)\//.test(url.pathname)) {
           return previous(`http://localhost:4310${url.pathname}${url.search}`, { ...init, credentials: "omit", headers: { "Content-Type": "application/json" } });
         }
         return previous(input, init);

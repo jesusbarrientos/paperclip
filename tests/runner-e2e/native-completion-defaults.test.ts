@@ -9,8 +9,8 @@ import type { RunnerProfileFixture } from "./types.js";
 import { runnerSuites } from "./catalog.js";
 import { contextIntegrityTasks } from "./context-integrity-cases.js";
 
-const receipt = (): NativeDefaultReceipt => ({ schema: "paperclip.native-completion-default.v1", agentId: "agent", companyId: "company",
-  entryFile: "AGENTS.md", files: [{ path: "AGENTS.md", sha256: NATIVE_MASTER_DEFAULT_SHA256, bytes: 100 }], budgets: { company: 1000, agent: 1000 } });
+const receipt = (): NativeDefaultReceipt => ({ schema: "paperclip.native-completion-default.v1", agentId: "agent",
+  entryFile: "AGENTS.md", files: [{ path: "AGENTS.md", sha256: NATIVE_MASTER_DEFAULT_SHA256, bytes: 100 }], budgets: { organization: 1000, agent: 1000 } });
 describe("native production defaults", () => {
   it("hashes scoped file and symlink identity without reading an outside target", async () => {
     const temporary = await mkdtemp(path.join(tmpdir(), "native-workspace-calibration-"));
@@ -39,12 +39,12 @@ describe("native production defaults", () => {
     expect(suite.profiles.map(value => value.id).sort()).toEqual(["runner-acpx-claude", "runner-codex", "runner-opencode"]);
   });
   it("accepts only the unchanged master default and bounded budgets", () => expect(gradeNativeDefault(receipt()).passed).toBe(true));
-  it.each(["qa", "reduced", "extra-file", "wrong-entry", "company-unbounded", "agent-unbounded"])("rejects %s override", name => {
+  it.each(["qa", "reduced", "extra-file", "wrong-entry", "organization-unbounded", "agent-unbounded"])("rejects %s override", name => {
     const value = receipt();
     if (name === "qa" || name === "reduced") value.files[0]!.sha256 = name;
     if (name === "extra-file") value.files.push({ path: "HEARTBEAT.md", sha256: "x", bytes: 1 });
     if (name === "wrong-entry") value.entryFile = "OTHER.md";
-    if (name === "company-unbounded") value.budgets.company = 0;
+    if (name === "organization-unbounded") value.budgets.organization = 0;
     if (name === "agent-unbounded") value.budgets.agent = 0;
     expect(gradeNativeDefault(value).passed).toBe(false);
   });
@@ -67,7 +67,7 @@ describe("native production defaults", () => {
       return (path.endsWith("instructions-bundle") ? { entryFile: "AGENTS.md", files: [{ path: "AGENTS.md" }] }
         : path.includes("instructions-bundle/file") ? { content } : { budgetMonthlyCents: 1000 }) as T;
     } };
-    const actual = await captureNativeDefault({ api, agentId: "agent", companyId: "company" });
+    const actual = await captureNativeDefault({ api, agentId: "agent" });
     const currentSha256 = createHash("sha256").update(content).digest("hex");
     expect(actual.files).toEqual([{ path: "AGENTS.md", sha256: currentSha256, bytes: Buffer.byteLength(content) }]);
     // The archived native comparison intentionally pins its original master

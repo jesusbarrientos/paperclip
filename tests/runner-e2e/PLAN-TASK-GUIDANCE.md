@@ -39,7 +39,7 @@ completion handoffs. It reports parallel scheduling opportunity separately from
 correctness. No run can pass through an agent-authored self-assessment.
 
 Twelve local cells, one attempt each, 12-minute cell deadline, 360-second provider
-deadline, eight total run records, and 500-cent company/per-agent budget hard stops
+deadline, eight total run records, and 500-cent organization/per-agent budget hard stops
 bound the initial comparison. Coordination wakes count. Failed or missing evidence
 stays failed. No automatic retries. The initial paid selection is one exact pilot,
 then the eleven remaining cells only if fixture admission is sound. All cells use
@@ -73,7 +73,7 @@ revision `0e0b63e5a551388ac4601ed982b3e8f1c772f123` (workflow blob
 `0600886144d3e22ea2e4a38329a79177882f3948`). It remains an original FAIL,
 classified by the harness as `candidate_failure`. Inspection shows a browser
 fixture error before task creation: the shared helper waited for the old Task
-title field. `runIds`, the company run ledger, and planning observation are all
+title field. `runIds`, the instance run ledger, and planning observation are all
 empty; no model executed. Cleanup passed. The billing summary's runCount=1 is
 its minimum-one placeholder (`billing.ts`), not evidence of a provider run;
 runtime/actual charges remain unmetered. No original result is regraded.

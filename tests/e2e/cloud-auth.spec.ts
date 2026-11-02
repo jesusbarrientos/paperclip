@@ -1,20 +1,18 @@
-import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 // The tenant UI and task database are real. Cloud is an external dependency:
 // simulate its entry endpoint and independent session states at the HTTP edge.
 for (const cloudOrigin of ["https://my.paperclip.app", "https://my-staging.paperclip.app"]) {
   for (const entry of ["auth", "task"] as const) {
     test(`Cloud recovery preserves the task (${cloudOrigin}, ${entry})`, async ({ page, request, baseURL }, testInfo) => {
-      const companyResponse = await request.post("/api/companies", { data: { name: `Cloud auth ${randomUUID()}` } });
-      expect(companyResponse.ok()).toBe(true);
-      const company = await companyResponse.json();
-      const issueResponse = await request.post(`/api/companies/${company.id}/issues`, {
-        data: { title: "Return here after Cloud sign-in", status: "backlog" },
+      await ensureOrganization(request);
+      const issueResponse = await request.post(`/api/issues`, {
+        data: { title: "Return here after Cloud sign-in", status: "backlog", allowDuplicate: true },
       });
       expect(issueResponse.ok()).toBe(true);
       const issue = await issueResponse.json();
-      const target = `/${company.issuePrefix}/issues/${issue.identifier}?view=activity#recovered`;
+      const target = `/issues/${issue.identifier}?view=activity#recovered`;
       let authenticated = false;
       let handoffs = 0;
       let formWasRendered = false;

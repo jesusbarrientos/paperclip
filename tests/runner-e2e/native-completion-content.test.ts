@@ -24,23 +24,23 @@ describe("native final-answer content calibration", () => {
     "",
   ])("rejects a label/action or different cause: %s", text => expect(explainsMissingReleaseAccess(text)).toBe(false));
 
-  const context = (): NativeDocumentLinkContext => ({ appOrigin: "https://paperclip.example", issuePrefix: "RUN", issueIdentifier: "RUN-1",
+  const context = (): NativeDocumentLinkContext => ({ appOrigin: "https://paperclip.example", issueIdentifier: "RUN-1",
     documents: [{ key: "output", latestRevisionId: "revision", latestRevisionNumber: 1 }] });
   it.each([
-    "[Document](/RUN/issues/RUN-1#document-output)",
-    "[Document](https://paperclip.example/RUN/issues/RUN-1#document-output)",
-    '[Document](</RUN/issues/RUN-1#document-output> "Saved output")',
+    "[Document](/issues/RUN-1#document-output)",
+    "[Document](https://paperclip.example/issues/RUN-1#document-output)",
+    '[Document](</issues/RUN-1#document-output> "Saved output")',
   ])("accepts the canonical saved-document link: %s", text => expect(linksSavedNativeDocument(text, context())).toBe(true));
   it.each([
     "Saved output.",
-    "/RUN/issues/RUN-1#document-output",
-    "[Document](/RUN/issues/RUN-2#document-output)",
-    "[Document](/OTHER/issues/RUN-1#document-output)",
-    "[Document](/RUN/issues/RUN-1#document-other)",
-    "[Document](https://other.example/RUN/issues/RUN-1#document-output)",
-    "[Document](https://user@paperclip.example/RUN/issues/RUN-1#document-output)",
-    "[Document](/RUN/issues/RUN-1?redirect=other#document-output)",
-    "[Document](file:///RUN/issues/RUN-1#document-output)",
+    "/issues/RUN-1#document-output",
+    "[Document](/issues/RUN-2#document-output)",
+    "[Document](/RUN/issues/RUN-1#document-output)",
+    "[Document](/issues/RUN-1#document-other)",
+    "[Document](https://other.example/issues/RUN-1#document-output)",
+    "[Document](https://user@paperclip.example/issues/RUN-1#document-output)",
+    "[Document](/issues/RUN-1?redirect=other#document-output)",
+    "[Document](file:///issues/RUN-1#document-output)",
   ])("rejects absent or misdirected output citation: %s", text => expect(linksSavedNativeDocument(text, context())).toBe(false));
   it.each(["origin", "no-documents", "extra-document", "revision-id", "revision-number"])("fails closed for missing %s evidence", scenario => {
     const value = context();
@@ -49,7 +49,7 @@ describe("native final-answer content calibration", () => {
     if (scenario === "extra-document") value.documents = [...value.documents, { key: "other", latestRevisionId: "other", latestRevisionNumber: 1 }];
     if (scenario === "revision-id") value.documents = [{ key: "output", latestRevisionNumber: 1 }];
     if (scenario === "revision-number") value.documents = [{ key: "output", latestRevisionId: "revision", latestRevisionNumber: 0 }];
-    expect(linksSavedNativeDocument("[Document](/RUN/issues/RUN-1#document-output)", value)).toBe(false);
-    expect(linksSavedNativeDocument("[Document](/RUN/issues/RUN-1#document-output)", undefined)).toBe(false);
+    expect(linksSavedNativeDocument("[Document](/issues/RUN-1#document-output)", value)).toBe(false);
+    expect(linksSavedNativeDocument("[Document](/issues/RUN-1#document-output)", undefined)).toBe(false);
   });
 });

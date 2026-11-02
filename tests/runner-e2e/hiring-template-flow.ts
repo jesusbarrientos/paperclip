@@ -20,12 +20,12 @@ export async function readHiringInstructions(api: Pick<RunnerApi, "get">, agentI
   return { entryFile: bundle.entryFile, mode: bundle.mode, files };
 }
 
-async function readHiringSkillSelections(api: Pick<RunnerApi, "get">, companyId: string, agentId: string) {
-  const snapshot = await api.get<{ desiredSkills: string[]; desiredSkillEntries: unknown[] }>(`/api/agents/${agentId}/skills?companyId=${companyId}`);
+async function readHiringSkillSelections(api: Pick<RunnerApi, "get">, agentId: string) {
+  const snapshot = await api.get<{ desiredSkills: string[]; desiredSkillEntries: unknown[] }>(`/api/agents/${agentId}/skills`);
   return { desiredSkills: snapshot.desiredSkills, desiredSkillEntries: snapshot.desiredSkillEntries };
 }
 
-export async function readHiringTemplateSources(api: Pick<RunnerApi, "get">, companyId: string, leadId: string) {
+export async function readHiringTemplateSources(api: Pick<RunnerApi, "get">, leadId: string) {
   const expectedCeoFiles = await loadDefaultAgentInstructionsBundle("ceo");
   const expectedSourceHashes: Record<string, string> = {}, servedSourceHashes: Record<string, string> = {};
   const sourceSizes: Record<string, ReturnType<typeof hiringTemplateSize>> = {};
@@ -36,13 +36,13 @@ export async function readHiringTemplateSources(api: Pick<RunnerApi, "get">, com
   }
   const leadInstructions = await readHiringInstructions(api, leadId);
   for (const [file, content] of Object.entries(leadInstructions.files)) servedSourceHashes[`server/src/onboarding-assets/ceo/${file}`] = hiringTemplateHash(content);
-  const skills = await api.get<Array<{ id: string; key: string }>>(`/api/companies/${companyId}/skills`);
+  const skills = await api.get<Array<{ id: string; key: string }>>("/api/skills");
   const creator = skills.find(skill => skill.key === HIRING_TEMPLATE_SKILL_KEY);
-  if (!creator) throw new Error("Production hiring skill is absent from the company library");
-  const assigned = await api.get<{ desiredSkills: string[] }>(`/api/agents/${leadId}/skills?companyId=${companyId}`);
+  if (!creator) throw new Error("Production hiring skill is absent from the organization library");
+  const assigned = await api.get<{ desiredSkills: string[] }>(`/api/agents/${leadId}/skills`);
   let coderReference = "";
   for (const file of [...HIRING_TEMPLATE_READ_FILES, "references/baseline-role-guide.md"]) {
-    const detail = await api.get<{ content: string }>(`/api/companies/${companyId}/skills/${creator.id}/files?path=${encodeURIComponent(file)}`);
+    const detail = await api.get<{ content: string }>(`/api/skills/${creator.id}/files?path=${encodeURIComponent(file)}`);
     servedSourceHashes[`skills/paperclip-create-agent/${file}`] = hiringTemplateHash(detail.content);
     if (file === "references/agents/coder.md") coderReference = detail.content;
   }
@@ -123,11 +123,10 @@ export async function runHiringTemplateFlow(context: {
 }) {
   const { input, turn, tasks, allRuns } = context;
   const { api, fixtures: f } = input;
-  const company = `/api/companies/${f.company.id}`;
   const account = f.aiConnection;
   if (!account) throw new Error("Hiring-template fixture requires a managed execution account");
-  const issuePrefix = f.company.issuePrefix;
-  if (!issuePrefix) throw new Error("Hiring-template fixture requires the actual company issue prefix");
+  const issuePrefix = f.organization.issuePrefix;
+  if (!issuePrefix) throw new Error("Hiring-template fixture requires the actual organization issue prefix");
   const evidence: HiringTemplateEvidence = {
     leadId: f.agent.id, chatIssueId: "", hireName: "", marker: "", projectId: "", inputs: [], expectedCeoFiles: {},
     expectedSourceHashes: {}, servedSourceHashes: {}, assignedSkills: [], coderExample: "",
@@ -136,7 +135,7 @@ export async function runHiringTemplateFlow(context: {
   let source: Awaited<ReturnType<typeof readHiringTemplateSources>> | undefined;
   let scenario: ReturnType<typeof hiringTemplateScenario> | undefined;
   async function loadObservation() {
-    const observed = await Promise.all([api.get<HiringAgent[]>(`${company}/agents`), tasks(), allRuns()]);
+    const observed = await Promise.all([api.get<HiringAgent[]>("/api/agents"), tasks(), allRuns()]);
     const [agents, taskRows, runs] = observed;
     const apiState = evidence.chatIssueId ? await readHiringTurnApiState(api, evidence.chatIssueId, allRuns) : undefined;
     const readRuns = await Promise.all(runs.map(async run => {
@@ -157,20 +156,20 @@ export async function runHiringTemplateFlow(context: {
   }
 
   try {
-    await api.patch(`${company}/budgets`, { budgetMonthlyCents: 1_000 });
+    await api.patch("/api/budgets", { budgetMonthlyCents: 1_000 });
     await api.patch(`/api/agents/${f.agent.id}/budgets`, { budgetMonthlyCents: 1_000 });
-    source = await readHiringTemplateSources(api, f.company.id, f.agent.id);
+    source = await readHiringTemplateSources(api, f.agent.id);
     Object.assign(evidence, source);
     await input.evidence("hiring-template-source.json", { ...source, definitionDigest: hiringTemplateDefinitionDigest });
     if (Object.entries(source.expectedSourceHashes).some(([file, hash]) => source!.servedSourceHashes[file] !== hash)) {
       throw new Error("Hiring-template served source differs from the evaluated revision; comparison is uncomparable");
     }
-    const project = await api.post<{ id: string; name: string }>(`${company}/projects`, {
+    const project = await api.post<{ id: string; name: string }>("/api/projects", {
       name: `Label fixtures ${input.nonce}`, description: "Repository-free JSON normalization fixtures.",
     });
     scenario = hiringTemplateScenario(input.nonce, project.name);
     Object.assign(evidence, { hireName: scenario.hireName, marker: scenario.marker, inputs: scenario.inputs, projectId: project.id,
-      coderExample: renderHiringCoderExample(source.coderReference, scenario.hireName, f.company.name, String((await api.get<{ title: string }>(`/api/agents/${f.agent.id}`)).title), issuePrefix) });
+      coderExample: renderHiringCoderExample(source.coderReference, scenario.hireName, f.organization.name, String((await api.get<{ title: string }>(`/api/agents/${f.agent.id}`)).title), issuePrefix) });
     await turn(scenario.initialPrompt, 2);
     evidence.chatIssueId = context.issue().id;
     const initial = await tasks();
@@ -180,7 +179,7 @@ export async function runHiringTemplateFlow(context: {
     const hired = evidence.agents.find(agent => agent.name === scenario!.hireName);
     if (!hired) throw new Error("Hiring-template coder was not created");
     evidence.hiredInstructions = await readHiringInstructions(api, hired.id);
-    evidence.hiredSkills = await readHiringSkillSelections(api, f.company.id, hired.id);
+    evidence.hiredSkills = await readHiringSkillSelections(api, hired.id);
     await input.capture("hiring-template-created", "Production CEO hired a coder and delivered its first fixture", "hiring-template-created.png");
     await input.evidence("hiring-template-initial.json", evidence);
     await turn(scenario.reusePrompt(initial[0]!.identifier ?? initial[0]!.id), 4);
@@ -190,12 +189,12 @@ export async function runHiringTemplateFlow(context: {
     evidence.firstAfterReuse = await api.get<HiringDocument>(`/api/issues/${evidence.first.issueId}/documents/${encodeURIComponent(evidence.first.key)}`);
     await turn(scenario.statusPrompt(initial[0]!.identifier ?? initial[0]!.id, second.identifier ?? second.id), 5);
     evidence.hiredInstructionsAfterReuse = await readHiringInstructions(api, hired.id);
-    evidence.hiredSkillsAfterReuse = await readHiringSkillSelections(api, f.company.id, hired.id);
+    evidence.hiredSkillsAfterReuse = await readHiringSkillSelections(api, hired.id);
     await refresh(true);
     const result = gradeHiringTemplate(evidence);
     for (const check of result.checks) input.check?.(`hiringTemplates.${check.dimension}.${check.id}`, check.passed, check.detail);
     await input.evidence("hiring-template.json", { schema: HIRING_TEMPLATE_GRADER_VERSION, definitionDigest: hiringTemplateDefinitionDigest,
-      budgetGuard: { companyMonthlyCents: 1_000, leadMonthlyCents: 1_000 }, scenario, source, evidence, result });
+      budgetGuard: { organizationMonthlyCents: 1_000, leadMonthlyCents: 1_000 }, scenario, source, evidence, result });
     const failed = result.checks.filter(check => !check.passed);
     if (!result.outcomePassed) throw new Error(`Hiring-template workflow outcome failed: ${failed.filter(check => check.dimension === "outcome").map(check => check.id).join(", ")}`);
     if (result.comparisonStatus === "uncomparable") throw new Error(`Hiring-template source coverage is uncomparable: ${failed.filter(check => check.dimension === "coverage").map(check => check.id).join(", ")}`);
@@ -204,7 +203,7 @@ export async function runHiringTemplateFlow(context: {
     let observationError: string | undefined;
     try { await refresh(Boolean(scenario)); } catch (error) { observationError = String(error); }
     await input.evidence("hiring-template.json", { schema: HIRING_TEMPLATE_GRADER_VERSION, definitionDigest: hiringTemplateDefinitionDigest,
-      budgetGuard: { companyMonthlyCents: 1_000, leadMonthlyCents: 1_000 },
+      budgetGuard: { organizationMonthlyCents: 1_000, leadMonthlyCents: 1_000 },
       scenario, source, evidence, result: gradeHiringTemplate(evidence), observationError });
   }
 }

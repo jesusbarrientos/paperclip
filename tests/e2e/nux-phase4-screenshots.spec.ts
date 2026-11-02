@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureOrganization } from "./helpers/organization";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,7 +11,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  *
  * Boots a throwaway local_trusted instance (see playwright.config.ts webServer)
  * and captures screenshots of every surface integrated by NUX Phases 1–3:
- *   - "Build a new company" step 1 (company name)
  *   - Team-lead hire step (capsule wizard, PAP-125)
  *   - Conference Room (BoardChat) shell + composer + activity feed
  *   - Artifacts page
@@ -33,14 +33,6 @@ function shot(name: string) {
   return path.join(SHOT_DIR, name);
 }
 
-async function openWizard(page: import("@playwright/test").Page) {
-  await page.goto("/onboarding");
-  const startBtn = page.getByRole("button", { name: /Start Onboarding|New Organization|Add Agent/ });
-  if (await startBtn.count()) {
-    await startBtn.first().click();
-  }
-}
-
 test.describe("NUX Phase 4 visual QA", () => {
   test("captures every integrated surface", async ({ page }) => {
     // New-NUX surfaces are flag-gated default-OFF (PAP-136/137/138): turn the
@@ -56,45 +48,21 @@ test.describe("NUX Phase 4 visual QA", () => {
     });
     page.on("pageerror", (err) => consoleErrors.push("PAGEERROR: " + err.message));
 
-    const baseUrl =
-      "http://127.0.0.1:" + (process.env.PAPERCLIP_E2E_PORT ?? "3199");
-
-    // ── Section A: create-company path (name → hire) ──────────────────────
-    await openWizard(page);
-    await expect(
-      page.getByRole("heading", { name: "What is the name of your organization?" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await page.getByPlaceholder("e.g. Northwind Labs").fill("QA Robotics");
-    await page.screenshot({ path: shot("02-create-name.png") });
-
-    await page.getByRole("button", { name: /^Continue/ }).click();
-    // Step 1's "Next" creates the company and goes straight to the team lead.
-    // The mission screenshot that sat here is gone with the step it captured.
+    // ── Section A: team-lead hire ─────────────────────────────────────────
+    // The organization name step is captured by onboarding.spec.ts, which runs
+    // before any organization exists; here /onboarding opens on the hire step.
+    await ensureOrganization(page.request);
+    await page.goto("/onboarding");
     await page.waitForSelector("#onboarding-agent-name", {
       timeout: 30_000,
     });
     await page.screenshot({ path: shot("04-hire-team-lead.png") });
 
-    // The company just created anchors the route-scoped sections below.
-    const companiesRes = await page.request.get(`${baseUrl}/api/companies`);
-    expect(companiesRes.ok()).toBe(true);
-    const companies = await companiesRes.json();
-    const qaCompany = (Array.isArray(companies) ? companies : []).find(
-      (c: { name: string }) => c.name === "QA Robotics",
-    );
-    expect(qaCompany, "wizard should have created QA Robotics").toBeTruthy();
-    const prefix: string = qaCompany.issuePrefix;
-
     // ── Section B: Conference Room (BoardChat) ────────────────────────────
-    // Visit the company dashboard first so CompanyContext selects the company
-    // from the route before we land on the board-chat surface.
     await page.evaluate(() => window.localStorage.clear());
-    await page.goto(`/${prefix}/dashboard`);
-    await page.waitForLoadState("networkidle");
-    await page.goto(`/${prefix}/board-chat`);
-    await expect(page).toHaveURL(new RegExp(`/${prefix}/board-chat`));
-    // Composer renders once a company is selected. (Regression guard for the
-    // Rules-of-Hooks crash that previously blanked this page — see PAP-50.)
+    await page.goto(`/board-chat`);
+    await expect(page).toHaveURL(new RegExp(`/board-chat`));
+    // (Regression guard for the Rules-of-Hooks crash that previously blanked this page — see PAP-50.)
     await expect(
       page.getByPlaceholder("Ask anything about your organization..."),
     ).toBeVisible({ timeout: 20_000 });
@@ -102,14 +70,13 @@ test.describe("NUX Phase 4 visual QA", () => {
     await page.screenshot({ path: shot("06-board-chat.png") });
 
     // ── Section C: Artifacts ──────────────────────────────────────────────
-    await page.goto(`/${prefix}/artifacts`);
-    await expect(page).toHaveURL(new RegExp(`/${prefix}/artifacts`));
+    await page.goto(`/artifacts`);
+    await expect(page).toHaveURL(new RegExp(`/artifacts`));
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(1_000);
     await page.screenshot({ path: shot("07-artifacts.png") });
 
     for (const f of [
-      "02-create-name.png",
       "04-hire-team-lead.png",
       "06-board-chat.png",
       "07-artifacts.png",

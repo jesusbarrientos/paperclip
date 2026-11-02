@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { listenOnFetchAllowedPort } from "./fetch-allowed-port";
+import { ensureOrganization } from "./helpers/organization";
 
 // prosumer MCP flow — QA harness for the prosumer Connect-an-app flow on top of the
 // tool-access foundation. Covers the M-series happy path (gallery + key paste
@@ -14,18 +15,6 @@ import { listenOnFetchAllowedPort } from "./fetch-allowed-port";
 // drives the wizard via the Apps UI for evidence + screenshots.
 
 const SCREENSHOT_DIR = "test-results";
-
-type Seed = { companyId: string; prefix: string };
-
-async function newCompany(request: APIRequestContext, label: string): Promise<Seed> {
-  const res = await request.post("/api/companies", { data: { name: `prosumer MCP flow ${label} ${Date.now()}` } });
-  expect(res.ok(), `create company failed ${res.status()}: ${await res.text()}`).toBe(true);
-  const company = await res.json();
-  return {
-    companyId: company.id,
-    prefix: company.issuePrefix ?? company.prefix ?? company.urlKey ?? "E2E",
-  };
-}
 
 // ---- Mock MCP HTTP fixture --------------------------------------------------
 // Minimal MCP JSON-RPC server. /catalog refresh hits this with method
@@ -109,12 +98,12 @@ async function startMockMcp(options: { expectedHeader?: string } = {}): Promise<
 
 // ---- Helpers ----------------------------------------------------------------
 
-async function gotoApps(page: Page, prefix: string) {
-  await page.goto(`/${prefix}/apps/connections`);
+async function gotoApps(page: Page) {
+  await page.goto(`/apps/connections`);
 }
 
-async function gotoConnect(page: Page, prefix: string) {
-  await page.goto(`/${prefix}/apps`);
+async function gotoConnect(page: Page) {
+  await page.goto(`/apps`);
   await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible({ timeout: 30_000 });
   const customConnector = page
     .getByRole("list", { name: "Connector list" })
@@ -124,12 +113,12 @@ async function gotoConnect(page: Page, prefix: string) {
   await customConnector.getByRole("button", { name: "Connect your own MCP server" }).click();
 }
 
-async function gotoAdvanced(page: Page, prefix: string) {
-  await page.goto(`/${prefix}/apps/advanced`);
+async function gotoAdvanced(page: Page) {
+  await page.goto(`/apps/advanced`);
 }
 
-async function gotoNeedsAttention(page: Page, prefix: string) {
-  await page.goto(`/${prefix}/apps/connections`);
+async function gotoNeedsAttention(page: Page) {
+  await page.goto(`/apps/connections`);
 }
 
 // ---- Tests ------------------------------------------------------------------
@@ -148,9 +137,9 @@ test.describe.serial("prosumer MCP flow prosumer MCP flow", () => {
   });
 
   test("Connect wizard happy path: link mode → success", async ({ page, request }) => {
-    const seed = await newCompany(request, "connect");
+    await ensureOrganization(request);
 
-    await gotoConnect(page, seed.prefix);
+    await gotoConnect(page);
 
     // Browse launches the BYO link-mode connect wizard.
     await expect(page.getByText("Connect your own MCP server", { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -186,12 +175,12 @@ test.describe.serial("prosumer MCP flow prosumer MCP flow", () => {
   });
 
   test("Expired key → health sweep → Needs attention → reconnect → green", async ({ page, request }) => {
-    const seed = await newCompany(request, "attention");
+    await ensureOrganization(request);
 
     // Spawn a dedicated mock we can break partway through.
     const ephemeral = await startMockMcp();
     try {
-      const connect = await request.post(`/api/companies/${seed.companyId}/tools/apps/connect`, {
+      const connect = await request.post(`/api/tools/apps/connect`, {
         data: { link: ephemeral.url, credentialValues: { "credentials.authorization": "qa-token" } },
       });
       expect(connect.ok(), `connect failed ${connect.status()}: ${await connect.text()}`).toBe(true);
@@ -200,7 +189,7 @@ test.describe.serial("prosumer MCP flow prosumer MCP flow", () => {
       const enabledCatalogEntryIds = (connectResult.actions?.readOnly ?? []).map(
         (action: { catalogEntryId: string }) => action.catalogEntryId,
       );
-      const finish = await request.post(`/api/companies/${seed.companyId}/tools/apps/${connectionId}/finish`, {
+      const finish = await request.post(`/api/tools/apps/${connectionId}/finish`, {
         data: { enabledCatalogEntryIds, askFirstCatalogEntryIds: [], access: "all_agents" },
       });
       expect(finish.ok(), `finish failed ${finish.status()}: ${await finish.text()}`).toBe(true);
@@ -218,13 +207,13 @@ test.describe.serial("prosumer MCP flow prosumer MCP flow", () => {
       expect(beforeBody.healthStatus).not.toBe("ok");
 
       // Needs-attention page should surface this connection.
-      await gotoNeedsAttention(page, seed.prefix);
+      await gotoNeedsAttention(page);
       await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByText("Needs attention", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
       await page.screenshot({ path: `${SCREENSHOT_DIR}/prosumer-mcp-07-needs-attention.png`, fullPage: true });
 
       // App detail should expose the reconnect call-to-action.
-      await page.goto(`/${seed.prefix}/apps/${connectionId}`);
+      await page.goto(`/apps/${connectionId}`);
       await expect(page.getByRole("button", { name: /Reconnect|Replace key/i }).first()).toBeVisible({ timeout: 20_000 });
       await page.screenshot({ path: `${SCREENSHOT_DIR}/prosumer-mcp-08-app-detail-reconnect.png`, fullPage: true });
 
@@ -258,9 +247,9 @@ test.describe.serial("prosumer MCP flow prosumer MCP flow", () => {
   });
 
   test("/apps/advanced mounts the paste-config path", async ({ page, request }) => {
-    const seed = await newCompany(request, "advanced");
+    await ensureOrganization(request);
 
-    await gotoAdvanced(page, seed.prefix);
+    await gotoAdvanced(page);
     await expect(page.getByRole("heading", { name: "Advanced setup" })).toBeVisible({ timeout: 20_000 });
     await page.screenshot({ path: `${SCREENSHOT_DIR}/prosumer-mcp-09-advanced-default.png`, fullPage: true });
 

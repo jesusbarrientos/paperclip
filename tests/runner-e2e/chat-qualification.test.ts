@@ -5,7 +5,7 @@ import { assertActiveHandoff, assertAnswerFacts, assertCrashRecovered, assertWor
 import { runnerMatrix } from "./catalog.js";
 import { buildRunnerE2EProcessEnvironment } from "./harness-env.js";
 
-const run = { id: "old", nativeSessionId: "old-session", agentId: "original", companyId: "company", runtimeMode: "native", status: "cancelled", errorCode: "issue_reassigned", finishedAt: "2026-09-21T00:01:00Z", contextSnapshot: { issueId: "task" } };
+const run = { id: "old", nativeSessionId: "old-session", agentId: "original", runtimeMode: "native", status: "cancelled", errorCode: "issue_reassigned", finishedAt: "2026-09-21T00:01:00Z", contextSnapshot: { issueId: "task" } };
 const successor = { ...run, id: "next", agentId: "successor", status: "succeeded", startedAt: "2026-09-21T00:01:01Z" };
 const before = { id: "task", assigneeAgentId: "original", description: "Preserve scope", projectId: null };
 const plan = { body: "Friday REFERENCE", latestRevisionId: "revision" };

@@ -1,20 +1,19 @@
 import fs from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { ensureOrganization } from "../../e2e/helpers/organization";
 
 test.setTimeout(90_000);
 
 test.use({ video: "on", trace: "retain-on-failure", viewport: { width: 1440, height: 900 } });
 
-let prefix: string;
 let issue: { id: string; identifier: string };
 let other: { id: string; identifier: string };
 let oldestCommentId: string;
 
 test.beforeAll(async ({ request }) => {
-  const company = await (await request.post("/api/companies", { data: { name: `Layout acceptance ${Date.now()}` } })).json();
-  prefix = company.issuePrefix;
+  await ensureOrganization(request, { name: "Layout acceptance" });
   const createIssue = async (title: string) => {
-    const response = await request.post(`/api/companies/${company.id}/issues`, {
+    const response = await request.post("/api/issues", {
       data: { title, status: "backlog", description: "A rich task with a long conversation.\n\n".repeat(15) },
     });
     expect(response.ok(), await response.text()).toBeTruthy();
@@ -71,7 +70,7 @@ test.afterEach(async ({ page }, info) => {
 
 test("Inbox click reveals once after reordered initial responses; refresh retains rows", async ({ page }) => {
   await installMeasurements(page);
-  await page.goto(`/${prefix}/inbox/all`);
+  await page.goto(`/inbox/all`);
   const link = page.getByRole("link", { name: new RegExp(`Open ${issue.identifier}:`) });
   await expect(link).toBeVisible({ timeout: 90_000 });
   let release!: () => void;
@@ -94,7 +93,7 @@ test("Inbox click reveals once after reordered initial responses; refresh retain
 
 test("reading anchor survives late media, composer resizing, older history and browser Back", async ({ page }) => {
   await installMeasurements(page);
-  await page.goto(`/${prefix}/issues/${issue.identifier}`);
+  await page.goto(`/issues/${issue.identifier}`);
   await ready(page);
   const scroller = page.getByTestId("task-chat-scroller");
   await expect(page.getByText("Historical message 10", { exact: true })).toBeAttached();
@@ -140,7 +139,7 @@ test("reading anchor survives late media, composer resizing, older history and b
 });
 
 test("explicit comment links resolve older pages before revealing at the target", async ({ page }) => {
-  await page.goto(`/${prefix}/issues/${issue.identifier}#comment-${oldestCommentId}`);
+  await page.goto(`/issues/${issue.identifier}#comment-${oldestCommentId}`);
   await ready(page);
   const target = page.locator(`[id="comment-${oldestCommentId}"]`);
   await expect(target).toBeVisible();
@@ -153,7 +152,7 @@ test("explicit comment links resolve older pages before revealing at the target"
 
 test("failed initial comments expose retry, then recover without an indefinite skeleton", async ({ page }) => {
   await page.route("**/api/issues/*/comments?*", (route) => route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"Temporarily unavailable"}' }));
-  await page.goto(`/${prefix}/issues/${issue.identifier}`);
+  await page.goto(`/issues/${issue.identifier}`);
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 30_000 });
   await page.unroute("**/api/issues/*/comments?*");
   await page.getByRole("button", { name: "Retry", exact: true }).click();
@@ -165,7 +164,7 @@ test("failed initial comments expose retry, then recover without an indefinite s
 test("mobile reduced-motion cold open and rapid task switching", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto(`/${prefix}/issues/${issue.identifier}`);
+  await page.goto(`/issues/${issue.identifier}`);
   await ready(page);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight - window.scrollY - window.innerHeight)).toBeLessThan(2);
   await page.evaluate(() => window.scrollTo(0, 1200));
@@ -175,7 +174,7 @@ test("mobile reduced-motion cold open and rapid task switching", async ({ page }
   await ready(page);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1200);
   // A fresh navigation must show the new task, never retain the previous feed.
-  await page.goto(`/${prefix}/issues/${other.identifier}`);
+  await page.goto(`/issues/${other.identifier}`);
   await ready(page);
   await expect(page.getByText("Historical message 159", { exact: true })).not.toBeAttached();
   expect(saved).toBe(1200);
@@ -184,7 +183,7 @@ test("mobile reduced-motion cold open and rapid task switching", async ({ page }
 for (const mobile of [false, true]) {
   test(`same-task comment links and Back restore the mounted ${mobile ? "mobile" : "desktop"} conversation`, async ({ page }) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`/${prefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     await ready(page);
     await page.getByText("Historical message 10", { exact: true }).waitFor({ state: "attached" });
     await expect(page.locator(`[id="comment-${oldestCommentId}"]`)).toHaveCount(0);
@@ -226,7 +225,7 @@ test("stalled native and log history reveal loaded content with Retry after the 
     await route.fulfill({ json: { runId, content: "", nextOffset: 0 } }).catch(() => {});
   });
   try {
-    await page.goto(`/${prefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     await expect(page.getByTestId("task-chat-history-loading")).toBeVisible();
     await expect(page.getByText("Some task history could not be loaded.")).toBeVisible({ timeout: 25_000 });
     await ready(page);

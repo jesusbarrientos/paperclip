@@ -109,7 +109,7 @@ export function buildRunnerE2EProcessEnvironment(
   result.PAPERCLIP_ANNOUNCEMENTS_ENABLED = "false";
   delete result.OPENCODE_ALLOW_ALL_MODELS;
   // Discard ambient admission. Only explicit candidate cells authorize the
-  // exact model in their isolated server; credentials still use company secrets.
+  // exact model in their isolated server; credentials still use organization secrets.
   delete result.PAPERCLIP_RUNNER_ACPX_QUALIFICATION;
   const candidates = new Map<string, string>();
   for (const execution of executions) {
@@ -148,8 +148,8 @@ export function buildRunnerE2EProcessEnvironment(
 /**
  * Build the environment inherited by the Paperclip server. Paid credentials
  * deliberately stay in the launcher/Playwright process and cross the server
- * boundary through encrypted company secrets. Explicit subscription fixtures
- * stage their login in the disposable company's private credential home.
+ * boundary through encrypted organization secrets. Explicit subscription fixtures
+ * stage their login in the disposable instance's private credential home.
  */
 export function buildPaperclipServerEnvironment(
   source: NodeJS.ProcessEnv,

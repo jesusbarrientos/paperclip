@@ -1,19 +1,20 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { mockOnboardingLocalAiConnection } from "./helpers/onboarding-ai-connection";
+import { ensureOrganization } from "./helpers/organization";
 
 /**
  * E2E: Onboarding wizard flow (NUX Phase 2 expanded wizard).
  *
- * The wizard now opens on a front door (path picker) and the "Create a new
- * company" path runs:
- *   Step 0  — Front door (Create a new company / Level up existing)
- *   Step 1a — Name your organization (creates the company)
+ * With no organization, the wizard runs:
+ *   Step 1  — Name your organization (creates the organization)
  *   Step 2  — Hire your team lead (adapter picker)
  *   Step 3+ — Launch celebration → CEO chat → hiring plan → orientation
+ * Once the organization exists, /onboarding opens on the team-lead step.
  *
- * This test covers the deterministic, LLM-free core: it drives the front door
- * through company naming (which creates the company) and verifies the wizard
- * advances to the team-lead step without asking for a mission.
+ * The first test needs an instance with no organization: playwright.config.ts
+ * runs this file in its own project before every other spec. It drives naming
+ * (which creates the organization) and verifies the wizard advances to the
+ * team-lead step without asking for a mission.
  *
  * The tail (CEO chat at step 4, hiring-plan generation at step 5, final
  * landing) depends on a live LLM and is verified separately during manual /
@@ -21,18 +22,28 @@ import { mockOnboardingLocalAiConnection } from "./helpers/onboarding-ai-connect
  * snapshotted by nux-phase4-screenshots.spec.ts.
  */
 
-const COMPANY_NAME = `E2E-Test-${Date.now()}`;
+const ORGANIZATION_NAME = `E2E-Test-${Date.now()}`;
+
+/** Open the wizard on the team-lead step of the existing organization. */
+async function openAgentStep(page: Page) {
+  await ensureOrganization(page.request);
+  await page.goto("/onboarding");
+  await page.waitForSelector("#onboarding-agent-name", { timeout: 30_000 });
+}
 
 test.describe("Onboarding wizard", () => {
-  test("create-company path: naming creates the company, and no goal is invented", async ({
+  test("naming creates the organization, and no goal is invented", async ({
     page,
   }) => {
+    const existing = await page.request.get("/api/organization");
+    expect(existing.status(), "this test needs an instance with no organization yet").toBe(404);
+
     const pageErrors: string[] = [];
     page.on("pageerror", (err) => pageErrors.push(err.message));
 
     // `--data-dir` starts a new server, not a new browser profile. Keep a
     // resumable draft here so this ordinary browser condition is covered when
-    // the company-list invalidation runs after the create request.
+    // the organization invalidation runs after the create request.
     await page.addInitScript(() => {
       localStorage.setItem("paperclip-onboarding-state", JSON.stringify({
         step: 1,
@@ -40,9 +51,9 @@ test.describe("Onboarding wizard", () => {
         createdCompanyId: null,
       }));
     });
-    let delayCompanyListRefetch = false;
-    await page.route("**/api/companies", async (route) => {
-      if (delayCompanyListRefetch && route.request().method() === "GET") {
+    let delayOrganizationRefetch = false;
+    await page.route("**/api/organization", async (route) => {
+      if (delayOrganizationRefetch && route.request().method() === "GET") {
         // Keep the invalidation observable: a background fetch must not reset
         // the in-progress wizard.
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -76,33 +87,28 @@ test.describe("Onboarding wizard", () => {
     await expect(
       page.getByRole("heading", { name: "What is the name of your organization?" }),
     ).toBeVisible({ timeout: 15_000 });
-    await page.getByPlaceholder("e.g. Northwind Labs").fill(COMPANY_NAME);
-    delayCompanyListRefetch = true;
+    await page.getByPlaceholder("e.g. Northwind Labs").fill(ORGANIZATION_NAME);
+    delayOrganizationRefetch = true;
     await page.getByRole("button", { name: /^Continue/ }).click();
 
-    // Step 1's "Next" now creates the company and goes straight to the agent.
+    // Step 1's "Next" now creates the organization and goes straight to the agent.
     // The mission step used to sit between them and do the creating; onboarding
     // no longer asks for the mission, which is collected later in the app.
     await page.waitForSelector("#onboarding-agent-name", {
       timeout: 30_000,
     });
 
-    // Verify the company + company-level goal were persisted.
     const baseUrl = page.url().split("/").slice(0, 3).join("/");
-    const companiesRes = await page.request.get(`${baseUrl}/api/companies`);
-    expect(companiesRes.ok()).toBe(true);
-    const companies = await companiesRes.json();
-    const company = companies.find(
-      (c: { name: string }) => c.name === COMPANY_NAME,
-    );
-    expect(company, `company ${COMPANY_NAME} should exist`).toBeTruthy();
+    const organizationRes = await page.request.get(`${baseUrl}/api/organization`);
+    expect(organizationRes.ok()).toBe(true);
+    expect((await organizationRes.json()).name).toBe(ORGANIZATION_NAME);
 
     // And no company-level goal, which is the point rather than an omission.
     // Onboarding no longer asks for a mission, so writing one here would mean
     // inventing a goal the customer never chose. The mission is collected later
     // in the app, and the absence is what leaves room for it.
     const goalsRes = await page.request.get(
-      `${baseUrl}/api/companies/${company.id}/goals`,
+      `${baseUrl}/api/goals`,
     );
     expect(goalsRes.ok()).toBe(true);
     const goals = await goalsRes.json();
@@ -251,26 +257,7 @@ test.describe("Onboarding wizard", () => {
       return route.continue();
     });
 
-    await page.goto("/onboarding");
-
-    const startBtn = page.getByRole("button", {
-      name: /Start Onboarding|New Organization|Add Agent/,
-    });
-    if (await startBtn.count()) {
-      await startBtn.first().click();
-    }
-    const createCard = page.getByRole("button", { name: /Build a new organization/ });
-    if (await createCard.count()) {
-      await createCard.first().click();
-    }
-
-    await expect(
-      page.getByRole("heading", { name: "What is the name of your organization?" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await page.getByPlaceholder("e.g. Northwind Labs").fill(`${COMPANY_NAME}-auth-signal`);
-    await page.getByRole("button", { name: /^Continue/ }).click();
-
-    await page.waitForSelector("#onboarding-agent-name", { timeout: 30_000 });
+    await openAgentStep(page);
     await page.locator("#onboarding-agent-name").fill("Ada");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -311,15 +298,10 @@ test.describe("Onboarding wizard", () => {
     // mid-login must see the same login still running, not the tile row
     // again and not a second session started behind their back.
     //
-    // A bare `/onboarding` reload is not the right way to exercise this: that
-    // route always forces its own fixed entry step (see
-    // `resolveRouteOnboardingOptions` — a bare `/onboarding` hit is a request
-    // to start a new company, by design, and always wins over a saved draft's
-    // step). A returning visit to an existing company's own onboarding path
-    // (`/{prefix}/onboarding`) is the real "reopen onboarding" entry point, so
-    // this test reloads through that path instead, landing on the agent step
-    // with the draft's agent name already restored, then advances once to the
-    // connect step — where the resumed login must already be running.
+    // With an organization in place, `/onboarding` always re-enters on the
+    // agent step (see `resolveRouteOnboardingOptions`) with the draft's agent
+    // name restored; one press reaches the connect step, where the resumed
+    // login must already be running.
     const pageErrors: string[] = [];
     page.on("pageerror", (err) => pageErrors.push(err.message));
 
@@ -455,26 +437,7 @@ test.describe("Onboarding wizard", () => {
       });
     });
 
-    await page.goto("/onboarding");
-
-    const startBtn = page.getByRole("button", {
-      name: /Start Onboarding|New Organization|Add Agent/,
-    });
-    if (await startBtn.count()) {
-      await startBtn.first().click();
-    }
-    const createCard = page.getByRole("button", { name: /Build a new organization/ });
-    if (await createCard.count()) {
-      await createCard.first().click();
-    }
-
-    await expect(
-      page.getByRole("heading", { name: "What is the name of your organization?" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await page.getByPlaceholder("e.g. Northwind Labs").fill(`${COMPANY_NAME}-reload`);
-    await page.getByRole("button", { name: /^Continue/ }).click();
-
-    await page.waitForSelector("#onboarding-agent-name", { timeout: 30_000 });
+    await openAgentStep(page);
     await page.locator("#onboarding-agent-name").fill("Ada");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -493,17 +456,7 @@ test.describe("Onboarding wizard", () => {
     await expect(authorizationLink).toHaveAttribute("href", /claude\.ai\/oauth\/authorize/);
     expect(startCalls).toBe(1);
 
-    const companiesRes = await page.request.get("/api/companies");
-    expect(companiesRes.ok()).toBe(true);
-    const companies = await companiesRes.json();
-    const company = companies.find(
-      (c: { name: string }) => c.name === `${COMPANY_NAME}-reload`,
-    );
-    expect(company, "the created company should exist").toBeTruthy();
-
-    // Reload through the company's own onboarding path — the real "reopen
-    // onboarding" entry point for a company that already exists.
-    await page.goto(`/${company.issuePrefix}/onboarding`);
+    await page.goto(`/onboarding`);
 
     // This entry point always re-enters on the agent step, with the agent
     // name restored from the draft. One more press reaches the connect step.
@@ -559,26 +512,7 @@ test.describe("Onboarding wizard", () => {
       return route.continue();
     });
 
-    await page.goto("/onboarding");
-
-    const startBtn = page.getByRole("button", {
-      name: /Start Onboarding|New Organization|Add Agent/,
-    });
-    if (await startBtn.count()) {
-      await startBtn.first().click();
-    }
-    const createCard = page.getByRole("button", { name: /Build a new organization/ });
-    if (await createCard.count()) {
-      await createCard.first().click();
-    }
-
-    await expect(
-      page.getByRole("heading", { name: "What is the name of your organization?" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await page.getByPlaceholder("e.g. Northwind Labs").fill(`${COMPANY_NAME}-probe-gate`);
-    await page.getByRole("button", { name: /^Continue/ }).click();
-
-    await page.waitForSelector("#onboarding-agent-name", { timeout: 30_000 });
+    await openAgentStep(page);
     await page.locator("#onboarding-agent-name").fill("Ada");
     await page.getByRole("button", { name: "Next" }).click();
 

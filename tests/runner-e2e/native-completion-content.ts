@@ -12,20 +12,19 @@ export function explainsMissingReleaseAccess(text: string): boolean {
 
 export interface NativeDocumentLinkContext {
   appOrigin: string;
-  issuePrefix: string;
   issueIdentifier: string;
   documents: readonly { key: string; latestRevisionId?: string | null; latestRevisionNumber?: number | null }[];
 }
 
 /** A citation must resolve to this task's one saved, revisioned document. */
 export function linksSavedNativeDocument(text: string, context: NativeDocumentLinkContext | undefined): boolean {
-  if (!context?.appOrigin || !context.issuePrefix || !context.issueIdentifier || context.documents.length !== 1) return false;
+  if (!context?.appOrigin || !context.issueIdentifier || context.documents.length !== 1) return false;
   const document = context.documents[0]!;
   if (!document.key || !document.latestRevisionId || !Number.isSafeInteger(document.latestRevisionNumber) || Number(document.latestRevisionNumber) < 1) return false;
   let origin: URL;
   try { origin = new URL(context.appOrigin); } catch { return false; }
   if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) return false;
-  const route = `/${encodeURIComponent(context.issuePrefix)}/issues/${encodeURIComponent(context.issueIdentifier)}#document-${encodeURIComponent(document.key)}`;
+  const route = `/issues/${encodeURIComponent(context.issueIdentifier)}#document-${encodeURIComponent(document.key)}`;
   const links = text.matchAll(/\[[^\]]+\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)/g);
   return [...links].some(link => {
     try {

@@ -12,7 +12,7 @@ import type {
   SecretReferenceMap,
 } from "./types.js";
 
-interface CompanyRecord {
+interface OrganizationRecord {
   id: string;
   issuePrefix?: string | null;
   name: string;
@@ -34,7 +34,6 @@ interface EnvironmentRecord {
 interface AgentRecord {
   id: string;
   name: string;
-  companyId: string;
 }
 interface ManagedAccountFixture {
   connectionId: string;
@@ -55,7 +54,7 @@ interface ProjectRecord {
 }
 
 export interface LiveFixtureValues {
-  company: CompanyRecord;
+  organization: OrganizationRecord;
   secretRefs: SecretReferenceMap;
   environment: EnvironmentRecord;
   agent: AgentRecord;
@@ -130,10 +129,10 @@ export async function setupLiveFixtures(input: {
     });
   }
 
-  registry.register<CompanyRecord>({
-    id: "company",
+  registry.register<OrganizationRecord>({
+    id: "organization",
     async setup() {
-      return api.post<CompanyRecord>("/api/companies", {
+      return api.post<OrganizationRecord>("/api/organization", {
         name: `Runner E2E ${execution.id} ${input.executionNonce}`,
         description: "Ephemeral paid full-stack runner acceptance fixture",
         budgetMonthlyCents: ["native-completion", "native-instruction-consolidation"].includes(execution.suite.id)
@@ -143,24 +142,23 @@ export async function setupLiveFixtures(input: {
       });
     },
     async teardown() {
-      // The isolated instance/database is removed by the launcher. Do not call
-      // company deletion here: metered runs intentionally retain cost-event
-      // references until that instance-wide teardown.
+      // The isolated instance/database is removed by the launcher. Do not
+      // delete the organization here: metered runs intentionally retain
+      // cost-event references until that instance-wide teardown.
     },
   });
 
   registry.register<SecretReferenceMap>({
     id: "secrets",
-    dependencies: ["company"],
-    async setup(resolved) {
-      const company = value<CompanyRecord>(resolved, "company");
+    dependencies: ["organization"],
+    async setup() {
       const refs: SecretReferenceMap = {};
       for (const credentialName of execution.requiredCredentials) {
         if (credentialName === "GROK_AUTH_JSON") continue;
         const rawValue = input.credentials[credentialName];
         if (!rawValue) throw new Error(`Missing credential ${credentialName}`);
         const secret = await api.postSensitive<SecretRecord>(
-          `/api/companies/${company.id}/secrets`,
+          "/api/secrets",
           {
             name: `Runner E2E ${credentialName} ${input.executionNonce}`,
             key: credentialName,
@@ -182,14 +180,11 @@ export async function setupLiveFixtures(input: {
   if (grokSubscription) {
     registry.register<() => Promise<void>>({
       id: "subscription-login",
-      dependencies: ["company"],
-      async setup(resolved) {
+      dependencies: ["organization"],
+      async setup() {
         const raw = input.credentials.GROK_AUTH_JSON;
         if (!raw) throw new Error("Missing credential GROK_AUTH_JSON");
-        return stageGrokSubscriptionFixture({
-          raw, companyId: value<CompanyRecord>(resolved, "company").id,
-          environment: process.env,
-        });
+        return stageGrokSubscriptionFixture({ raw, environment: process.env });
       },
       async teardown(remove) { await remove(); },
     });
@@ -198,20 +193,19 @@ export async function setupLiveFixtures(input: {
   registry.register<EnvironmentRecord>({
     id: "environment",
     dependencies: [
-      "company",
+      "organization",
       "secrets",
       ...(grokSubscription ? ["subscription-login"] : []),
       ...(execution.environment.id === "daytona" ? ["sandbox-provider"] : []),
     ],
     async setup(resolved) {
-      const company = value<CompanyRecord>(resolved, "company");
       const secretRefs = value<SecretReferenceMap>(resolved, "secrets");
       if (execution.environment.id === "local") {
-        // Paperclip has one instance-managed local environment. The company
-        // creation API ensures it exists; creating a second local environment
+        // Paperclip has one instance-managed local environment. The
+        // organization creation API ensures it exists; creating a second local environment
         // is intentionally rejected by the public API.
         const environments = await api.get<EnvironmentRecord[]>(
-          `/api/companies/${company.id}/environments?driver=local`,
+          "/api/environments?driver=local",
         );
         const local = environments.find(
           (candidate) => candidate.driver === "local",
@@ -223,7 +217,7 @@ export async function setupLiveFixtures(input: {
         return local;
       }
       return api.post<EnvironmentRecord>(
-        `/api/companies/${company.id}/environments`,
+        "/api/environments",
         execution.environment.buildEnvironment({
           secretRefs,
           daytonaImage: input.daytonaImage,
@@ -242,9 +236,8 @@ export async function setupLiveFixtures(input: {
   if (managedHiring) {
     registry.register<ManagedAccountFixture>({
       id: "ai-connection",
-      dependencies: ["company"],
-      async setup(resolved) {
-        const company = value<CompanyRecord>(resolved, "company");
+      dependencies: ["organization"],
+      async setup() {
         const key = execution.profile.credential;
         const provider = key === "ANTHROPIC_API_KEY" ? "anthropic"
           : key === "OPENROUTER_API_KEY" ? "openrouter"
@@ -253,7 +246,7 @@ export async function setupLiveFixtures(input: {
         const apiKey = input.credentials[key];
         if (!apiKey) throw new Error(`Missing credential ${key}`);
         const account = await api.postSensitive<{ connectionId: string }>(
-          `/api/companies/${company.id}/ai-connections`,
+          "/api/ai-connections",
           {
             provider,
             method: "api_key",
@@ -275,14 +268,13 @@ export async function setupLiveFixtures(input: {
   registry.register<AgentRecord>({
     id: "agent",
     dependencies: [
-      "company",
+      "organization",
       "secrets",
       "environment",
       ...(grokSubscription ? ["subscription-login"] : []),
       ...(managedHiring ? ["ai-connection"] : []),
     ],
     async setup(resolved) {
-      const company = value<CompanyRecord>(resolved, "company");
       const environment = value<EnvironmentRecord>(resolved, "environment");
       const secretRefs = value<SecretReferenceMap>(resolved, "secrets");
       const agent = execution.profile.buildAgent({
@@ -306,7 +298,7 @@ export async function setupLiveFixtures(input: {
         };
       }
       return api.post<AgentRecord>(
-        `/api/companies/${company.id}/agents`,
+        "/api/agents",
         agent,
       );
     },
@@ -320,12 +312,11 @@ export async function setupLiveFixtures(input: {
     || (execution.suite.id === "extended-harnesses" && execution.task.id === "file-edit-validate")) {
     registry.register<ProjectRecord>({
       id: "project",
-      dependencies: ["company", "environment"],
+      dependencies: ["organization", "environment"],
       async setup(resolved) {
-        const company = value<CompanyRecord>(resolved, "company");
         const environment = value<EnvironmentRecord>(resolved, "environment");
         return api.post<ProjectRecord>(
-          `/api/companies/${company.id}/projects`,
+          "/api/projects",
           {
             name: `Runner E2E workspace project ${input.executionNonce}`,
             description:
@@ -355,7 +346,7 @@ export async function setupLiveFixtures(input: {
 
   const setup = await registry.setupAll();
   return {
-    company: value<CompanyRecord>(setup.values, "company"),
+    organization: value<OrganizationRecord>(setup.values, "organization"),
     secretRefs: value<SecretReferenceMap>(setup.values, "secrets"),
     environment: value<EnvironmentRecord>(setup.values, "environment"),
     agent: value<AgentRecord>(setup.values, "agent"),

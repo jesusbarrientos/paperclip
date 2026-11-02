@@ -103,7 +103,7 @@ Troublesome combinations included in the inventory and reused suites:
 - Reassignment/closure before late finalization; restart between commit and delivery.
 - Exhaustion followed by commentary versus an authorized new user request.
 - Stale plan revision approval; duplicate question/dependency/reconciler events.
-- Wrong company/task or unauthorized resolution; productive versus failure retries.
+- Wrong task or unauthorized resolution; productive versus failure retries.
 
 ## Narrative pairs and positive controls
 

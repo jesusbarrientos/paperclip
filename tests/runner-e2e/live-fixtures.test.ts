@@ -9,35 +9,35 @@ describe("live runner fixtures", () => {
     "applies %s %s budget stops in actual setup with a nonce and only its selected credential", async (profile, task) => {
       const execution = runnerMatrix.find(row => row.id === `everyday-workflows.${profile}.local.${task}`)!;
       let agentBody: any;
-      let companyBody: any;
+      let organizationBody: any;
       const api = {
         async get() { return [{ id: "local", driver: "local" }]; },
         async postSensitive(url: string) { return url.endsWith("/ai-connections") ? { connectionId: "account" } : { id: "secret" }; },
         async post(url: string, data: any) {
-          if (url === "/api/companies") { companyBody = data; return { id: "company", name: "Test" }; }
+          if (url === "/api/organization") { organizationBody = data; return { id: "organization", name: "Test" }; }
           if (url.endsWith("/agents")) { agentBody = data; return { id: "lead", ...data }; }
           throw new Error(`Unexpected POST ${url}`);
         },
       } as unknown as RunnerApi;
       const fixtures = await setupLiveFixtures({ api, execution, executionNonce: "random-nonce", workspacePath: "/tmp/test",
         credentials: { [execution.profile.credential]: "test-value" } });
-      expect(companyBody.budgetMonthlyCents).toBe(1_000);
+      expect(organizationBody.budgetMonthlyCents).toBe(1_000);
       expect(agentBody.budgetMonthlyCents).toBe(1_000);
       await fixtures.teardown();
     },
   );
 
   it.each(["runner-codex", "legacy-codex", "runner-acpx-claude", "legacy-opencode"])(
-    "creates a production-default %s hire with company and agent budget stops", async (profile) => {
+    "creates a production-default %s hire with organization and agent budget stops", async (profile) => {
       const execution = runnerMatrix.find(row => row.suite.id === "stock-harness" && row.profile.id === profile)!;
       let agentBody: any;
       const api = {
         async get() { return [{ id: "local", driver: "local" }]; },
         async postSensitive() { return { id: "secret" }; },
         async post(url: string, data: any) {
-          if (url === "/api/companies") {
+          if (url === "/api/organization") {
             expect(data.budgetMonthlyCents).toBe(1_000);
-            return { id: "company", name: "Fixture" };
+            return { id: "organization", name: "Fixture" };
           }
           if (url.endsWith("/agents")) { agentBody = data; return { id: "agent", ...data }; }
           throw new Error(`Unexpected POST ${url}`);
@@ -58,7 +58,7 @@ describe("live runner fixtures", () => {
       async get() { return [{ id: "local", driver: "local" }]; },
       async postSensitive() { return { id: "secret" }; },
       async post(url: string, data: any) {
-        if (url === "/api/companies") return { id: "company", name: "Test" };
+        if (url === "/api/organization") return { id: "organization", name: "Test" };
         if (url.endsWith("/agents")) return { id: "agent", ...data };
         if (url.endsWith("/projects")) { projectBody = data; return { id: "project", ...data }; }
         throw new Error(`Unexpected POST ${url}`);
@@ -93,7 +93,7 @@ describe("live runner fixtures", () => {
       let agentBody: any;
       const api = {
         async post(url: string, data: any) {
-          if (url === "/api/companies") return { id: "company", name: "Test" };
+          if (url === "/api/organization") return { id: "organization", name: "Test" };
           if (url.endsWith("/agents")) {
             agentBody = data;
             return { id: "lead", ...data };
@@ -159,15 +159,15 @@ describe("live runner fixtures", () => {
             status: "ready",
           };
         }
-        if (path === "/api/companies") {
-          return { id: "company-1", name: "Runner E2E" };
+        if (path === "/api/organization") {
+          return { id: "organization-1", name: "Runner E2E" };
         }
         if (path.endsWith("/environments")) {
           expect(calls).toContain("POST /api/plugins/install");
           return { id: "environment-1", driver: "sandbox" };
         }
         if (path.endsWith("/agents")) {
-          return { id: "agent-1", name: "Agent", companyId: "company-1" };
+          return { id: "agent-1", name: "Agent" };
         }
         throw new Error(`Unexpected POST ${path}`);
       },
@@ -200,7 +200,7 @@ describe("live runner fixtures", () => {
     });
 
     expect(calls.indexOf("POST /api/plugins/install")).toBeLessThan(
-      calls.indexOf("POST /api/companies/company-1/environments"),
+      calls.indexOf("POST /api/environments"),
     );
     await fixtures.teardown();
     expect(calls).toContain(
@@ -220,14 +220,14 @@ describe("live runner fixtures", () => {
             status: "ready",
           };
         }
-        if (path === "/api/companies") {
-          return { id: "company-1", name: "Runner E2E" };
+        if (path === "/api/organization") {
+          return { id: "organization-1", name: "Runner E2E" };
         }
         if (path.endsWith("/environments")) {
           return { id: "environment-1", driver: "sandbox" };
         }
         if (path.endsWith("/agents")) {
-          return { id: "agent-1", name: "Agent", companyId: "company-1" };
+          return { id: "agent-1", name: "Agent" };
         }
         if (path.endsWith("/projects")) {
           expect(data).toMatchObject({
@@ -279,8 +279,8 @@ describe("live runner fixtures", () => {
 
     expect(fixtures.project?.primaryWorkspace?.id).toBe("project-workspace-1");
     expect(
-      calls.indexOf("POST /api/companies/company-1/environments"),
-    ).toBeLessThan(calls.indexOf("POST /api/companies/company-1/projects"));
+      calls.indexOf("POST /api/environments"),
+    ).toBeLessThan(calls.indexOf("POST /api/projects"));
     await fixtures.teardown();
   });
 });

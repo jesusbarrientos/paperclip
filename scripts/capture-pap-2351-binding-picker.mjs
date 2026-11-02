@@ -94,8 +94,8 @@ async function main() {
       await page.setViewportSize(shot.viewport);
       const url = `${baseUrl}/iframe.html?id=${encodeURIComponent(shot.storyId)}&viewMode=story&globals=theme:${shot.theme}`;
       await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
-      // Allow the storybook fixture to swap CompanyContext to the storybook id and
-      // for the picker's useQuery to settle from cache.
+      // Allow the storybook organization context and the picker's useQuery to
+      // settle from cache.
       await page.waitForTimeout(1500);
       const dest = path.join(outDir, `${shot.label}.png`);
       await page.screenshot({ path: dest, fullPage: false });

@@ -565,8 +565,8 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
       originRunId: runId,
     });
     expect(res.body.description).toContain("## Watchdog Discovery");
-    expect(res.body.description).toContain("Watched source issue: [PAP-100](/PAP/issues/PAP-100)");
-    expect(res.body.description).toContain("Watchdog issue: [PAP-102](/PAP/issues/PAP-102)");
+    expect(res.body.description).toContain("Watched source issue: [PAP-100](/issues/PAP-100)");
+    expect(res.body.description).toContain("Watchdog issue: [PAP-102](/issues/PAP-102)");
     expect(res.body.referencedIssueIdentifiers).toEqual(expect.arrayContaining(["PAP-100", "PAP-102"]));
 
     const watchedSourceChildren = await db

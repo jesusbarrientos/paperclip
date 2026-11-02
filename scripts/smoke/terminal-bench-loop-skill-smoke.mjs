@@ -52,7 +52,6 @@ function printUsage() {
 Usage:
   PAPERCLIP_API_URL=http://localhost:3100 \\
   PAPERCLIP_API_KEY=... \\
-  PAPERCLIP_COMPANY_ID=... \\
   pnpm smoke:terminal-bench-loop-skill
 
 Options:
@@ -131,7 +130,6 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const apiUrl = requireEnv("PAPERCLIP_API_URL");
   const apiKey = requireEnv("PAPERCLIP_API_KEY");
-  const companyId = requireEnv("PAPERCLIP_COMPANY_ID");
   const runId = process.env.PAPERCLIP_RUN_ID ?? null;
   const api = createApiClient({ apiUrl, apiKey, runId });
 
@@ -151,7 +149,7 @@ async function main() {
     priority: "low",
   };
 
-  const loop = await api("POST", `/api/companies/${companyId}/issues`, {
+  const loop = await api("POST", "/api/issues", {
     body: {
       ...commonIssueFields,
       ...(sourceIssue ? { parentId: sourceIssue.id } : {}),
@@ -168,7 +166,7 @@ async function main() {
     },
   });
 
-  const iteration = await api("POST", `/api/companies/${companyId}/issues`, {
+  const iteration = await api("POST", "/api/issues", {
     body: {
       ...commonIssueFields,
       parentId: loop.id,

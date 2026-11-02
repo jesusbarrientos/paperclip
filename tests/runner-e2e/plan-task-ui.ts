@@ -4,10 +4,10 @@ import { expect, type Page } from "@playwright/test";
  * title later. Capture the actual public create response; never guess its ID
  * from a title or mutate the issue behind the browser. */
 export async function createPlanTaskThroughUi(input: {
-  page: Page; companyId: string; issuePrefix: string; agentName: string; prompt: string;
+  page: Page; agentName: string; prompt: string;
 }): Promise<{ id: string }> {
   const { page } = input;
-  await page.goto(`/${encodeURIComponent(input.issuePrefix)}/issues`, { waitUntil: "domcontentloaded" });
+  await page.goto("/issues", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "New Task", exact: true }).first().click();
   const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "New task", exact: true }) });
   await dialog.getByRole("textbox", { name: "editable markdown", exact: true }).fill(input.prompt);
@@ -19,11 +19,11 @@ export async function createPlanTaskThroughUi(input: {
   await option.click();
   await expect(assignee).toContainText(input.agentName);
   const responsePromise = page.waitForResponse(response => response.request().method() === "POST" &&
-    new URL(response.url()).pathname === `/api/companies/${input.companyId}/issues`);
+    new URL(response.url()).pathname === "/api/issues");
   await dialog.getByRole("button", { name: "Create task", exact: true }).click();
   const response = await responsePromise;
   if (!response.ok()) throw new Error(`Browser task creation failed: ${response.status()}`);
   const issue = await response.json();
-  if (typeof issue.id !== "string" || issue.companyId !== input.companyId) throw new Error("Browser created an unexpected issue identity");
+  if (typeof issue.id !== "string") throw new Error("Browser created an unexpected issue identity");
   return { id: issue.id };
 }

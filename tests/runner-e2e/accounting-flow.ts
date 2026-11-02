@@ -27,7 +27,7 @@ export async function runAccountingFlow(input: {
     if (!issue) throw new Error("Accounting task has not been created");
     const [current, listed, comments, interactions, docs] = await Promise.all([
       api.get<Row>(`/api/issues/${issue.id}`),
-      api.get<Row[]>(`/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`),
+      api.get<Row[]>("/api/heartbeat-runs?limit=100"),
       api.get<Row[]>(`/api/issues/${issue.id}/comments?order=asc`),
       api.get<Row[]>(`/api/issues/${issue.id}/interactions`),
       api.get<Row[]>(`/api/issues/${issue.id}/documents`),
@@ -56,17 +56,17 @@ export async function runAccountingFlow(input: {
     await input.evidence("continuation.json", { probe, checkpoints, checks });
     await input.evidence("api-state.json", s);
     if (screenshot) {
-      await page.goto(`/${fixtures.company.issuePrefix}/issues/${issue!.identifier ?? issue!.id}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`/issues/${issue!.identifier ?? issue!.id}`, { waitUntil: "domcontentloaded" });
       await captureLoadedContinuation(page, String(issue!.title), () => input.capture(phase, `Accounting: ${phase}`, accountingScreenshotFile(phase)));
     }
   }
   try {
-    if (execution.profile.generation === "legacy") await prepareLegacyContinuationSkill(api, fixtures.company.id, fixtures.agent.id);
+    if (execution.profile.generation === "legacy") await prepareLegacyContinuationSkill(api, fixtures.agent.id);
     await api.patch("/api/instance/settings/experimental", { enableClassicTaskInterface: false });
-    await createTaskThroughUi({ page, issuePrefix: fixtures.company.issuePrefix!, agentName: fixtures.agent.name,
+    await createTaskThroughUi({ page, agentName: fixtures.agent.name,
       title: execution.task.buildTitle(nonce), prompt: execution.task.buildPrompt(nonce), workMode: "standard" });
     issue = await pollUntil({ label: "accounting task creation", deadlineAt: input.deadlineAt,
-      load: async () => (await api.get<Row[]>(`/api/companies/${fixtures.company.id}/issues?limit=100`)).find(i => i.title === execution.task.buildTitle(nonce)), accept: Boolean });
+      load: async () => (await api.get<Row[]>("/api/issues?limit=100")).find(i => i.title === execution.task.buildTitle(nonce)), accept: Boolean });
     if (!issue) throw new Error("Missing created accounting task");
     if (probe.kind === "productive") {
       for (let step = 1; step <= 5; step++) {

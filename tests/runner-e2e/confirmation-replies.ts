@@ -131,7 +131,7 @@ export async function runAmbiguousConfirmationReply(context: {
   const ambiguousAnswer = afterReply.findLast(c => !c.authorAgentId && c.authorUserId && c.body === "Yes, go ahead.");
   expect(ambiguousAnswer, "Persist the exact ambiguous user reply").toBeTruthy();
   const e = { cards: await api.get<Row[]>(cardsPath), originalIds: [note.id, poster.id],
-    tasks: await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`),
+    tasks: await api.get<Row[]>("/api/issues"),
     agentId: input.fixtures.agent.id, answerId: ambiguousAnswer!.id,
     reply: afterReply.filter(c => c.authorAgentId === input.fixtures.agent.id && c.createdAt >= ambiguousAnswer!.createdAt).at(-1)?.body ?? "" };
   await input.evidence("confirmation-ambiguous.json", e);
@@ -150,7 +150,7 @@ export async function runAmbiguousConfirmationReply(context: {
   cards = await api.get<Row[]>(cardsPath);
   const no = (await context.comments()).filter(c => !c.authorAgentId && c.body.includes("No, do not proceed")).at(-1)!;
   expect(cards.find(c => c.id === poster.id)).toMatchObject({ status: "rejected", result: { commentId: no.id } });
-  expect(await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`)).toHaveLength(0);
+  expect(await api.get<Row[]>("/api/issues")).toHaveLength(0);
   await page.reload({ waitUntil: "domcontentloaded" });
   for (const id of [note.id, poster.id]) {
     await assertConfirmationReceipt(page, cards.find(card => card.id === id)!);
@@ -240,7 +240,7 @@ export async function runUnansweredQuestionReturn(context: {
   const lateReply = (await context.comments()).findLast(comment => comment.authorAgentId === input.fixtures.agent.id
     && comment.createdAt >= afterAnswer.resolvedAt);
   const evidence = { original: original!, afterMove, afterAnswer, unrelatedComment, unrelatedReply, lateReply,
-    taskCount: (await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`)).length };
+    taskCount: (await api.get<Row[]>("/api/issues")).length };
   await input.evidence("unanswered-question.json", evidence);
   for (const check of gradeUnansweredQuestion(evidence)) {
     input.check?.(check.id, check.passed, check.detail);

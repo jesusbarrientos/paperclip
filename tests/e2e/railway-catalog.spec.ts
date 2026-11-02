@@ -1,13 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 // Uses the normal throwaway E2E instance. This checks the local setup entry,
 // not account consent or a live Railway deployment.
 test("Railway is discoverable and opens its OAuth setup", async ({ page, request }) => {
   test.setTimeout(120000);
-  const response = await request.post("/api/companies", { data: { name: `Railway catalog QA ${Date.now()}` } });
-  expect(response.ok()).toBe(true);
-  const company = await response.json();
-  await page.goto(`/${company.issuePrefix}/apps`, { waitUntil: "domcontentloaded" });
+  await ensureOrganization(request);
+  await page.goto(`/apps`, { waitUntil: "domcontentloaded" });
   const card = page.getByRole("list", { name: "Connector list" }).getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Railway", exact: true }) });
   await expect(card).toBeVisible({ timeout: 30000 });
   await card.getByRole("button", { name: /Connect/ }).click();

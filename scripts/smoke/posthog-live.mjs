@@ -12,7 +12,7 @@ import {
   preparePosthogLiveSmoke,
 } from "./posthog-live-lib.mjs";
 
-const TARGET_COMPANY_PREFIX = "PAP";
+const TARGET_ISSUE_PREFIX = "PAP";
 const TARGET_AGENT_NAME = "CodexCoderPro";
 const PROJECT_GET = "project-get";
 const PROJECT_SETTINGS_UPDATE = "project-settings-update";
@@ -158,8 +158,8 @@ async function gotoPaperclipPage(
   fail(checkpoint, code);
 }
 
-async function stabilizeCompanyContext(page, config, companyId) {
-  const galleryPath = `/api/companies/${companyId}/tools/gallery`;
+async function stabilizeAppsGallery(page, config) {
+  const galleryPath = "/api/tools/gallery";
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       const galleryResponsePromise = page.waitForResponse(
@@ -167,7 +167,7 @@ async function stabilizeCompanyContext(page, config, companyId) {
           && new URL(response.url()).pathname === galleryPath,
         { timeout: 30_000 },
       );
-      await page.goto(new URL(`/${TARGET_COMPANY_PREFIX}/apps`, config.baseUrl).toString(), {
+      await page.goto(new URL("/apps", config.baseUrl).toString(), {
         waitUntil: "domcontentloaded",
         timeout: 30_000,
       });
@@ -177,21 +177,17 @@ async function stabilizeCompanyContext(page, config, companyId) {
         name: /^(?:Connect for PostHog|Add another PostHog account)$/,
       }).first();
       await posthogAction.waitFor({ state: "visible", timeout: 30_000 });
-      // The company-prefixed route and selected-company provider settle in
-      // separate renders. Clicking the tile immediately can carry the prior
-      // company's gallery cache into the setup effect and redirect back out.
-      await page.waitForTimeout(2_000);
       return;
     } catch {
       if (attempt < 3) await page.waitForTimeout(500);
     }
   }
-  fail("A.company-context", "posthog_gallery_context_missing");
+  fail("A.apps-gallery", "posthog_gallery_context_missing");
 }
 
-async function openPosthogSetupFromGallery(page, config, companyId) {
+async function openPosthogSetupFromGallery(page, config) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    await stabilizeCompanyContext(page, config, companyId);
+    await stabilizeAppsGallery(page, config);
     const addAnother = page.getByRole("button", { name: /^Add another PostHog account$/ }).first();
     const connect = page.getByRole("button", { name: /^Connect for PostHog$/ }).first();
     const action = await addAnother.isVisible().catch(() => false) ? addAnother : connect;
@@ -414,14 +410,14 @@ function catalogFacts(catalog, checkpoint) {
   return { active, projectGet, projectSettings };
 }
 
-async function finishAgentOnlySetup(request, config, companyId, connectionId, catalog, agentId) {
+async function finishAgentOnlySetup(request, config, connectionId, catalog, agentId) {
   const { active } = catalogFacts(catalog, "C.catalog-policy");
   const enabledCatalogEntryIds = active.filter((entry) => entry.isReadOnly).map((entry) => entry.id);
   await apiJson(
     request,
     config.baseUrl,
     "POST",
-    `/api/companies/${companyId}/tools/apps/${connectionId}/finish`,
+    `/api/tools/apps/${connectionId}/finish`,
     {
       enabledCatalogEntryIds,
       askFirstCatalogEntryIds: [],
@@ -440,12 +436,12 @@ async function finishAgentOnlySetup(request, config, companyId, connectionId, ca
   );
 }
 
-async function findConnectionIdByName(request, config, companyId, connectionName) {
+async function findConnectionIdByName(request, config, connectionName) {
   const connectionsResponse = await apiJson(
     request,
     config.baseUrl,
     "GET",
-    `/api/companies/${companyId}/tools/connections`,
+    "/api/tools/connections",
     undefined,
     "F.cleanup-recovery",
   );
@@ -459,7 +455,6 @@ async function findConnectionIdByName(request, config, companyId, connectionName
 async function cleanupConnection(
   request,
   config,
-  companyId,
   connectionId,
   connectionName,
   { requireInstalledState = true } = {},
@@ -486,7 +481,7 @@ async function cleanupConnection(
     request,
     config.baseUrl,
     "GET",
-    `/api/companies/${companyId}/tools/connections`,
+    "/api/tools/connections",
     undefined,
     "F.cleanup-verification",
   );
@@ -499,7 +494,7 @@ async function cleanupConnection(
     request,
     config.baseUrl,
     "GET",
-    `/api/companies/${companyId}/tools/profiles`,
+    "/api/tools/profiles",
     undefined,
     "F.cleanup-verification",
   );
@@ -510,7 +505,7 @@ async function cleanupConnection(
     request,
     config.baseUrl,
     "GET",
-    `/api/companies/${companyId}/tools/action-requests?status=pending`,
+    "/api/tools/action-requests?status=pending",
     undefined,
     "F.cleanup-verification",
   );
@@ -542,7 +537,7 @@ async function runSmoke({ config, chromium }) {
     passed: false,
     startedAt: startedAt.toISOString(),
     completedAt: null,
-    target: { companyPrefix: TARGET_COMPANY_PREFIX, projectId: config.projectId },
+    target: { issuePrefix: TARGET_ISSUE_PREFIX, projectId: config.projectId },
     connection: null,
     catalog: null,
     boardTest: null,
@@ -556,7 +551,6 @@ async function runSmoke({ config, chromium }) {
   let context;
   let page;
   let connectionId = null;
-  let companyId = null;
   let cleanupComplete = false;
   let caughtFailure = null;
   let activeCheckpoint = "A.browser-launch";
@@ -606,18 +600,16 @@ async function runSmoke({ config, chromium }) {
       fail("A.paperclip-login", "login_redirect_missing");
     });
 
-    activeCheckpoint = "A.company-selection";
-    const companiesResponse = await apiJson(context.request, config.baseUrl, "GET", "/api/companies", undefined, "A.company-selection");
-    const company = asArray(companiesResponse, "companies").find((candidate) => candidate.issuePrefix === TARGET_COMPANY_PREFIX);
-    if (!company) fail("A.company-selection", "pap_company_missing");
-    companyId = company.id;
+    activeCheckpoint = "A.organization";
+    const organization = await apiJson(context.request, config.baseUrl, "GET", "/api/organization", undefined, "A.organization");
+    if (organization?.issuePrefix !== TARGET_ISSUE_PREFIX) fail("A.organization", "pap_organization_missing");
 
     activeCheckpoint = "C.agent-scope";
     const agentsResponse = await apiJson(
       context.request,
       config.baseUrl,
       "GET",
-      `/api/companies/${companyId}/agents`,
+      "/api/agents",
       undefined,
       "C.agent-scope",
     );
@@ -625,7 +617,7 @@ async function runSmoke({ config, chromium }) {
     if (!agent) fail("C.agent-scope", "codex_coder_pro_missing");
 
     activeCheckpoint = "A.setup-route";
-    await openPosthogSetupFromGallery(page, config, companyId);
+    await openPosthogSetupFromGallery(page, config);
     await expectVisible(page.getByRole("button", { name: "Use a personal API key" }), "A.setup-route", "api_key_method_missing");
 
     activeCheckpoint = "B.oauth-setup";
@@ -650,7 +642,7 @@ async function runSmoke({ config, chromium }) {
       (response) => {
         const target = new URL(response.url());
         return response.request().method() === "POST"
-          && target.pathname === `/api/companies/${companyId}/tools/apps/connect`;
+          && target.pathname === "/api/tools/apps/connect";
       },
       { timeout: 120_000 },
     );
@@ -667,14 +659,14 @@ async function runSmoke({ config, chromium }) {
     }
     connectionId = connectResult?.connectionId ?? await waitFor(
       "B.oauth-start",
-      () => findConnectionIdByName(context.request, config, companyId, connectionName),
+      () => findConnectionIdByName(context.request, config, connectionName),
       { timeoutMs: 15_000, intervalMs: 500 },
     );
     if (typeof connectionId !== "string" || !connectionId) fail("B.oauth-start", "connection_id_missing");
 
     activeCheckpoint = "B.oauth-callback";
     await completePosthogAuthorization(page, config);
-    const permissionsPath = `/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/permissions`;
+    const permissionsPath = `/apps/${connectionId}/permissions`;
     await gotoPaperclipPage(
       page,
       new URL(permissionsPath, config.baseUrl).toString(),
@@ -718,7 +710,7 @@ async function runSmoke({ config, chromium }) {
     );
     let catalog = asArray(catalogResponse, "catalog");
     let facts = catalogFacts(catalog, "C.catalog-policy");
-    await finishAgentOnlySetup(context.request, config, companyId, connectionId, catalog, agent.id);
+    await finishAgentOnlySetup(context.request, config, connectionId, catalog, agent.id);
 
     const health = await apiJson(
       context.request,
@@ -739,7 +731,7 @@ async function runSmoke({ config, chromium }) {
     );
     catalog = asArray(refreshed, "catalog");
     facts = catalogFacts(catalog, "C.catalog-refresh");
-    await finishAgentOnlySetup(context.request, config, companyId, connectionId, catalog, agent.id);
+    await finishAgentOnlySetup(context.request, config, connectionId, catalog, agent.id);
 
     connection = await apiJson(context.request, config.baseUrl, "GET", `/api/tool-connections/${connectionId}`, undefined, "C.connection-detail");
     safeConnectionConfig(connection, config.projectId);
@@ -754,7 +746,7 @@ async function runSmoke({ config, chromium }) {
       context.request,
       config.baseUrl,
       "GET",
-      `/api/companies/${companyId}/tools/connections`,
+      "/api/tools/connections",
       undefined,
       "C.connection-detail",
     );
@@ -803,7 +795,7 @@ async function runSmoke({ config, chromium }) {
     activeCheckpoint = "C.permissions-ui";
     await gotoPaperclipPage(
       page,
-      new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/permissions`, config.baseUrl).toString(),
+      new URL(`/apps/${connectionId}/permissions`, config.baseUrl).toString(),
       page.getByText("Who can use it", { exact: true }),
       "C.permissions-ui",
       "permissions_panel_missing",
@@ -822,7 +814,7 @@ async function runSmoke({ config, chromium }) {
     activeCheckpoint = "D.test-panel";
     await gotoPaperclipPage(
       page,
-      new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/test`, config.baseUrl).toString(),
+      new URL(`/apps/${connectionId}/test`, config.baseUrl).toString(),
       page.getByLabel("Choose which agent to test as"),
       "D.test-panel",
       "agent_picker_missing",
@@ -1011,7 +1003,7 @@ async function runSmoke({ config, chromium }) {
     activeCheckpoint = "F.evidence";
     await gotoPaperclipPage(
       page,
-      new URL(`/${TARGET_COMPANY_PREFIX}/issues/${child.identifier}`, config.baseUrl).toString(),
+      new URL(`/issues/${child.identifier}`, config.baseUrl).toString(),
       page.getByText(child.title, { exact: true }).first(),
       "F.child-screenshot",
       "child_issue_missing",
@@ -1022,7 +1014,7 @@ async function runSmoke({ config, chromium }) {
 
     await gotoPaperclipPage(
       page,
-      new URL(`/${TARGET_COMPANY_PREFIX}/apps/${connectionId}/activity`, config.baseUrl).toString(),
+      new URL(`/apps/${connectionId}/activity`, config.baseUrl).toString(),
       page.getByText(PROJECT_GET, { exact: false }).first(),
       "F.activity-screenshot",
       "project_get_activity_missing",
@@ -1032,7 +1024,7 @@ async function runSmoke({ config, chromium }) {
     summary.screenshots.push(activityShot);
 
     activeCheckpoint = "F.cleanup";
-    summary.cleanup = await cleanupConnection(context.request, config, companyId, connectionId, connectionName);
+    summary.cleanup = await cleanupConnection(context.request, config, connectionId, connectionName);
     cleanupComplete = true;
     summary.passed = true;
   } catch (error) {
@@ -1044,12 +1036,11 @@ async function runSmoke({ config, chromium }) {
       };
     }
   } finally {
-    if (!connectionId && companyId && context) {
+    if (!connectionId && context) {
       try {
         connectionId = await findConnectionIdByName(
           context.request,
           config,
-          companyId,
           connectionName,
         );
       } catch (error) {
@@ -1059,12 +1050,11 @@ async function runSmoke({ config, chromium }) {
         };
       }
     }
-    if (connectionId && companyId && context && !cleanupComplete) {
+    if (connectionId && context && !cleanupComplete) {
       try {
         summary.cleanup = await cleanupConnection(
           context.request,
           config,
-          companyId,
           connectionId,
           connectionName,
           { requireInstalledState: false },

@@ -56,11 +56,11 @@ export async function runContinuationFlow(input: {
   let issue: Row | undefined;
   let runs: Row[] = [];
   let checks: ReturnType<typeof gradeContinuation> = [];
-  const tasksPath = `/api/companies/${fixtures.company.id}/issues?limit=100`;
+  const tasksPath = "/api/issues?limit=100";
   async function refresh() {
     issue = await api.get<Row>(`/api/issues/${issue!.id}`);
     const listed = await api.get<Row[]>(
-      `/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`,
+      "/api/heartbeat-runs?limit=100",
     );
     runs = await Promise.all(
       listed.map((r) => api.get<Row>(`/api/heartbeat-runs/${r.id}`)),
@@ -115,7 +115,7 @@ export async function runContinuationFlow(input: {
   }
   async function open() {
     await page.goto(
-      `/${fixtures.company.issuePrefix}/issues/${issue!.identifier ?? issue!.id}`,
+      `/issues/${issue!.identifier ?? issue!.id}`,
       { waitUntil: "domcontentloaded" },
     );
   }
@@ -219,13 +219,12 @@ export async function runContinuationFlow(input: {
     expect(c.issue.status, "waiting is not complete").not.toBe("done");
   }
   try {
-    if (execution.profile.generation === "legacy") await prepareLegacyContinuationSkill(api, fixtures.company.id, fixtures.agent.id);
+    if (execution.profile.generation === "legacy") await prepareLegacyContinuationSkill(api, fixtures.agent.id);
     await api.patch("/api/instance/settings/experimental", {
       enableClassicTaskInterface: false,
     });
     await createTaskThroughUi({
       page,
-      issuePrefix: fixtures.company.issuePrefix!,
       agentName: fixtures.agent.name,
       title: execution.task.buildTitle(input.nonce),
       prompt: scenario.prompt,

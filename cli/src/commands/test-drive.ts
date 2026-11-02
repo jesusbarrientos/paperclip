@@ -318,25 +318,25 @@ export async function bootstrapTestDrive(input: {
   instanceId: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<TestDriveBootstrapResult> {
-  const organization = requiredApiResult(
-    await input.api.get<Company>("/api/organization"),
-    "reading the organization",
-  );
-  const agents = requiredApiResult(
-    await input.api.get<Agent[]>("/api/agents"),
-    "reading agents",
-  );
-  if (agents.length > 0) {
+  const existingOrganization = await input.api.get<Company>("/api/organization", { ignoreNotFound: true });
+  const agents = existingOrganization
+    ? requiredApiResult(await input.api.get<Agent[]>("/api/agents"), "reading agents")
+    : [];
+  if (existingOrganization && agents.length > 0) {
     if (input.linkedWorktree) {
       await reconcileTestDriveWorktreeExecution(input.api, input.instanceId);
     }
-    return { reused: true, organization, agent: null };
+    return { reused: true, organization: existingOrganization, agent: null };
   }
 
   // Resolve every bootstrap input before the first mutation. In particular,
   // OpenCode model validation and credential lookup happen before any write
   // so an invalid invocation leaves the database untouched.
   const resolved = resolveTestDriveBootstrap(input.options, input.env);
+  const organization = existingOrganization ?? requiredApiResult(
+    await input.api.post<Company>("/api/organization", { name: "Test Drive" }),
+    "creating the organization",
+  );
   await input.api.post("/api/user-secret-definitions", {
     key: resolved.credentialTarget,
     name: resolved.credentialName,

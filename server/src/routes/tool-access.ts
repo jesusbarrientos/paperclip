@@ -472,7 +472,7 @@ export function toolAccessRoutes(
       .from(organizations)
       .limit(1);
     if (!company) throw new Error("OAuth callback connection belongs to a missing company");
-    return `/${company.issuePrefix}/apps/${connectionId}/permissions`;
+    return `/apps/${connectionId}/permissions`;
   }
 
 function connectorEnrollmentPrincipal(req: Request): string {

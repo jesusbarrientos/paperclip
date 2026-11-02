@@ -4,7 +4,6 @@ import { startReviewProvider } from "../fixtures/connection-review-provider.js";
 /** Deterministic Arcade gateway; the real Paperclip transport, grants and agent are exercised. */
 export async function setupAggregatorFixture(
   api: RunnerApi,
-  companyId: string,
   agentId: string,
   marker: string,
 ) {
@@ -19,7 +18,7 @@ export async function setupAggregatorFixture(
   );
   try {
     const connected = await api.post<any>(
-      `/api/companies/${companyId}/tools/apps/connect`,
+      "/api/tools/apps/connect",
       {
         name: "Arcade fixture",
         link: provider.url,
@@ -37,7 +36,7 @@ export async function setupAggregatorFixture(
       config: { ...connection.config, sourceTemplateKey: "arcade" },
     });
     await api.post(
-      `/api/companies/${companyId}/tools/apps/${connected.connectionId}/finish`,
+      `/api/tools/apps/${connected.connectionId}/finish`,
       {
         enabledCatalogEntryIds: [
           ...connected.actions.readOnly,

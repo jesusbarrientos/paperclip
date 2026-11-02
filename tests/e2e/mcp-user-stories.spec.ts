@@ -2,10 +2,10 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { createServer, type Server } from "node:http";
 import { listenOnFetchAllowedPort } from "./fetch-allowed-port";
 import { storyById } from "./mcp-user-stories.catalog";
+import { ensureOrganization } from "./helpers/organization";
 
 const SCREENSHOT_DIR = "test-results/mcp-user-stories";
 
-type Seed = { companyId: string; prefix: string };
 type Scout = { id: string; name: string };
 type Json = Record<string, unknown>;
 type MockMcpServer = {
@@ -20,16 +20,9 @@ async function json<T = Json>(response: Awaited<ReturnType<APIRequestContext["ge
   return await response.json() as T;
 }
 
-async function newCompany(request: APIRequestContext, label: string): Promise<Seed> {
-  const body = await json<{ id: string; issuePrefix?: string; prefix?: string; urlKey?: string }>(
-    await request.post("/api/companies", { data: { name: `MCP US ${label} ${Date.now()}` } }),
-  );
-  return { companyId: body.id, prefix: body.issuePrefix ?? body.prefix ?? body.urlKey ?? "E2E" };
-}
-
-async function createScout(request: APIRequestContext, companyId: string): Promise<Scout> {
+async function createScout(request: APIRequestContext): Promise<Scout> {
   const body = await json<{ id: string; name: string }>(
-    await request.post(`/api/companies/${companyId}/agents`, {
+    await request.post("/api/agents", {
       data: {
         name: `Scout ${Date.now()}`,
         role: "qa",
@@ -203,27 +196,27 @@ async function screenshot(page: Page, storyId: string, step: string) {
 }
 
 async function seedConnectedFixture(request: APIRequestContext, label: string) {
-  const seed = await newCompany(request, label);
-  const scout = await createScout(request, seed.companyId);
+  await ensureOrganization(request);
+  const scout = await createScout(request);
   const mock = await startMockMcp();
   const connect = await json<{
     connectionId: string;
     catalog: Array<{ id: string; toolName: string; riskLevel?: string | null }>;
-  }>(await request.post(`/api/companies/${seed.companyId}/tools/apps/connect`, {
-    data: { link: mock.url, name: `Sheets Fixture ${label}` },
+  }>(await request.post("/api/tools/apps/connect", {
+    data: { link: mock.url, name: `Sheets Fixture ${label} ${Date.now()}` },
   }));
   const enabled = connect.catalog.map((entry) => entry.id);
   const askFirst = connect.catalog
     .filter((entry) => /update|delete|create|send|write/i.test(entry.toolName) || entry.riskLevel === "write" || entry.riskLevel === "destructive")
     .map((entry) => entry.id);
-  await json(await request.post(`/api/companies/${seed.companyId}/tools/apps/${connect.connectionId}/finish`, {
+  await json(await request.post(`/api/tools/apps/${connect.connectionId}/finish`, {
     data: {
       enabledCatalogEntryIds: enabled,
       askFirstCatalogEntryIds: askFirst,
       access: { agentIds: [scout.id] },
     },
   }));
-  return { seed, scout, mock, connectionId: connect.connectionId };
+  return { scout, mock, connectionId: connect.connectionId };
 }
 
 async function testCall(
@@ -244,16 +237,12 @@ async function testCall(
   }));
 }
 
-async function approveActionRequest(request: APIRequestContext, companyId: string, actionRequestId: string) {
-  return await json(await request.post(`/api/tool-gateway/action-requests/${actionRequestId}/approve`, {
-    data: { companyId },
-  }));
+async function approveActionRequest(request: APIRequestContext, actionRequestId: string) {
+  return await json(await request.post(`/api/tool-gateway/action-requests/${actionRequestId}/approve`));
 }
 
-async function declineActionRequest(request: APIRequestContext, companyId: string, actionRequestId: string) {
-  return await json(await request.post(`/api/tool-gateway/action-requests/${actionRequestId}/decline`, {
-    data: { companyId },
-  }));
+async function declineActionRequest(request: APIRequestContext, actionRequestId: string) {
+  return await json(await request.post(`/api/tool-gateway/action-requests/${actionRequestId}/decline`));
 }
 
 async function pollTestCall(
@@ -274,12 +263,11 @@ async function pollTestCall(
 
 async function expectAuditEvent(
   request: APIRequestContext,
-  companyId: string,
   options: { connectionId: string; agentId: string; search: string },
 ) {
   const audit = await json<{ events: Array<Json> }>(
     await request.get(
-      `/api/tool-gateway/audit?companyId=${companyId}&app=${options.connectionId}&agent=${options.agentId}&search=${encodeURIComponent(options.search)}&limit=50`,
+      `/api/tool-gateway/audit?app=${options.connectionId}&agent=${options.agentId}&search=${encodeURIComponent(options.search)}&limit=50`,
     ),
   );
   expect(audit.events.length, `expected audit/activity row matching ${options.search}`).toBeGreaterThan(0);
@@ -289,7 +277,7 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   test.setTimeout(180_000);
 
   test(`${storyById("US-1").id} ${storyById("US-1").title} @mcp-runnable @mcp-us1`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us1");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us1");
     try {
       await setScoutScript(request, scout, buildGatewayCallScript(connectionId, "sheets:list_rows"));
       const invoked = await invokeHeartbeat(request, scout.id);
@@ -302,12 +290,12 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
         [run.error ?? `heartbeat run ${run.id} did not succeed`, failedLog?.content].filter(Boolean).join("\n"),
       ).toBe("succeeded");
       expect(mock.captures.some((capture) => capture.method === "tools/call" && capture.toolName === "sheets:list_rows")).toBe(true);
-      await expectAuditEvent(request, seed.companyId, { connectionId, agentId: scout.id, search: "sheets:list_rows" });
+      await expectAuditEvent(request, { connectionId, agentId: scout.id, search: "sheets:list_rows" });
 
-      await page.goto(`/${seed.prefix}/apps/${connectionId}`);
+      await page.goto(`/apps/${connectionId}`);
       await expect(page.getByRole("heading", { name: /Sheets Fixture us1/i })).toBeVisible({ timeout: 30_000 });
       await screenshot(page, "US-1", "01-connected-app");
-      await page.goto(`/${seed.prefix}/activity?action=tool_`);
+      await page.goto(`/activity?action=tool_`);
       await screenshot(page, "US-1", "02-activity");
     } finally {
       await mock.close();
@@ -315,35 +303,35 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-2").id} ${storyById("US-2").title} @mcp-runnable @mcp-us2`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us2");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us2");
     try {
       const pending = await testCall(request, connectionId, scout, "sheets:update_cell", { cell: "A1", value: "approved" });
       expect(pending.decision).toBe("ask_first");
       expect(pending.actionRequestId).toBeTruthy();
 
-      await page.goto(`/${seed.prefix}/apps/${connectionId}/review`);
+      await page.goto(`/apps/${connectionId}/review`);
       await expect(page.getByRole("heading", { name: "Waiting for your OK" })).toBeVisible({ timeout: 30_000 });
       await screenshot(page, "US-2", "01-review-pending");
 
       await page.getByRole("button", { name: "Allow once", exact: true }).click();
       await pollTestCall(request, connectionId, pending.actionRequestId!, "done");
       expect(mock.captures.filter((capture) => capture.method === "tools/call" && capture.toolName === "sheets:update_cell")).toHaveLength(1);
-      await expectAuditEvent(request, seed.companyId, { connectionId, agentId: scout.id, search: "sheets:update_cell" });
+      await expectAuditEvent(request, { connectionId, agentId: scout.id, search: "sheets:update_cell" });
     } finally {
       await mock.close();
     }
   });
 
   test(`${storyById("US-3").id} ${storyById("US-3").title} @mcp-runnable @mcp-us3`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us3");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us3");
     try {
       const pending = await testCall(request, connectionId, scout, "sheets:update_cell", { cell: "A2", value: "denied" });
       expect(pending.actionRequestId).toBeTruthy();
-      await declineActionRequest(request, seed.companyId, pending.actionRequestId!);
+      await declineActionRequest(request, pending.actionRequestId!);
       await pollTestCall(request, connectionId, pending.actionRequestId!, "denied");
       expect(mock.captures.some((capture) => capture.method === "tools/call" && capture.toolName === "sheets:update_cell")).toBe(false);
 
-      await page.goto(`/${seed.prefix}/apps/${connectionId}/review`);
+      await page.goto(`/apps/${connectionId}/review`);
       await screenshot(page, "US-3", "01-review-denied");
     } finally {
       await mock.close();
@@ -351,9 +339,9 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-4").id} ${storyById("US-4").title} @mcp-runnable @mcp-us4`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us4");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us4");
     try {
-      const block = await json<{ id: string }>(await request.post(`/api/companies/${seed.companyId}/tools/policies`, {
+      const block = await json<{ id: string }>(await request.post(`/api/tools/policies`, {
         data: {
           name: "US-4 block fixture connection",
           policyType: "block",
@@ -365,14 +353,14 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
       expect(denied.decision).toBe("off");
       expect(denied.error?.reasonCode).toBeTruthy();
 
-      await json(await request.patch(`/api/companies/${seed.companyId}/tools/policies/${block.id}`, {
+      await json(await request.patch(`/api/tools/policies/${block.id}`, {
         data: { enabled: false },
       }));
       const allowed = await testCall(request, connectionId, scout, "sheets:list_rows");
       expect(allowed.decision).toBe("allowed");
-      await expectAuditEvent(request, seed.companyId, { connectionId, agentId: scout.id, search: "sheets:list_rows" });
+      await expectAuditEvent(request, { connectionId, agentId: scout.id, search: "sheets:list_rows" });
 
-      await page.goto(`/${seed.prefix}/apps/advanced/policies`);
+      await page.goto(`/apps/advanced/policies`);
       await screenshot(page, "US-4", "01-policy-flip");
     } finally {
       await mock.close();
@@ -380,7 +368,7 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-5").id} ${storyById("US-5").title} @mcp-runnable @mcp-us5`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us5");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us5");
     try {
       const catalog = await json<{ catalog: Array<{ toolName: string }> }>(
         await request.get(`/api/tool-connections/${connectionId}/catalog`),
@@ -392,7 +380,7 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
       const read = await testCall(request, connectionId, scout, "sheets:list_rows");
       expect(read.decision).toBe("allowed");
 
-      await page.goto(`/${seed.prefix}/apps/connect`);
+      await page.goto(`/apps/connect`);
       await screenshot(page, "US-5", "01-connect-your-own-entry");
     } finally {
       await mock.close();
@@ -408,12 +396,12 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-8").id} ${storyById("US-8").title} @mcp-runnable @mcp-us8`, async ({ page, request }) => {
-    const { seed, mock, connectionId } = await seedConnectedFixture(request, "us8");
+    const { mock, connectionId } = await seedConnectedFixture(request, "us8");
     await mock.close();
 
     const health = await request.post(`/api/tool-connections/${connectionId}/health-check`);
     expect(health.status()).toBe(502);
-    await page.goto(`/${seed.prefix}/apps/connections`);
+    await page.goto(`/apps/connections`);
     await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible({ timeout: 30_000 });
     await screenshot(page, "US-8", "01-needs-attention");
 
@@ -427,7 +415,7 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
       }));
       const after = await json<{ healthStatus: string }>(await request.get(`/api/tool-connections/${connectionId}`));
       expect(after.healthStatus).toBe("ok");
-      await page.goto(`/${seed.prefix}/apps/${connectionId}`);
+      await page.goto(`/apps/${connectionId}`);
       await screenshot(page, "US-8", "02-recovered");
     } finally {
       await recovered.close();
@@ -435,14 +423,14 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-9").id} ${storyById("US-9").title} @mcp-runnable @mcp-us9`, async ({ page, request }) => {
-    const { seed, scout, mock, connectionId } = await seedConnectedFixture(request, "us9");
+    const { scout, mock, connectionId } = await seedConnectedFixture(request, "us9");
     try {
       for (const value of ["first", "second"]) {
         const pending = await testCall(request, connectionId, scout, "sheets:update_cell", { cell: "B1", value });
         expect(pending.decision).toBe("ask_first");
-        await page.goto(`/${seed.prefix}/apps/${connectionId}/review`);
+        await page.goto(`/apps/${connectionId}/review`);
         await screenshot(page, "US-9", `review-${value}`);
-        await approveActionRequest(request, seed.companyId, pending.actionRequestId!);
+        await approveActionRequest(request, pending.actionRequestId!);
         await pollTestCall(request, connectionId, pending.actionRequestId!, "done");
       }
       expect(mock.captures.filter((capture) => capture.method === "tools/call" && capture.toolName === "sheets:update_cell")).toHaveLength(2);
@@ -452,13 +440,13 @@ test.describe.serial("MCP prod Phase 5a user-story harness", () => {
   });
 
   test(`${storyById("US-10").id} ${storyById("US-10").title} @mcp-runnable @mcp-us10`, async ({ page, request }) => {
-    const { seed, mock, connectionId } = await seedConnectedFixture(request, "us10");
+    const { mock, connectionId } = await seedConnectedFixture(request, "us10");
     try {
-      await page.goto(`/${seed.prefix}/apps/${connectionId}`);
+      await page.goto(`/apps/${connectionId}`);
       await expect(page.getByRole("heading", { name: /Sheets Fixture us10/i })).toBeVisible({ timeout: 30_000 });
       await screenshot(page, "US-10", "01-apps-detail");
 
-      await page.goto(`/${seed.prefix}/apps/advanced`);
+      await page.goto(`/apps/advanced`);
       await expect(page.getByRole("heading", { name: "Advanced setup" })).toBeVisible({ timeout: 20_000 });
       await screenshot(page, "US-10", "02-admin-depth");
     } finally {

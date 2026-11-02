@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 import { expectTaskPanelTab } from "./helpers/task-panel-tabs";
 
 async function json(response: Awaited<ReturnType<APIRequestContext["get"]>>) {
@@ -12,14 +12,12 @@ async function json(response: Awaited<ReturnType<APIRequestContext["get"]>>) {
 for (const mobile of [false, true]) {
   test(`artifact arrival preserves a closed panel and composer focus (mobile=${mobile})`, async ({ page, request }, testInfo) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
-    const company = await json(await request.post("/api/companies", {
-      data: { name: `Passive artifacts ${randomUUID()}` },
-    }));
-    const issue = await json(await request.post(`/api/companies/${company.id}/issues`, {
-      data: { title: "Keep reading while an artifact arrives", status: "backlog" },
+    await ensureOrganization(request);
+    const issue = await json(await request.post(`/api/issues`, {
+      data: { title: "Keep reading while an artifact arrives", status: "backlog", allowDuplicate: true },
     }));
     await page.addInitScript(() => localStorage.setItem("paperclip:panel-visible", "false"));
-    await page.goto(`/${company.issuePrefix}/issues/${issue.identifier}?from=inbox&fromHref=%2Finbox%2Fmine`);
+    await page.goto(`/issues/${issue.identifier}?from=inbox&fromHref=%2Finbox%2Fmine`);
     await expect(page.getByRole("heading", { name: issue.title, exact: true })).toBeVisible();
     const editor = page.getByTestId("task-chat-composer-input").getByRole("textbox", { name: "editable markdown" });
     await editor.fill("Keep my draft and focus");

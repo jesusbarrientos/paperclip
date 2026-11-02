@@ -6,10 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 const baseUrl = (process.env.PAPERCLIP_PERF_BASE_URL || "http://localhost:3100").replace(/\/$/, "");
-const companyPrefix = process.env.PAPERCLIP_PERF_COMPANY_PREFIX;
-const url = companyPrefix
-  ? `${baseUrl}/${companyPrefix}/tests/perf/long-thread`
-  : `${baseUrl}/tests/perf/long-thread`;
+const url = `${baseUrl}/tests/perf/long-thread`;
 const origin = new URL(url).origin;
 
 function loadBoardToken() {

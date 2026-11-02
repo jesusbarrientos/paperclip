@@ -7,8 +7,6 @@ import { startReviewProvider } from "../fixtures/connection-review-provider.js";
 export async function setupConnectionReview(input: {
   page: Page;
   api: RunnerApi;
-  prefix: string;
-  companyId: string;
   agentId: string;
   marker: string;
   authenticated?: boolean;
@@ -24,7 +22,7 @@ export async function setupConnectionReview(input: {
       // Setup through the public API avoids putting this fixture credential in
       // browser traces or the agent's environment. Approval remains a UI action.
       const connected = await api.postSensitive<any>(
-        `/api/companies/${input.companyId}/tools/apps/connect`,
+        "/api/tools/apps/connect",
         {
           link: provider.url,
           name: "Studio Page Service",
@@ -38,7 +36,7 @@ export async function setupConnectionReview(input: {
         ...connected.actions.canMakeChanges,
       ].map((a: any) => a.catalogEntryId);
       await api.post(
-        `/api/companies/${input.companyId}/tools/apps/${connected.connectionId}/finish`,
+        `/api/tools/apps/${connected.connectionId}/finish`,
         {
           enabledCatalogEntryIds: ids,
           askFirstCatalogEntryIds: ids,
@@ -47,7 +45,7 @@ export async function setupConnectionReview(input: {
       );
       connection = { id: connected.connectionId };
     } else {
-      await page.goto(`/${input.prefix}/apps`, { waitUntil: "domcontentloaded" });
+      await page.goto("/apps", { waitUntil: "domcontentloaded" });
       const connector = page
         .getByRole("list", { name: "Connector list" })
         .getByRole("listitem")
@@ -70,7 +68,7 @@ export async function setupConnectionReview(input: {
       const {
         connections: [createdConnection],
       } = await api.get<{ connections: Array<{ id: string }> }>(
-        `/api/companies/${input.companyId}/tools/connections`,
+        "/api/tools/connections",
       );
       connection = createdConnection!;
     }
@@ -81,7 +79,7 @@ export async function setupConnectionReview(input: {
       },
     );
     expect(installed.ok()).toBe(true);
-    await page.goto(`/${input.prefix}/apps/${connection.id}/permissions`, {
+    await page.goto(`/apps/${connection.id}/permissions`, {
       waitUntil: "domcontentloaded",
     });
     const askFirst = page.getByRole("radio", {

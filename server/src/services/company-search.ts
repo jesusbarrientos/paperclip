@@ -179,7 +179,7 @@ function routePrefix(issuePrefix: string | null | undefined) {
 }
 
 function issueHref(prefix: string, issue: { id: string; identifier: string | null }, suffix = "") {
-  return `/${prefix}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}${suffix}`;
+  return `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}${suffix}`;
 }
 
 function matchTerms(normalizedQuery: string, tokens: string[]) {
@@ -1038,7 +1038,7 @@ export function companySearchService(db: Db) {
             type: "agent" as const,
             score: scoreSimpleRow(row, normalizedQuery, tokens),
             title: row.title,
-            href: `/${prefix}/agents/${encodeURIComponent(row.id)}`,
+            href: `/agents/${encodeURIComponent(row.id)}`,
             matchedFields: ["agent"],
             sourceLabel: snippet?.label ?? null,
             snippet: snippet?.text ?? null,
@@ -1057,7 +1057,7 @@ export function companySearchService(db: Db) {
             type: "project" as const,
             score: scoreSimpleRow(row, normalizedQuery, tokens),
             title: row.title,
-            href: `/${prefix}/projects/${encodeURIComponent(row.id)}`,
+            href: `/projects/${encodeURIComponent(row.id)}`,
             matchedFields: ["project"],
             sourceLabel: snippet?.label ?? null,
             snippet: snippet?.text ?? null,

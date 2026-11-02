@@ -16,13 +16,13 @@ type HumanUser = {
   password: string;
 };
 
-type CompanySummary = {
+type OrganizationSummary = {
   id: string;
   name: string;
   issuePrefix?: string | null;
 };
 
-type CompanyMember = {
+type OrganizationMember = {
   id: string;
   membershipRole: "owner" | "admin" | "operator" | "viewer";
   status: "pending" | "active" | "suspended";
@@ -37,7 +37,7 @@ type SessionJsonResponse<T> = {
 };
 
 const runId = Date.now();
-const companyName = `MU-Auth-${runId}`;
+const organizationName = `MU-Auth-${runId}`;
 const ownerUser: HumanUser = {
   name: "Owner User",
   email: `owner-${runId}@paperclip.local`,
@@ -110,24 +110,31 @@ async function acceptBootstrapInvite(page: Page, inviteUrl: string) {
   await page.getByRole("link", { name: "Open board" }).click();
 }
 
-async function createCompanyForSession(page: Page, nextCompanyName: string) {
-  const createRes = await sessionJsonRequest<CompanySummary>(page, `${BASE}/api/companies`, {
+async function ensureOrganizationForSession(page: Page, name: string) {
+  const existing = await sessionJsonRequest<OrganizationSummary>(page, `${BASE}/api/organization`);
+  if (existing.ok) return existing.json!;
+  expect(existing.status).toBe(404);
+  const createRes = await sessionJsonRequest<OrganizationSummary>(page, `${BASE}/api/organization`, {
     method: "POST",
-    data: { name: nextCompanyName },
+    data: { name },
   });
+  if (createRes.status === 409) {
+    const reread = await sessionJsonRequest<OrganizationSummary>(page, `${BASE}/api/organization`);
+    expect(reread.ok).toBe(true);
+    return reread.json!;
+  }
   expect(createRes.ok).toBe(true);
   expect(createRes.json).toBeTruthy();
   return createRes.json!;
 }
 
-async function createAuthenticatedInvite(page: Page, companyPrefix: string) {
-  await page.goto(`${BASE}/${companyPrefix}/company/settings`);
-  await expect(page.getByTestId("company-settings-invites-section")).toBeVisible({
-    timeout: 20_000,
-  });
-  await page.getByTestId("company-settings-human-invite-role").selectOption("operator");
-  await page.getByTestId("company-settings-create-human-invite").click();
-  const inviteField = page.getByTestId("company-settings-human-invite-url");
+async function createAuthenticatedInvite(page: Page) {
+  await page.goto(`${BASE}/organization/settings/members?tab=invites`);
+  const createButton = page.getByRole("button", { name: "Create invite" });
+  await expect(createButton).toBeVisible({ timeout: 20_000 });
+  await page.locator('input[name="invite-role"][value="operator"]').check();
+  await createButton.click();
+  const inviteField = page.getByLabel("Latest invite URL");
   await expect(inviteField).toBeVisible({ timeout: 20_000 });
   return (await inviteField.inputValue()).trim();
 }
@@ -147,9 +154,9 @@ async function signUpFromInvite(page: Page, inviteUrl: string, user: HumanUser) 
 }
 
 async function acceptHumanInvite(page: Page) {
-  await expect(page.getByRole("button", { name: "Join company" })).toBeEnabled();
-  await page.getByRole("button", { name: "Join company" }).click();
-  await expect(page.getByRole("heading", { name: "You joined the company" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Accept invite" })).toBeEnabled();
+  await page.getByRole("button", { name: "Accept invite" }).click();
+  await expect(page.getByRole("heading", { name: "You joined the organization" })).toBeVisible({
     timeout: 20_000,
   });
   await page.getByRole("link", { name: "Open board" }).click();
@@ -195,14 +202,14 @@ async function sessionJsonRequest<T>(
   ) as Promise<SessionJsonResponse<T>>;
 }
 
-async function waitForMember(page: Page, companyId: string, email: string) {
-  let member: CompanyMember | null = null;
+async function waitForMember(page: Page, email: string) {
+  let member: OrganizationMember | null = null;
   await expect
     .poll(
       async () => {
-        const membersRes = await sessionJsonRequest<{ members: CompanyMember[] }>(
+        const membersRes = await sessionJsonRequest<{ members: OrganizationMember[] }>(
           page,
-          `${BASE}/api/companies/${companyId}/members`
+          `${BASE}/api/members`
         );
         expect(membersRes.ok).toBe(true);
         const body = membersRes.json;
@@ -225,16 +232,15 @@ async function waitForMember(page: Page, companyId: string, email: string) {
 
 async function waitForMemberRole(
   page: Page,
-  companyId: string,
   memberId: string,
-  membershipRole: CompanyMember["membershipRole"]
+  membershipRole: OrganizationMember["membershipRole"]
 ) {
   await expect
     .poll(
       async () => {
-        const membersRes = await sessionJsonRequest<{ members: CompanyMember[] }>(
+        const membersRes = await sessionJsonRequest<{ members: OrganizationMember[] }>(
           page,
-          `${BASE}/api/companies/${companyId}/members`
+          `${BASE}/api/members`
         );
         expect(membersRes.ok).toBe(true);
         const body = membersRes.json;
@@ -276,13 +282,12 @@ test.describe("Multi-user: authenticated mode", () => {
     await signUp(page, ownerUser);
     await acceptBootstrapInvite(page, createBootstrapInvite());
 
-    const company = await createCompanyForSession(page, companyName);
-    const companyPrefix = company.issuePrefix ?? company.id;
-    await page.goto(`${BASE}/${companyPrefix}/dashboard`);
+    await ensureOrganizationForSession(page, organizationName);
+    await page.goto(`${BASE}/dashboard`);
     await expect(page.getByTestId("layout-account-menu-trigger")).toContainText(ownerUser.name);
     await page.getByTestId("layout-account-menu-trigger").click();
     await expect(page.getByText(ownerUser.email)).toBeVisible();
-    const inviteUrl = await createAuthenticatedInvite(page, companyPrefix);
+    const inviteUrl = await createAuthenticatedInvite(page);
 
     const invited = await newPage(browser);
     try {
@@ -290,26 +295,18 @@ test.describe("Multi-user: authenticated mode", () => {
       await acceptHumanInvite(invited.page);
       await expect(invited.page).not.toHaveURL(/\/auth/, { timeout: 10_000 });
 
-      const joinedMember = await waitForMember(page, company.id, invitedUser.email);
+      const joinedMember = await waitForMember(page, invitedUser.email);
 
-      await page.goto(`${BASE}/${companyPrefix}/company/settings`);
-      const roleSelect = page.getByTestId(`company-settings-member-role-${joinedMember.id}`);
-      await expect(roleSelect).toBeVisible({ timeout: 20_000 });
-      await roleSelect.selectOption("viewer");
-      await expect(roleSelect).toHaveValue("viewer");
-      await waitForMemberRole(page, company.id, joinedMember.id, "viewer");
-
-      await invited.page.goto(`${BASE}/${companyPrefix}/company/settings`);
-      await expect(
-        invited.page.getByText("Your current company role cannot create human invites.")
-      ).toBeVisible({ timeout: 20_000 });
-      await expect(
-        invited.page.getByTestId("company-settings-create-human-invite")
-      ).toHaveCount(0);
+      const demoteRes = await sessionJsonRequest(page, `${BASE}/api/members/${joinedMember.id}`, {
+        method: "PATCH",
+        data: { membershipRole: "viewer" },
+      });
+      expect(demoteRes.ok).toBe(true);
+      await waitForMemberRole(page, joinedMember.id, "viewer");
 
       const forbiddenInviteRes = await sessionJsonRequest(
         invited.page,
-        `${BASE}/api/companies/${company.id}/invites`,
+        `${BASE}/api/invites`,
         {
           method: "POST",
           data: {
@@ -326,15 +323,14 @@ test.describe("Multi-user: authenticated mode", () => {
 });
 
 
-test("agent chats keep personal identity and ordinary company visibility", async ({ browser, page }) => {
+test("agent chats keep personal identity and ordinary organization visibility", async ({ browser, page }) => {
   test.setTimeout(120_000);
   expect((await (await page.request.get(`${BASE}/api/health`)).json()).deploymentMode).toBe("authenticated");
   await signUp(page, { ...ownerUser, email: `chat-${ownerUser.email}` });
   const bootstrapToken = new URL(createBootstrapInvite()).pathname.split("/").at(-1);
   expect((await sessionJsonRequest(page, `${BASE}/api/invites/${bootstrapToken}/accept`, { method: "POST", data: { requestType: "human" } })).ok).toBe(true);
-  const company = await createCompanyForSession(page, `Chat identity ${runId}`);
-  const companyPrefix = company.issuePrefix ?? company.id;
-  const invite = await sessionJsonRequest<{ inviteUrl: string }>(page, `${BASE}/api/companies/${company.id}/invites`, { method: "POST", data: { allowedJoinTypes: "human", humanRole: "operator" } });
+  await ensureOrganizationForSession(page, `Chat identity ${runId}`);
+  const invite = await sessionJsonRequest<{ inviteUrl: string }>(page, `${BASE}/api/invites`, { method: "POST", data: { allowedJoinTypes: "human", humanRole: "operator" } });
   expect(invite.ok).toBe(true);
   const invited = await newPage(browser);
   try {
@@ -347,16 +343,16 @@ test("agent chats keep personal identity and ordinary company visibility", async
       const enable = await sessionJsonRequest(page, `${BASE}/api/instance/settings/experimental`, { method: "PATCH", data: { enableAgentChat: true } });
       expect(enable.ok).toBe(true);
       try {
-        const createdAgent = await sessionJsonRequest<{ id: string }>(page, `${BASE}/api/companies/${company.id}/agents`, { method: "POST", data: {
+        const createdAgent = await sessionJsonRequest<{ id: string }>(page, `${BASE}/api/agents`, { method: "POST", data: {
           name: "Personal chat identity", adapterType: "process",
           adapterConfig: { command: process.execPath, args: ["-e", "process.exit(0)"] },
           runtimeConfig: { heartbeat: { enabled: false } },
         } });
         expect(createdAgent.ok).toBe(true);
         const agentId = createdAgent.json!.id;
-        const chatEndpoint = `${BASE}/api/companies/${company.id}/chats/${agentId}`;
-        await page.goto(`${BASE}/${companyPrefix}/chats/${agentId}`);
-        await invited.page.goto(`${BASE}/${companyPrefix}/chats/${agentId}`);
+        const chatEndpoint = `${BASE}/api/chats/${agentId}`;
+        await page.goto(`${BASE}/chats/${agentId}`);
+        await invited.page.goto(`${BASE}/chats/${agentId}`);
         expect((await sessionJsonRequest(page, chatEndpoint)).json).toBeNull();
         expect((await sessionJsonRequest(invited.page, chatEndpoint)).json).toBeNull();
         const ownerChat = await sessionJsonRequest<{ id: string; conversationUserId: string }>(page, chatEndpoint, { method: "POST", data: {} });
@@ -374,9 +370,6 @@ test("agent chats keep personal identity and ordinary company visibility", async
         const memberRecent = await invited.page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith("paperclip.recentAgentChats:")));
         expect(ownerRecent.some(key => key.endsWith(ownerChat.json!.conversationUserId))).toBe(true);
         expect(memberRecent.some(key => key.endsWith(memberChat.json!.conversationUserId))).toBe(true);
-        const another = await createCompanyForSession(page, `Private company ${runId}`);
-        const forbidden = await sessionJsonRequest(invited.page, `${BASE}/api/companies/${another.id}/chats/${agentId}`);
-        expect([403, 404]).toContain(forbidden.status);
       } finally {
         const restore = await sessionJsonRequest(page, `${BASE}/api/instance/settings/experimental`, { method: "PATCH", data: { enableAgentChat: originalFlags.json!.enableAgentChat } });
         expect(restore.ok).toBe(true);

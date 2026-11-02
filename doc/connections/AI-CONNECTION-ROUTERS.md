@@ -119,7 +119,7 @@ with two saved, authorized AI accounts. Run:
 ```sh
 PAPERCLIP_CONNECTION_POOL_E2E=1 \
 AI_CONNECTIONS_TEST_URL=http://127.0.0.1:3100 \
-AI_CONNECTIONS_TEST_COMPANY_ID=<test-company-id> \
+AI_CONNECTIONS_TEST_DRIVE=1 \
 pnpm exec playwright test --config tests/ai-connections-app/playwright.config.ts connection-pools.spec.ts
 ```
 

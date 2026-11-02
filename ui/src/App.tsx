@@ -468,7 +468,7 @@ function boardRoutes(streamlinedUiEnabled: boolean, combinedInboxTasksEnabled: b
       <Route path="u/:userSlug" element={<UserProfile />} />
       <Route path="design-guide" element={<DesignGuide />} />
       <Route path="instance/settings/adapters" element={<AdapterManager />} />
-      <Route path=":pluginRoutePath/*" element={<PluginPage />} />
+      <Route path=":pluginRoutePath/*" element={<PluginOrLegacyPrefixRoute />} />
       <Route path="*" element={<NotFoundPage />} />
     </>
   );
@@ -525,6 +525,21 @@ function LegacySettingsRedirect() {
     hiddenSettings,
   );
   return <Navigate to={normalizedPath} replace />;
+}
+
+// Comments and documents written before the company prefix was removed still
+// link to `/<ISSUE-PREFIX>/issues/...`; strip the prefix instead of treating it
+// as a plugin route.
+function PluginOrLegacyPrefixRoute() {
+  const { pluginRoutePath } = useParams<{ pluginRoutePath: string }>();
+  const { organization } = useOrganization();
+  const location = useLocation();
+  const prefix = organization?.issuePrefix;
+  if (prefix && pluginRoutePath?.toUpperCase() === prefix.toUpperCase()) {
+    const rest = location.pathname.slice(pluginRoutePath.length + 1) || "/";
+    return <Navigate to={`${rest}${location.search}${location.hash}`} replace />;
+  }
+  return <PluginPage />;
 }
 
 function LegacyCompanyPathRedirect() {

@@ -77,7 +77,6 @@ import { assertRunnerE2EPrerequisites } from "./prerequisites.js";
 interface IssueRecord {
   id: string;
   identifier?: string | null;
-  companyId: string;
   title: string;
   status: string;
   workMode?: string;
@@ -103,7 +102,6 @@ interface CommentRecord {
 
 interface RunRecord {
   id: string;
-  companyId: string;
   agentId: string;
   status: string;
   runtimeMode?: string;
@@ -574,7 +572,7 @@ for (const execution of executions) {
     const credentials = credentialValues();
     const secrets = normalizedSecrets(Object.values(credentials));
     const api = new RunnerApi(request);
-    const companyRunFlow = execution.suite.id === "task-titles" || ["plan_task_guidance", "blocker_guidance", "continuation_accounting", "continuation", "context_integrity", "agent_chat", "everyday_workflow", "first_task", "instruction_persistence", "public_mcp"].includes(execution.task.flow);
+    const instanceRunFlow = execution.suite.id === "task-titles" || ["plan_task_guidance", "blocker_guidance", "continuation_accounting", "continuation", "context_integrity", "agent_chat", "everyday_workflow", "first_task", "instruction_persistence", "public_mcp"].includes(execution.task.flow);
     const publicMcpUsage = execution.task.flow === "public_mcp" ? assistantUsage(execution.profile.provider === "claude" ? "anthropic" : "openai", execution.profile.model) : undefined;
     let publicMcpUserId = "";
     const consoleDiagnostics: Array<Record<string, unknown>> = [];
@@ -635,7 +633,6 @@ for (const execution of executions) {
     const isReviewedFixtureScreenshotRoute = () =>
       isPublicRunnerScreenshotRoute(page.url(), {
         chatAgentId: execution.task.flow === "agent_chat" ? fixtures?.agent.id : undefined,
-        issuePrefix: fixtures?.company.issuePrefix,
         issueId: issue?.id,
         issueIdentifier: issue?.identifier,
       });
@@ -680,10 +677,10 @@ for (const execution of executions) {
     };
 
     const cancelActiveRunsForCleanup = async () => {
-      if (!issue && !(companyRunFlow && fixtures)) return;
+      if (!issue && !(instanceRunFlow && fixtures)) return;
       const cleanupIssueId = issue?.id;
       const runs = await api.get<RunRecord[]>(
-        companyRunFlow && fixtures ? `/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100` : `/api/issues/${cleanupIssueId}/runs`,
+        instanceRunFlow && fixtures ? "/api/heartbeat-runs?limit=100" : `/api/issues/${cleanupIssueId}/runs`,
       );
       const activeRunIds = [
         ...new Set(
@@ -704,7 +701,7 @@ for (const execution of executions) {
       await pollUntil({
         label: `cleanup cancellation for issue ${cleanupIssueId}`,
         deadlineAt: Date.now() + 45_000,
-        load: () => api.get<RunRecord[]>(companyRunFlow && fixtures ? `/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100` : `/api/issues/${cleanupIssueId}/runs`),
+        load: () => api.get<RunRecord[]>(instanceRunFlow && fixtures ? "/api/heartbeat-runs?limit=100" : `/api/issues/${cleanupIssueId}/runs`),
         accept: (currentRuns) =>
           currentRuns
             .filter((run) => activeIds.has(run.id))
@@ -715,9 +712,9 @@ for (const execution of executions) {
 
     const captureFailureApiState = async () => {
       if (!fixtures) return;
-      if (companyRunFlow && !issue) {
-        const companyRuns = await api.get<RunRecord[]>(`/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`);
-        selectedRuns = await Promise.all(companyRuns.map(run => api.get<RunRecord>(`/api/heartbeat-runs/${run.id}`)));
+      if (instanceRunFlow && !issue) {
+        const listedRuns = await api.get<RunRecord[]>("/api/heartbeat-runs?limit=100");
+        selectedRuns = await Promise.all(listedRuns.map(run => api.get<RunRecord>(`/api/heartbeat-runs/${run.id}`)));
         // Settings are already restored on failure, so chat resolution may be
         // gated. Direct task access still permits evidence and usage capture.
         const sourceId = selectedRuns.map(run => record(run.contextSnapshot).issueId).find(id => typeof id === "string");
@@ -734,9 +731,9 @@ for (const execution of executions) {
           capture(() => api.get<IssueRecord>(`/api/issues/${issue!.id}`)),
           capture(() =>
             api.get<RunRecord[]>(
-              companyRunFlow
-                ? `/api/companies/${fixtures!.company.id}/heartbeat-runs?limit=100`
-                : `/api/companies/${fixtures!.company.id}/heartbeat-runs?agentId=${fixtures!.agent.id}&limit=20`,
+              instanceRunFlow
+                ? "/api/heartbeat-runs?limit=100"
+                : `/api/heartbeat-runs?agentId=${fixtures!.agent.id}&limit=20`,
             ),
           ),
           capture(() =>
@@ -751,7 +748,7 @@ for (const execution of executions) {
           ),
         ]);
       const taskRuns = Array.isArray(listedRuns)
-        ? companyRunFlow ? listedRuns : matchingRuns(listedRuns, "id" in currentIssue ? currentIssue : issue)
+        ? instanceRunFlow ? listedRuns : matchingRuns(listedRuns, "id" in currentIssue ? currentIssue : issue)
         : [];
       const detailedRuns = await Promise.all(
         taskRuns.map((candidate) =>
@@ -872,19 +869,19 @@ for (const execution of executions) {
       });
 
       if (["native-completion", NATIVE_INSTRUCTION_SUITE].includes(execution.suite.id)) {
-        const receipt = await captureNativeDefault({ api, agentId: fixtures.agent.id, companyId: fixtures.company.id });
+        const receipt = await captureNativeDefault({ api, agentId: fixtures.agent.id });
         const grade = gradeNativeDefault(receipt, execution.suite.id === NATIVE_INSTRUCTION_SUITE ? NATIVE_INSTRUCTION_DEFAULT_SHA256 : undefined);
         await writeSanitizedJson(snapshotsDir, "native-default-before-execution.json", { receipt, grade }, secrets);
         if (!grade.passed) throw new Error("Native production-default hire admission failed before execution");
         const [issues, agents, workspaceDigest] = await Promise.all([
-          api.get<Array<{ id: string }>>(`/api/companies/${fixtures.company.id}/issues?limit=100`),
-          api.get<Array<{ id: string }>>(`/api/companies/${fixtures.company.id}/agents`), nativeWorkspaceDigest(),
+          api.get<Array<{ id: string }>>("/api/issues?limit=100"),
+          api.get<Array<{ id: string }>>("/api/agents"), nativeWorkspaceDigest(),
         ]);
         nativeInitial = { issueIds: issues.map(value => value.id), agentIds: agents.map(value => value.id), workspaceDigest };
       }
 
       if (execution.suite.id === "stock-harness") {
-        const hire = await captureStockHarness({ api, companyId: fixtures.company.id,
+        const hire = await captureStockHarness({ api,
           agentId: fixtures.agent.id, generation: execution.profile.generation, runIds: [] });
         const checks = gradeStockHire(hire);
         await writeSanitizedJson(snapshotsDir, "stock-harness-hire.json", {
@@ -896,7 +893,7 @@ for (const execution of executions) {
       }
 
       if (execution.suite.id === "api-response-reading") {
-        const source = await api.post<{ id: string }>(`/api/companies/${fixtures.company.id}/issues`, {
+        const source = await api.post<{ id: string }>("/api/issues", {
           title: `Synthetic diagnostic evidence ${nonce}`,
           description: responseEvidenceDescription(nonce), status: "backlog",
         });
@@ -905,7 +902,7 @@ for (const execution of executions) {
       }
 
       if (execution.suite.id === "lifecycle-baseline" && lifecycleLiveCase(execution.task.id)?.family === "blocker") {
-        const prerequisite = await api.post<{ id: string }>(`/api/companies/${fixtures.company.id}/issues`, {
+        const prerequisite = await api.post<{ id: string }>("/api/issues", {
           title: `Supply dataset ${nonce}`,
           description: "Fixture operator prerequisite: dataset has not been supplied.",
           status: "backlog",
@@ -920,7 +917,6 @@ for (const execution of executions) {
         {
           executionId: execution.id,
           lifecycleBlockerId,
-          companyId: fixtures.company.id,
           environmentId: fixtures.environment.id,
           agentId: fixtures.agent.id,
           secretIds: Object.fromEntries(
@@ -1046,9 +1042,9 @@ for (const execution of executions) {
             matcherResults = evidence.checks.map(check => ({ matcher: { kind: "json_path" as const, path: `firstTask.checks.${check.id}`, expected: true }, passed: check.passed, detail: check.detail }));
           },
           createOrdinary: async (taskTitle, taskPrompt) => {
-            await createTaskThroughUi({ page, issuePrefix: fixtures!.company.issuePrefix!, agentName: fixtures!.agent.name, title: taskTitle, prompt: taskPrompt, workMode: "standard" });
+            await createTaskThroughUi({ page, agentName: fixtures!.agent.name, title: taskTitle, prompt: taskPrompt, workMode: "standard" });
             const created = await pollUntil({ label: "ordinary UI-created task", deadlineAt: startedAtMs + deadlineMs,
-              load: async () => (await api.get<IssueRecord[]>(`/api/companies/${fixtures!.company.id}/issues?limit=100`)).find(row => row.title === taskTitle), accept: row => Boolean(row) });
+              load: async () => (await api.get<IssueRecord[]>("/api/issues?limit=100")).find(row => row.title === taskTitle), accept: row => Boolean(row) });
             if (!created) throw new Error("Missing ordinary task");
             return created;
           },
@@ -1057,26 +1053,20 @@ for (const execution of executions) {
         });
         issue = firstTask.issue as IssueRecord; selectedRuns = firstTask.runs as RunRecord[];
       } else {
-      const issuePrefix = fixtures.company.issuePrefix;
-      if (!issuePrefix)
-        throw new Error(
-          "Created fixture company did not return an issue prefix",
-        );
       if (execution.task.flow === "governed_tool_review") {
-        reviewProvider = await setupConnectionReview({ page, api, prefix: issuePrefix, companyId: fixtures.company.id, agentId: fixtures.agent.id, marker });
+        reviewProvider = await setupConnectionReview({ page, api, agentId: fixtures.agent.id, marker });
       }
       // Capture the actual creation response: a generated title can change before
       // a later list query, and the initial provisional state is part of the oracle.
       const titleCreationResponse = execution.suite.id === "task-titles"
         ? page.waitForResponse(response => response.request().method() === "POST"
-          && new URL(response.url()).pathname === `/api/companies/${fixtures!.company.id}/issues`,
+          && new URL(response.url()).pathname === "/api/issues",
           { timeout: Math.max(1, startedAtMs + deadlineMs - Date.now()) })
           .catch((cause: unknown) => new Error("Could not capture task creation response", { cause }))
         : null;
       turnSubmissionTimesMs.push(
         await createTaskThroughUi({
           page,
-          issuePrefix,
           agentName: fixtures.agent.name,
           title,
           prompt,
@@ -1098,19 +1088,16 @@ for (const execution of executions) {
         deadlineAt,
         load: async () => {
           const issues = await api.get<IssueRecord[]>(
-            `/api/companies/${fixtures!.company.id}/issues?q=${encodeURIComponent(title)}&limit=50`,
+            `/api/issues?q=${encodeURIComponent(title)}&limit=50`,
           );
           return issues.find((candidate) => candidate.title === title);
         },
         accept: (candidate): candidate is IssueRecord => Boolean(candidate),
       });
       if (!issue) throw new Error(`Issue ${title} disappeared after creation`);
-      if (
-        issue.companyId !== fixtures.company.id ||
-        issue.assigneeAgentId !== fixtures.agent.id
-      ) {
+      if (issue.assigneeAgentId !== fixtures.agent.id) {
         throw new Error(
-          "UI-created issue does not belong to the fixture company and agent",
+          "UI-created issue is not assigned to the fixture agent",
         );
       }
       if (issue.workMode !== execution.task.workMode) {
@@ -1130,16 +1117,16 @@ for (const execution of executions) {
       }
 
       await page.goto(
-        `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+        `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
       );
 
       const loadTaskState = async () => {
         const [currentIssue, runs, comments, interactions] = await Promise.all([
           api.get<IssueRecord>(`/api/issues/${issue!.id}`),
           api.get<RunRecord[]>(
-            companyRunFlow
-                ? `/api/companies/${fixtures!.company.id}/heartbeat-runs?limit=100`
-                : `/api/companies/${fixtures!.company.id}/heartbeat-runs?agentId=${fixtures!.agent.id}&limit=20`,
+            instanceRunFlow
+                ? "/api/heartbeat-runs?limit=100"
+                : `/api/heartbeat-runs?agentId=${fixtures!.agent.id}&limit=20`,
           ),
           api.get<CommentRecord[]>(
             `/api/issues/${issue!.id}/comments?order=asc`,
@@ -1248,7 +1235,7 @@ for (const execution of executions) {
           );
         }
         await page.goto(
-          `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+          `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
           { waitUntil: "domcontentloaded" },
         );
         await expectPlanStageVisible(page, {
@@ -1334,7 +1321,7 @@ for (const execution of executions) {
           );
         }
         await page.goto(
-          `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+          `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
           { waitUntil: "domcontentloaded" },
         );
         await expectPlanStageVisible(page, {
@@ -1427,7 +1414,7 @@ for (const execution of executions) {
           optionId: selectedOption.id,
         };
         await page.goto(
-          `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+          `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
           { waitUntil: "domcontentloaded" },
         );
         await expect(
@@ -1457,7 +1444,7 @@ for (const execution of executions) {
           );
           try {
             await page.goto(
-              `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+              `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
               // The replacement Vite server can commit and render a fresh
               // document while its navigation lifecycle remains unsettled.
               // The sentinel and explicit assertions below prove the new
@@ -1564,7 +1551,7 @@ for (const execution of executions) {
           );
         }
         await page.goto(
-          `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+          `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
           { waitUntil: "domcontentloaded" },
         );
         await expectPlanStageVisible(page, {
@@ -1755,7 +1742,7 @@ for (const execution of executions) {
             leases: completedLeases,
           });
           await page.goto(
-            `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+            `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
             { waitUntil: "domcontentloaded" },
           );
           await captureScreenshot(
@@ -1825,7 +1812,7 @@ for (const execution of executions) {
       }
       if (reviewProvider) {
         expect(reviewProvider.invocationCount()).toBe(execution.task.toolReviewDecision === "decline" ? 0 : execution.task.toolReviewDecision === "always" ? 2 : 1);
-        const pending = await api.get<{ actionRequests: unknown[] }>(`/api/companies/${fixtures.company.id}/tools/action-requests?status=pending`);
+        const pending = await api.get<{ actionRequests: unknown[] }>("/api/tools/action-requests?status=pending");
         expect(pending.actionRequests).toHaveLength(0);
         await writeSanitizedJson(snapshotsDir, "connection-review.json", { source: "local MCP fixture", connectionId: reviewProvider.connectionId, providerCalls: reviewProvider.invocationCount(), decision: execution.task.toolReviewDecision, issueId: issue.id }, secrets);
       }
@@ -1853,7 +1840,7 @@ for (const execution of executions) {
           `Expected ${minimumRunCount(execution.task)}..${execution.task.expectedRunCount} task heartbeat run(s); observed ${selectedRuns.length}`,
         );
       }
-      // The company run-list endpoint intentionally returns only a compact,
+      // The run-list endpoint intentionally returns only a compact,
       // allowlisted context summary. Hydrate each selected run through the
       // public detail endpoint before asserting environment/lease metadata.
       selectedRuns = await Promise.all(
@@ -2629,7 +2616,7 @@ for (const execution of executions) {
       // canonical task route so the screenshot and UI assertions prove the
       // persisted final state, not a stale client cache.
       await page.goto(
-        `/${encodeURIComponent(issuePrefix)}/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
+        `/issues/${encodeURIComponent(issue.identifier ?? issue.id)}`,
         { waitUntil: "domcontentloaded" },
       );
       const visibleAgentReplies = page
@@ -2709,24 +2696,24 @@ for (const execution of executions) {
       }
       if (["native-completion", NATIVE_INSTRUCTION_SUITE].includes(execution.suite.id)) {
         if (!issue || !nativeInitial) throw new Error("Missing native qualification issue or pre-execution receipt");
-        const [currentIssue, companyRuns, issues, agents, comments, documents, interactions, workspaceDigest] = await Promise.all([
+        const [currentIssue, listedRuns, issues, agents, comments, documents, interactions, workspaceDigest] = await Promise.all([
           api.get<IssueRecord>(`/api/issues/${issue.id}`),
-          api.get<RunRecord[]>(`/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`),
-          api.get<Array<{ id: string }>>(`/api/companies/${fixtures.company.id}/issues?limit=100`),
-          api.get<Array<{ id: string }>>(`/api/companies/${fixtures.company.id}/agents`),
+          api.get<RunRecord[]>("/api/heartbeat-runs?limit=100"),
+          api.get<Array<{ id: string }>>("/api/issues?limit=100"),
+          api.get<Array<{ id: string }>>("/api/agents"),
           api.get<CommentRecord[]>(`/api/issues/${issue.id}/comments`),
           api.get<IssueDocumentRecord[]>(`/api/issues/${issue.id}/documents`),
           api.get<InteractionRecord[]>(`/api/issues/${issue.id}/interactions`), nativeWorkspaceDigest(),
         ]);
-        const detailedRuns = await Promise.all(companyRuns.map(candidate => api.get<RunRecord>(`/api/heartbeat-runs/${candidate.id}`)));
+        const detailedRuns = await Promise.all(listedRuns.map(candidate => api.get<RunRecord>(`/api/heartbeat-runs/${candidate.id}`)));
         selectedRuns = detailedRuns; issue = currentIssue;
         const events = detailedRuns.length === 1 ? await collectRunEvents<RunEventRecord>((afterSeq, limit) => api.get(`/api/heartbeat-runs/${detailedRuns[0]!.id}/events?afterSeq=${afterSeq}&limit=${limit}`)) : [];
         const observation = { caseId: execution.task.id as "assigned-skill-explicit-invocation" | "native-blocked-report",
-          companyId: fixtures.company.id, agentId: fixtures.agent.id, issue: currentIssue as unknown as Record<string, unknown>,
+          agentId: fixtures.agent.id, issue: currentIssue as unknown as Record<string, unknown>,
           runs: detailedRuns as unknown as Record<string, unknown>[], comments: comments as unknown as Record<string, unknown>[], events: events as unknown as Record<string, unknown>[],
           initial: nativeInitial, state: { issueIds: issues.map(value => value.id), agentIds: agents.map(value => value.id), documentCount: documents.length, interactionCount: interactions.length },
           workspaceChanged: workspaceDigest !== nativeInitial.workspaceDigest, marker,
-          documentLinkContext: { appOrigin: new URL(page.url()).origin, issuePrefix: fixtures.company.issuePrefix ?? "",
+          documentLinkContext: { appOrigin: new URL(page.url()).origin,
             issueIdentifier: currentIssue.identifier ?? "", documents } };
         const grade = execution.suite.id === NATIVE_INSTRUCTION_SUITE
           ? gradeNativeCompletionFinalAnswer(observation) : gradeNativeCompletion(observation);
@@ -2736,7 +2723,7 @@ for (const execution of executions) {
         if (!grade.passed || integrity.length) throw new Error(`Native completion matcher failure: ${[...grade.checks.filter(check => !check.passed).map(check => check.id), ...integrity].join("; ")}`);
         if (execution.suite.id === NATIVE_INSTRUCTION_SUITE && execution.task.id === "assigned-skill-explicit-invocation") {
           const document = documents[0]!;
-          const href = `/${encodeURIComponent(fixtures.company.issuePrefix!)}/issues/${encodeURIComponent(currentIssue.identifier!)}#document-${encodeURIComponent(document.key)}`;
+          const href = `/issues/${encodeURIComponent(currentIssue.identifier!)}#document-${encodeURIComponent(document.key)}`;
           let opened = false;
           try {
             const link = page.getByTestId("task-chat-agent-bubble").locator(`a[href=${JSON.stringify(href)}]`).last();
@@ -2835,14 +2822,14 @@ for (const execution of executions) {
         });
         try {
           await cancelActiveRunsForCleanup();
-          if (companyRunFlow) {
-            const companyRuns = await api.get<RunRecord[]>(`/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`);
-            selectedRuns = await Promise.all(companyRuns.map(run => api.get<RunRecord>(`/api/heartbeat-runs/${run.id}`)));
+          if (instanceRunFlow) {
+            const listedRuns = await api.get<RunRecord[]>("/api/heartbeat-runs?limit=100");
+            selectedRuns = await Promise.all(listedRuns.map(run => api.get<RunRecord>(`/api/heartbeat-runs/${run.id}`)));
             await writeSanitizedJson(snapshotsDir, execution.task.flow === "first_task" ? "first-task-final-run-ledger.json" : "chat-final-run-ledger.json", selectedRuns, secrets);
           }
           if (execution.suite.id === "stock-harness") {
             try {
-              const stock = await captureStockHarness({ api, companyId: fixtures.company.id,
+              const stock = await captureStockHarness({ api,
                 agentId: fixtures.agent.id, generation: execution.profile.generation,
                 runIds: selectedRuns.map(run => run.id) });
               const checks = gradeStockHarness(stock);

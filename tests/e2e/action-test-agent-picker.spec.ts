@@ -1,5 +1,6 @@
 import { expect, test, type APIResponse } from "@playwright/test";
 import { startReviewProvider } from "../fixtures/connection-review-provider";
+import { ensureOrganization } from "./helpers/organization";
 
 async function json(response: APIResponse) {
   expect(response.ok(), `${response.status()}: ${await response.text()}`).toBe(true);
@@ -10,21 +11,21 @@ test("action-test agent picker scrolls with the wheel and omits terminated agent
   test.setTimeout(120_000);
   const provider = await startReviewProvider();
   try {
-    const company = await json(await request.post("/api/companies", { data: { name: `Agent picker QA ${Date.now()}` } }));
+    await ensureOrganization(request);
     for (let i = 0; i < 24; i++) {
-      await json(await request.post(`/api/companies/${company.id}/agents`, {
+      await json(await request.post(`/api/agents`, {
         data: { name: `Picker agent ${String(i).padStart(2, "0")}`, role: "qa", adapterType: "process", adapterConfig: { command: "true" } },
       }));
     }
-    const terminated = await json(await request.post(`/api/companies/${company.id}/agents`, {
+    const terminated = await json(await request.post(`/api/agents`, {
       data: { name: "Terminated picker agent", role: "qa", adapterType: "process", adapterConfig: { command: "true" } },
     }));
     await json(await request.post(`/api/agents/${terminated.id}/terminate`));
-    const connection = await json(await request.post(`/api/companies/${company.id}/tools/connections`, {
+    const connection = await json(await request.post(`/api/tools/connections`, {
       data: { name: "Picker fixture", transport: "mcp_remote", config: { url: provider.url }, status: "active", enabled: true },
     }));
     await json(await request.post(`/api/tool-connections/${connection.id}/catalog/refresh`));
-    await page.goto(`/${company.issuePrefix}/apps/${connection.id}/permissions`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/apps/${connection.id}/permissions`, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: "Test", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Test List fixture pages" });
     await dialog.getByRole("button", { name: "Choose which agent to test as" }).click();

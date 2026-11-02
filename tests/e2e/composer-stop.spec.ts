@@ -6,6 +6,7 @@ import {
   type APIResponse,
   type Page,
 } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 async function json(response: APIResponse) {
   const text = await response.text();
@@ -16,12 +17,11 @@ async function json(response: APIResponse) {
 }
 async function task(
   request: APIRequestContext,
-  companyId: string,
   data: Record<string, unknown>,
 ) {
   return json(
-    await request.post(`/api/companies/${companyId}/issues`, {
-      data: { title: "Composer stop acceptance", status: "backlog", ...data },
+    await request.post(`/api/issues`, {
+      data: { title: "Composer stop acceptance", status: "backlog", allowDuplicate: true, ...data },
     }),
   );
 }
@@ -141,11 +141,8 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
       adapter === "paperclip_runner" && !process.env.PAPERCLIP_STOP_FAKE_CODEX,
       "Set PAPERCLIP_STOP_FAKE_CODEX and PAPERCLIP_RUNNER_BINARY for real runnerd with the deterministic provider.",
     );
-    const company = await json(
-      await request.post("/api/companies", {
-        data: { name: `Composer Stop ${adapter} ${Date.now()}` },
-      }),
-    );
+    await ensureOrganization(request);
+    const ownedAgentIds = new Set<string>();
     const originalSettings = await json(
       await request.get("/api/instance/settings/experimental"),
     );
@@ -157,11 +154,11 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
             typeof frame === "string" ? frame : frame.toString("utf8"),
           );
           if (
-            event.companyId !== company.id ||
-            event.type !== "heartbeat.run.status"
+            event.type !== "heartbeat.run.status" ||
+            !ownedAgentIds.has(event.payload?.agentId)
           )
             return;
-          // Retain only scalar status routing evidence for this owned company,
+          // Retain only scalar status routing evidence for this test's agents,
           // never raw frames, provider output, errors, or tool payloads.
           const entry: Record<string, string | null> = {};
           for (const key of [
@@ -191,8 +188,8 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
         }),
       );
       async function agent(name: string) {
-        return json(
-          await request.post(`/api/companies/${company.id}/agents`, {
+        const created = await json(
+          await request.post(`/api/agents`, {
             data: {
               name,
               role: "engineer",
@@ -214,24 +211,26 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
             },
           }),
         );
+        ownedAgentIds.add(created.id);
+        return created;
       }
       const owner = await agent("Stop fixture parent");
       const childOwner = await agent("Stop fixture child");
       const otherOwner = await agent("Stop fixture unrelated");
-      const parent = await task(request, company.id, {
+      const parent = await task(request, {
         assigneeAgentId: owner.id,
       });
-      const child = await task(request, company.id, {
+      const child = await task(request, {
         title: "Child work",
         parentId: parent.id,
         assigneeAgentId: childOwner.id,
       });
-      const completed = await task(request, company.id, {
+      const completed = await task(request, {
         title: "Finished child",
         parentId: parent.id,
         status: "done",
       });
-      const other = await task(request, company.id, {
+      const other = await task(request, {
         title: "Unrelated work",
         assigneeAgentId: otherOwner.id,
       });
@@ -263,7 +262,7 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
       expect(parentRun.runtimeMode).toBe(
         adapter === "process" ? "legacy" : "native",
       );
-      await page.goto(`/${company.issuePrefix}/issues/${parent.identifier}`);
+      await page.goto(`/issues/${parent.identifier}`);
       const stop = page.getByRole("button", { name: "Stop", exact: true });
       await expect(stop).toBeVisible({ timeout: 30_000 });
       const editor = page.getByRole("textbox", { name: "editable markdown" });
@@ -470,10 +469,8 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
       });
     } finally {
       const statusEvidence = JSON.stringify(statusMetadata, null, 2);
-      // The company is disposable and scoped to this test invocation.
-      await request.patch(`/api/companies/${company.id}`, {
-        data: { status: "archived" },
-      });
+      for (const agentId of ownedAgentIds)
+        await request.post(`/api/agents/${agentId}/terminate`);
       await request.patch("/api/instance/settings/experimental", {
         data: {
           enableClassicTaskInterface:
@@ -481,7 +478,7 @@ for (const adapter of ["process", "paperclip_runner"] as const) {
           enableNativeRunner: originalSettings.enableNativeRunner,
         },
       });
-      await testInfo.attach("owned-company-status-metadata", {
+      await testInfo.attach("owned-agent-status-metadata", {
         body: statusEvidence,
         contentType: "application/json",
       });

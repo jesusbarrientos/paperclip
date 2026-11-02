@@ -128,8 +128,6 @@ for (const journey of [
           "codex",
           "--api-key-env",
           "IN_FEED_FIXTURE_KEY",
-          "--company-name",
-          "Execution recovery fixture",
           "--no-browser",
         ],
         { cwd: root, env, detached: true, stdio: ["ignore", "pipe", "pipe"] },
@@ -178,26 +176,24 @@ for (const journey of [
           },
         },
       });
-      const [company] = await api("/companies");
-      let [agent] = await api(`/companies/${company.id}/agents`);
+      let [agent] = await api(`/agents`);
       expect(agent.adapterType).toBe("codex_local");
-      expect(await api(`/companies/${company.id}/issues`)).toEqual([]);
-      expect(await api(`/companies/${company.id}/heartbeat-runs`)).toEqual([]);
+      expect(await api(`/issues`)).toEqual([]);
+      expect(await api(`/heartbeat-runs`)).toEqual([]);
       expect(
-        (await api(`/companies/${company.id}/tools/connections`)).connections,
+        (await api(`/tools/connections`)).connections,
       ).toEqual([]);
       diagnosticState = async () => ({
         base,
-        companyId: company.id,
         agentId: agent.id,
-        tasks: (await api(`/companies/${company.id}/issues`)).map(
+        tasks: (await api(`/issues`)).map(
           (task: Record<string, unknown>) => ({
             id: task.id,
             status: task.status,
             assigneeAgentId: task.assigneeAgentId,
           }),
         ),
-        runs: (await api(`/companies/${company.id}/heartbeat-runs`)).map(
+        runs: (await api(`/heartbeat-runs`)).map(
           (run: Record<string, unknown>) => ({
             id: run.id,
             status: run.status,
@@ -214,16 +210,15 @@ for (const journey of [
       await writeFile(
         info.outputPath("running-instance.json"),
         JSON.stringify(
-          { base, dataDir, companyId: company.id, agentId: agent.id },
+          { base, dataDir, agentId: agent.id },
           null,
           2,
         ),
       );
-      const prefix = `/${company.issuePrefix}`;
-      await page.goto(base + prefix + "/dashboard");
+      await page.goto(base + "/dashboard");
       await expect(page.getByText("No runs yet").first()).toBeVisible({ timeout: 30_000 });
       if (journey === "legacy_unknown") {
-        agent = await api(`/companies/${company.id}/agents`, "POST", {
+        agent = await api(`/agents`, "POST", {
           name: "Legacy executor", role: "engineer", adapterType: "process",
           adapterConfig: { command: process.execPath, args: ["-e", "console.error('Deterministic provider failure; no recoverable session contract'); process.exit(1)"] },
         });
@@ -235,7 +230,7 @@ for (const journey of [
         await page.getByRole("button", { name: "Create Task", exact: true }).click();
         await page.getByRole("complementary").getByRole("link", { name: /Read the legacy fixture report/ }).click();
         await expect.poll(async () => {
-          const tasks = await api(`/companies/${company.id}/issues`);
+          const tasks = await api(`/issues`);
           return tasks.find((issue: { title: string }) => issue.title === "Read the legacy fixture report")?.status;
         }, { timeout: 60_000 }).toBe("blocked");
         await expect(page.getByText("Blocked", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
@@ -248,16 +243,16 @@ for (const journey of [
         // Observe past the shared retry delay; absence of a successor is part
         // of the fail-closed contract, not merely a momentary UI state.
         await page.waitForTimeout(35_000);
-        const runs = await api(`/companies/${company.id}/heartbeat-runs`);
+        const runs = await api(`/heartbeat-runs`);
         expect(runs).toHaveLength(1);
         expect(await api(`/heartbeat-runs/${runs[0].id}`)).toMatchObject({ runtimeMode: "legacy", status: "failed" });
         await page.reload();
         await expect(page.getByRole("button", { name: "Reconcile and continue" })).toHaveCount(0);
-        await writeFile(info.outputPath("instance-and-runs.json"), JSON.stringify({ base, dataDir, health, dependency: "deterministic legacy process fixture", companyId: company.id, agentId: agent.id, runs }, null, 2));
+        await writeFile(info.outputPath("instance-and-runs.json"), JSON.stringify({ base, dataDir, health, dependency: "deterministic legacy process fixture", agentId: agent.id, runs }, null, 2));
         return;
       }
       await page.goto(
-        base + prefix + "/company/settings/instance/experimental",
+        base + "/organization/settings/instance/experimental",
       );
       const nativeRunnerToggle = page.getByRole("switch", {
         name: "Toggle Paperclip Runner experimental setting",
@@ -274,7 +269,7 @@ for (const journey of [
             (await api("/instance/settings/experimental")).enableNativeRunner,
         )
         .toBe(true);
-      await page.goto(base + prefix + `/agents/${agent.id}/configuration`);
+      await page.goto(base + `/agents/${agent.id}/configuration`);
       await page.getByRole("button", { name: "Codex", exact: true }).click();
       await page.getByRole("button", { name: /Paperclip Runner/ }).click();
       await page
@@ -289,14 +284,14 @@ for (const journey of [
       if (journey !== "ceo_lineage") {
         const { instructionsFilePath: _instructions, ...executorConfig } =
           nativeAgent.adapterConfig;
-        agent = await api(`/companies/${company.id}/agents`, "POST", {
+        agent = await api(`/agents`, "POST", {
           name: "Executor",
           role: "engineer",
           adapterType: "paperclip_runner",
           adapterConfig: executorConfig,
         });
       }
-      const holder = await api(`/companies/${company.id}/agents`, "POST", {
+      const holder = await api(`/agents`, "POST", {
         name: "Archive holder",
         role: "qa",
         adapterType: "process",
@@ -307,7 +302,7 @@ for (const journey of [
       });
       const connections: Record<string, { id: string; name: string }> = {};
       for (const service of ["notion", "gmail"]) {
-        await page.goto(base + prefix + "/apps");
+        await page.goto(base + "/apps");
         const custom = page
           .getByRole("list", { name: "Connector list" })
           .getByRole("listitem")
@@ -334,7 +329,7 @@ for (const journey of [
           page.getByRole("heading", { name: /is ready/i }),
         ).toBeVisible({ timeout: 30_000 });
         const connection = (
-          await api(`/companies/${company.id}/tools/connections`)
+          await api(`/tools/connections`)
         ).connections.find(
           (row: { id: string }) =>
             !Object.values(connections).some(
@@ -408,13 +403,13 @@ for (const journey of [
       await expect
         .poll(
           async () =>
-            (await api(`/companies/${company.id}/heartbeat-runs`)).every(
+            (await api(`/heartbeat-runs`)).every(
               isSettledRun,
             ),
           { timeout: 60_000 },
         )
         .toBe(true);
-      const [task] = await api(`/companies/${company.id}/issues`);
+      const [task] = await api(`/issues`);
       const originalTitle = task.title;
       await page
         .getByRole("textbox")
@@ -428,7 +423,7 @@ for (const journey of [
         await expect
           .poll(
             async () =>
-              (await api(`/companies/${company.id}/heartbeat-runs`)).some(
+              (await api(`/heartbeat-runs`)).some(
                 (run: { status: string; scheduledRetryReason?: string }) =>
                   run.status === "scheduled_retry" &&
                   run.scheduledRetryReason === "native_safe_replacement",
@@ -481,8 +476,7 @@ for (const journey of [
         expect((await api("/health")).serverInfo.git.branchName).toBe(
           health.serverInfo.git.branchName,
         );
-        expect((await api("/companies"))[0].id).toBe(company.id);
-        await page.goto(base + prefix + `/issues/${task.id}`);
+        await page.goto(base + `/issues/${task.id}`);
       }
       const composer = page.getByRole("textbox").last();
       await composer.fill("An unsent draft stays available during recovery.");
@@ -514,7 +508,7 @@ for (const journey of [
       await expect
         .poll(
           async () =>
-            (await api(`/companies/${company.id}/heartbeat-runs`)).every(
+            (await api(`/heartbeat-runs`)).every(
               (run: { status: string }) =>
                 !["running", "queued", "scheduled_retry"].includes(run.status),
             ),
@@ -533,7 +527,7 @@ for (const journey of [
         fullPage: true,
       });
       const finalRuns = await Promise.all(
-        (await api(`/companies/${company.id}/heartbeat-runs`)).map(
+        (await api(`/heartbeat-runs`)).map(
           (run: { id: string }) => api(`/heartbeat-runs/${run.id}`),
         ),
       );
@@ -582,7 +576,6 @@ for (const journey of [
           dataDir,
           health,
           journey,
-          companyId: company.id,
           agentId: agent.id,
           taskId: task.id,
           connections,

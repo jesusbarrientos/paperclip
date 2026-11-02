@@ -59,18 +59,17 @@ export async function setupFirstTaskFixtures(input: {
     .fill(`First task ${nonce}`);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.locator("#onboarding-agent-name")).toBeVisible();
-  const companies = await api.get<Row[]>("/api/companies");
-  const company = companies.find((c) => c.name === `First task ${nonce}`);
-  if (!company) throw new Error("Onboarding fixture company missing");
+  const organization = await api.get<Row>("/api/organization");
+  if (organization.name !== `First task ${nonce}`) throw new Error("Onboarding fixture organization missing");
   const fixtures = await provisionFirstTaskFixtures({
     api,
     execution,
     nonce,
     credentials: input.credentials,
-    company: {
-      id: company.id,
-      name: company.name,
-      issuePrefix: company.issuePrefix,
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      issuePrefix: organization.issuePrefix,
     },
   });
   const secret = fixtures.secretRefs[execution.profile.credential]!;
@@ -106,7 +105,7 @@ export async function setupFirstTaskFixtures(input: {
   await expect(
     page.getByRole("button", { name: "Get started", exact: true }),
   ).toBeVisible({ timeout: 120_000 });
-  const agents = await api.get<Row[]>(`/api/companies/${company.id}/agents`);
+  const agents = await api.get<Row[]>("/api/agents");
   expect(agents).toHaveLength(1);
   const wizardAdapter =
     execution.profile.credential === "OPENAI_API_KEY"
@@ -150,7 +149,6 @@ export async function setupFirstTaskFixtures(input: {
   }
   fixtures.agent = {
     id: agents[0].id,
-    companyId: company.id,
     name: agents[0].name,
   };
   input.observe(fixtures);
@@ -174,10 +172,10 @@ export async function runFirstTaskFlow(input: {
   const scenario = firstTaskScenario(execution.task.id, nonce);
   const deadlineAt =
     Date.now() + execution.task.attemptTimeoutMs.local - 120_000;
-  const tasksPath = `/api/companies/${fixtures.company.id}/issues?limit=100`;
+  const tasksPath = "/api/issues?limit=100";
   const allRuns = async () => {
     const runs = await api.get<Row[]>(
-      `/api/companies/${fixtures.company.id}/heartbeat-runs?limit=100`,
+      "/api/heartbeat-runs?limit=100",
     );
     return Promise.all(
       runs.map((r) => api.get<Row>(`/api/heartbeat-runs/${r.id}`)),
@@ -212,7 +210,7 @@ export async function runFirstTaskFlow(input: {
   ) => {
     const [tasks, agents, comments, interactions, runs] = await Promise.all([
       api.get<Row[]>(tasksPath),
-      api.get<Row[]>(`/api/companies/${fixtures.company.id}/agents`),
+      api.get<Row[]>("/api/agents"),
       api.get<Row[]>(`/api/issues/${issue.id}/comments?order=asc`),
       api.get<Row[]>(`/api/issues/${issue.id}/interactions`),
       allRuns(),
@@ -372,14 +370,14 @@ export async function runFirstTaskFlow(input: {
       );
     }
     const skills = await api.get<Row[]>(
-      `/api/companies/${fixtures.company.id}/skills`,
+      "/api/skills",
     );
     for (const selection of desired) {
       const key = typeof selection === "string" ? selection : selection.key;
       const skill = skills.find((s) => s.key === key);
       if (!skill) throw new Error(`Missing assigned skill ${key}`);
       const file = await api.get<{ content: string }>(
-        `/api/companies/${fixtures.company.id}/skills/${skill.id}/files?path=SKILL.md`,
+        `/api/skills/${skill.id}/files?path=SKILL.md`,
       );
       e.instructions.push(
         snapshotInstruction(
@@ -402,7 +400,7 @@ export async function runFirstTaskFlow(input: {
     );
     await snapshot("opening");
     await page.goto(
-      `/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`,
+      `/issues/${issue.identifier ?? issue.id}`,
     );
     if (scenario.opening === "ordinary") {
       const before = new Set((await allRuns()).map((r) => r.id));
@@ -414,7 +412,7 @@ export async function runFirstTaskFlow(input: {
       input.observe(issue, [], e);
       expect(issue.description).not.toContain("/first-task");
       await page.goto(
-        `/${fixtures.company.issuePrefix}/issues/${issue.identifier ?? issue.id}`,
+        `/issues/${issue.identifier ?? issue.id}`,
       );
       await settle(before);
       await snapshot("response");

@@ -328,7 +328,7 @@ function interactionDetail(input: {
 }
 
 function issueHref(prefix: string, issue: Pick<IssueSubjectRow, "id" | "identifier">) {
-  return `/${prefix}/issues/${issue.identifier ?? issue.id}`;
+  return `/issues/${issue.identifier ?? issue.id}`;
 }
 
 function issueSubject(prefix: string, issue: IssueSubjectRow): AttentionSubject {
@@ -1104,7 +1104,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
             title,
             identifier: null,
             status: approval.status,
-            href: `/${prefix}/approvals/${approval.id}`,
+            href: `/approvals/${approval.id}`,
             metadata: {
               type: approval.type,
               requestedByAgentId: approval.requestedByAgentId,
@@ -1266,7 +1266,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
         add(createItem({
           sourceKind: "decision",
           subject: { kind: "decision", id: decision.id, title: decision.title, identifier: null, status: decision.status,
-            href: `/${prefix}/decisions?decisionId=${decision.id}`,
+            href: `/decisions?decisionId=${decision.id}`,
             metadata: { originIssueId: decision.originIssueId, originAgentId: decision.originAgentId, bundleId: decision.bundleId,
               bundleTitle: decision.bundleId ? bundleTitleMap.get(decision.bundleId) ?? null : null } },
           whyNow: "An agent decision is waiting for a board response.",
@@ -1317,7 +1317,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
             title: label,
             identifier: null,
             status: join.status,
-            href: `/${prefix}/settings/access`,
+            href: `/organization/settings/access`,
             metadata: {
               requestType: join.requestType,
               requestingUserId: join.requestingUserId,
@@ -1661,7 +1661,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
             title: `${run.agentName} run ${run.status}`,
             identifier: null,
             status: run.status,
-            href: `/${prefix}/agents/${run.agentId}/runs/${run.id}`,
+            href: `/agents/${run.agentId}/runs/${run.id}`,
             metadata: {
               agentId: run.agentId,
               agentName: run.agentName,
@@ -1709,7 +1709,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
             title: `${incident.scopeName} budget ${incident.thresholdType === "hard" ? "hard stop" : "warning"}`,
             identifier: null,
             status: incident.status,
-            href: `/${prefix}/costs`,
+            href: `/costs`,
             metadata: {
               policyId: incident.policyId,
               scopeType: incident.scopeType,
@@ -1772,7 +1772,7 @@ export function attentionService(db: Db, serviceOptions: AttentionServiceOptions
             title: agent.name,
             identifier: null,
             status: agent.status,
-            href: `/${prefix}/agents/${agent.id}`,
+            href: `/agents/${agent.id}`,
             metadata: { role: agent.role, errorReason: agent.errorReason },
           },
           whyNow: "Agent is in error status and needs operator action or dismissal.",

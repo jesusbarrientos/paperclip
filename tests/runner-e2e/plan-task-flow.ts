@@ -24,7 +24,6 @@ export async function runPlanTaskFlow(input: Input) {
   const { api, page, fixtures: f, execution } = input;
   const { variant, caseId } = parsePlanCase(execution.task.id);
   const scenario = planScenario(caseId, input.nonce);
-  const company = `/api/companies/${f.company.id}`;
   const source: PlanRow = { origin: api.baseURL, variant, base: PLAN_BASE_SHA, definitionDigest: planDefinitionDigest, skills: [], agents: [] };
   let parent: PlanRow | undefined, alexId = "", rileyId = "", failure: string | undefined;
   let observed: PlanObservation = { issues: [], runs: [], documents: [], comments: [], activity: [], interactions: [], wakes: [] };
@@ -40,8 +39,8 @@ export async function runPlanTaskFlow(input: Input) {
     alexId, rileyId, observation: observed, maxRuns: PLAN_MAX_RUNS, origin: api.baseURL });
 
   async function observe() {
-    const [issues, list] = await Promise.all([api.get<PlanRow[]>(`${company}/issues`), api.get<PlanRow[]>(`${company}/heartbeat-runs?limit=100`)]);
-    if (list.length >= 100) throw new Error("Company run list is truncated; cannot qualify accounting");
+    const [issues, list] = await Promise.all([api.get<PlanRow[]>("/api/issues"), api.get<PlanRow[]>("/api/heartbeat-runs?limit=100")]);
+    if (list.length >= 100) throw new Error("Run list is truncated; cannot qualify accounting");
     const runs = await Promise.all(list.map(run => api.get<PlanRow>(`/api/heartbeat-runs/${run.id}`)));
     const details = await Promise.all(issues.map(async issue => {
       const base = `/api/issues/${issue.id}`;
@@ -63,7 +62,7 @@ export async function runPlanTaskFlow(input: Input) {
   try {
     // Public fixture APIs and normal skill versioning only. No provider begins
     // until the served bytes and all three agents' selections are verified.
-    await api.patch(`${company}/budgets`, { budgetMonthlyCents: PLAN_BUDGET_CENTS });
+    await api.patch("/api/budgets", { budgetMonthlyCents: PLAN_BUDGET_CENTS });
     source.skills = await preparePlanSkills(api, variant);
     const registry = new FixtureRegistry();
     for (const [id, name, role, capabilities] of [
@@ -75,7 +74,7 @@ export async function runPlanTaskFlow(input: Input) {
         await mkdir(workspacePath, { recursive: true });
         const payload = execution.profile.buildAgent({ environmentId: f.environment.id, environmentFixtureId: "local",
           workspacePath, secretRefs: f.secretRefs, executionId: input.nonce });
-        return api.post(`${company}/agents`, { ...payload, name, role, title: name, capabilities, reportsTo: f.agent.id,
+        return api.post("/api/agents", { ...payload, name, role, title: name, capabilities, reportsTo: f.agent.id,
           instructionsBundle: { entryFile: "AGENTS.md", files: { "AGENTS.md": `You are ${name}. ${capabilities} Deliver accurate work that meets your assignment.` } } });
       } });
     }
@@ -93,7 +92,7 @@ export async function runPlanTaskFlow(input: Input) {
     source.requestPrompt = planInvocationPrompt(scenario.prompt, invocations);
     await input.evidence("plan-task-source.json", source);
     await api.patch("/api/instance/settings/experimental", { enableClassicTaskInterface: false });
-    const created = await createPlanTaskThroughUi({ page, companyId: f.company.id, issuePrefix: f.company.issuePrefix!,
+    const created = await createPlanTaskThroughUi({ page,
       agentName: f.agent.name, prompt: source.requestPrompt });
     parent = await pollUntil({ label: "browser-created planning-guidance task", deadlineAt: input.deadlineAt,
       load: () => api.get<PlanRow>(`/api/issues/${created.id}`), accept: i => i.id === created.id });
@@ -113,7 +112,7 @@ export async function runPlanTaskFlow(input: Input) {
     await captureRuns();
     checks = [...grade().checks, exposure()];
     input.observe(parent, observed.runs, checks);
-    await page.goto(`/${f.company.issuePrefix}/issues/${parent.identifier ?? parent.id}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/issues/${parent.identifier ?? parent.id}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: parent.title, exact: true })).toBeVisible();
     await expect(page.getByTestId("issue-chat-skeleton")).toHaveCount(0);
     await input.capture("final-state", "Saved planning outcome and task graph", "final-state.png");
@@ -128,7 +127,7 @@ export async function runPlanTaskFlow(input: Input) {
     let captureError: string | undefined;
     try { await observe(); } catch (error) { captureError = String(error); }
     const finalSkills = await Promise.all([f.agent.id, alexId, rileyId].filter(Boolean).map(async id => ({ id,
-      skills: await api.get(`/api/agents/${id}/skills?companyId=${f.company.id}`).catch(error => ({ error: String(error) })) })));
+      skills: await api.get(`/api/agents/${id}/skills`).catch(error => ({ error: String(error) })) })));
     await captureRuns();
     await input.evidence("plan-task-runs.json", runEvidence);
     await input.evidence("plan-task-guidance.json", { variant, caseId, scenario, source, finalSkills, parentId: parent?.id,

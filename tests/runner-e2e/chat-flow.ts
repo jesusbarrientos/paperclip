@@ -37,7 +37,6 @@ export function assertChatFlowRunCount(input: {
 // Public API observations only: this driver never fabricates provider results or writes DB state.
 export interface ChatIssue {
   id: string;
-  companyId: string;
   title: string;
   status: string;
   identifier?: string;
@@ -52,7 +51,6 @@ export interface ChatIssue {
 }
 export interface ChatRun {
   id: string;
-  companyId: string;
   agentId: string;
   status: string;
   error?: string | null;
@@ -367,8 +365,8 @@ export interface ChatFlowInput {
 }
 export async function runChatFlow(input: ChatFlowInput) {
   const { page, api, fixtures: f, execution, nonce } = input;
-  const chatPath = `/api/companies/${f.company.id}/chats/${f.agent.id}`;
-  const route = `/${f.company.issuePrefix}/chats/${f.agent.id}`;
+  const chatPath = `/api/chats/${f.agent.id}`;
+  const route = `/chats/${f.agent.id}`;
   const marker = execution.task.buildVisibleMarker(nonce);
   const draftMarker = chatMarker("DRAFT", nonce);
   const caseId = execution.task.id;
@@ -382,14 +380,14 @@ export async function runChatFlow(input: ChatFlowInput) {
   );
   const allRuns = async () => {
     const rows = await api.get<ChatRun[]>(
-      `/api/companies/${f.company.id}/heartbeat-runs?limit=100`,
+      "/api/heartbeat-runs?limit=100",
     );
     return Promise.all(
       rows.map((row) => api.get<ChatRun>(`/api/heartbeat-runs/${row.id}`)),
     );
   };
   const tasks = () =>
-    api.get<ChatIssue[]>(`/api/companies/${f.company.id}/issues`);
+    api.get<ChatIssue[]>("/api/issues");
   const comments = async () =>
     (
       await api.get<Array<Comment & { createdAt: string }>>(
@@ -621,7 +619,7 @@ export async function runChatFlow(input: ChatFlowInput) {
     } else if (["hire-delegate-reuse", "blocked-status-review", "committed-send-retry"].includes(caseId)) {
       await runChatHardeningFlow({ input, marker, issue: () => issue!, turn, idle, tasks, allRuns, comments });
     } else if (caseId === "create-backlog") {
-      const project = await api.post<{ id: string }>(`/api/companies/${f.company.id}/projects`, {
+      const project = await api.post<{ id: string }>("/api/projects", {
         name: `Later planning ${nonce}`, description: "Repository-free plans to save for later.",
       });
       await turn(`Create exactly one task titled Later checklist ${nonce} in the existing Later planning ${nonce} project. Assign it to yourself but keep it in backlog: do not start or execute it. Save a concise three-step initial plan that contains ${marker}. Reply with its identifier and status. Do not create a replacement task or change other tasks.`, 1);
@@ -649,15 +647,15 @@ export async function runChatFlow(input: ChatFlowInput) {
         environmentId: f.environment.id, environmentFixtureId: execution.environment.id,
         workspacePath: input.workspacePath, secretRefs: f.secretRefs, executionId: nonce,
       });
-      const teammate = await api.post<{ id: string }>(`/api/companies/${f.company.id}/agents`, {
+      const teammate = await api.post<{ id: string }>("/api/agents", {
         ...config, name: "Riley Reassignment", role: "engineer", reportsTo: f.agent.id,
         instructionsBundle: { entryFile: "AGENTS.md", files: { "AGENTS.md": "Complete the assigned work and save the requested Paperclip document." } },
       });
-      const queued = await api.post<ChatIssue>(`/api/companies/${f.company.id}/issues`, {
+      const queued = await api.post<ChatIssue>("/api/issues", {
         title: `Later checklist ${nonce}`, description: `Preserve this deferred scope ${draftMarker}.`,
         status: "backlog", assigneeAgentId: f.agent.id,
       });
-      const ready = await api.post<ChatIssue>(`/api/companies/${f.company.id}/issues`, {
+      const ready = await api.post<ChatIssue>("/api/issues", {
         title: `Ready checklist ${nonce}`, status: "todo",
         description: `Write a short launch checklist as a Paperclip document attached to this task, including ${marker}. Complete this task after saving it.`,
       });
@@ -688,7 +686,7 @@ export async function runChatFlow(input: ChatFlowInput) {
       ];
       if (caseId === "clarify-reuse") {
         existingProject = await api.post(
-          `/api/companies/${f.company.id}/projects`,
+          "/api/projects",
           {
             name: `Garden ${nonce}`,
             description: "Garden club welcome notes and event announcements.",
@@ -864,7 +862,7 @@ export async function runChatFlow(input: ChatFlowInput) {
         });
       } else {
         repositoryCatalogBefore = await api.get(
-          `/api/companies/${f.company.id}/project-repositories`,
+          "/api/project-repositories",
         );
         expect(
           repositoryCatalogBefore!.repositories.filter((repository) =>
@@ -936,7 +934,7 @@ export async function runChatFlow(input: ChatFlowInput) {
           name: string;
           workspaces: Array<{ id: string; name: string; repoUrl?: string }>;
         }>
-      >(`/api/companies/${f.company.id}/projects`);
+      >("/api/projects");
       expect(projects).toHaveLength(1);
       if (existingProject) {
         expect(child.projectId).toBe(existingProject.id);
@@ -1009,7 +1007,7 @@ export async function runChatFlow(input: ChatFlowInput) {
       runs = hiringEvidence.runs;
     }
     assertChatFlowRunCount({ suiteId: execution.suite.id, task: execution.task,
-      // Hiring must account for every actual company run, including unexpected resets.
+      // Hiring must account for every actual run, including unexpected resets.
       runs: execution.suite.id === "hiring-templates" ? runs : runs.filter((run) => !isResetRun(run)),
       hiringEvidence, hiringApiState: execution.suite.id === "hiring-templates"
         ? hiringEvidence!.turnApiState : undefined,

@@ -24,8 +24,6 @@ require_cmd jq
 
 PAPERCLIP_API_URL="${PAPERCLIP_API_URL:-http://localhost:3100}"
 API_BASE="${PAPERCLIP_API_URL%/}/api"
-COMPANY_ID="${COMPANY_ID:-${PAPERCLIP_COMPANY_ID:-}}"
-COMPANY_SELECTOR="${COMPANY_SELECTOR:-}"
 
 HERMES_AGENT_NAME="${HERMES_AGENT_NAME:-Hermes Gateway Smoke Agent}"
 HERMES_GATEWAY_API_BASE_URL="${HERMES_GATEWAY_API_BASE_URL:-http://127.0.0.1:${HERMES_GATEWAY_PORT:-8642}}"
@@ -52,7 +50,6 @@ Required:
   HERMES_GATEWAY_API_KEY=<API_SERVER_KEY>
 
 Common flags:
-  COMPANY_ID=<uuid> or COMPANY_SELECTOR=<prefix|name|uuid>
   HERMES_GATEWAY_API_BASE_URL=http://127.0.0.1:8642
   HERMES_GATEWAY_PROBE_URL=http://127.0.0.1:8642
   PAPERCLIP_API_URL_FOR_HERMES=http://host.docker.internal:3100
@@ -220,31 +217,16 @@ strip_trailing_slash() {
   printf "%s" "$value"
 }
 
-resolve_company_id() {
-  if [[ -n "$COMPANY_ID" ]]; then
-    return
-  fi
-
-  log "resolving company id"
-  api_request "GET" "/companies"
+require_organization() {
+  log "checking organization"
+  api_request "GET" "/organization"
   if [[ "$RESPONSE_CODE" == "401" || "$RESPONSE_CODE" == "403" ]]; then
-    fail_board_auth_required "Company resolution"
+    fail_board_auth_required "Organization lookup"
+  fi
+  if [[ "$RESPONSE_CODE" == "404" ]]; then
+    fail "no organization found; create one before running smoke test"
   fi
   assert_status "200"
-
-  if [[ -n "$COMPANY_SELECTOR" ]]; then
-    COMPANY_ID="$(jq -r --arg selector "$COMPANY_SELECTOR" '
-      map(select(
-        (.id == $selector)
-        or ((.issuePrefix // "") == $selector)
-        or ((.name // "") == $selector)
-      )) | .[0].id // empty
-    ' <<<"$RESPONSE_BODY")"
-    [[ -n "$COMPANY_ID" ]] || fail "no company matched COMPANY_SELECTOR=${COMPANY_SELECTOR}"
-  else
-    COMPANY_ID="$(jq -r '.[0].id // empty' <<<"$RESPONSE_BODY")"
-    [[ -n "$COMPANY_ID" ]] || fail "no companies found; create one before running smoke test"
-  fi
 }
 
 assert_onboarding_contains() {
@@ -282,12 +264,12 @@ api_request "GET" "/health"
 assert_status "200"
 log "deployment mode=$(jq -r '.deploymentMode // "unknown"' <<<"$RESPONSE_BODY") exposure=$(jq -r '.deploymentExposure // "unknown"' <<<"$RESPONSE_BODY")"
 
-resolve_company_id
+require_organization
 probe_hermes_gateway
 
-log "creating agent-only invite for company ${COMPANY_ID}"
+log "creating agent-only invite"
 INVITE_PAYLOAD="$(jq -nc '{allowedJoinTypes:"agent"}')"
-api_request "POST" "/companies/${COMPANY_ID}/invites" "$INVITE_PAYLOAD"
+api_request "POST" "/invites" "$INVITE_PAYLOAD"
 if [[ "$RESPONSE_CODE" == "401" || "$RESPONSE_CODE" == "403" ]]; then
   fail_board_auth_required "Invite creation"
 fi
@@ -360,7 +342,7 @@ if is_remote_plain_http "$HERMES_GATEWAY_API_BASE_URL"; then
 fi
 
 log "approving join request ${JOIN_REQUEST_ID}"
-api_request "POST" "/companies/${COMPANY_ID}/join-requests/${JOIN_REQUEST_ID}/approve" "{}"
+api_request "POST" "/join-requests/${JOIN_REQUEST_ID}/approve" "{}"
 if [[ "$RESPONSE_CODE" == "401" || "$RESPONSE_CODE" == "403" ]]; then
   fail_board_auth_required "Join approval"
 fi
@@ -416,7 +398,6 @@ if [[ -n "$PAPERCLIP_API_URL_FOR_HERMES" ]]; then
 fi
 
 log "success"
-log "companyId=${COMPANY_ID}"
 log "inviteId=${INVITE_ID}"
 log "joinRequestId=${JOIN_REQUEST_ID}"
 log "agentId=${CREATED_AGENT_ID}"
@@ -427,7 +408,6 @@ log "agentApiKeySha256=$(hash_prefix "$AGENT_API_KEY") len=${#AGENT_API_KEY}"
 if [[ -n "$HERMES_JOIN_OUTPUT_FILE" ]]; then
   mkdir -p "$(dirname "$HERMES_JOIN_OUTPUT_FILE")"
   jq -nc \
-    --arg companyId "$COMPANY_ID" \
     --arg inviteId "$INVITE_ID" \
     --arg joinRequestId "$JOIN_REQUEST_ID" \
     --arg agentId "$CREATED_AGENT_ID" \
@@ -436,7 +416,6 @@ if [[ -n "$HERMES_JOIN_OUTPUT_FILE" ]]; then
     --arg hermesGatewayApiKeySha256 "$(hash_prefix "$HERMES_GATEWAY_API_KEY")" \
     --arg agentApiKeySha256 "$(hash_prefix "$AGENT_API_KEY")" \
     '{
-      companyId: $companyId,
       inviteId: $inviteId,
       joinRequestId: $joinRequestId,
       agentId: $agentId,

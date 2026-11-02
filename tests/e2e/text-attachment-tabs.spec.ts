@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { expect, test, type APIRequestContext } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 import { expectTaskPanelTab, selectTaskPanelTab } from "./helpers/task-panel-tabs";
 
 async function json(response: Awaited<ReturnType<APIRequestContext["get"]>>) {
@@ -11,16 +11,16 @@ async function json(response: Awaited<ReturnType<APIRequestContext["get"]>>) {
 for (const mobile of [false, true]) {
   test(`opens uploaded text in task tabs and downloads the original (mobile=${mobile})`, async ({ page, request }, testInfo) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
-    const company = await json(await request.post("/api/companies", { data: { name: `Text files ${randomUUID()}` } }));
-    const issue = await json(await request.post(`/api/companies/${company.id}/issues`, {
-      data: { title: "Review uploaded text files", status: "backlog" },
+    await ensureOrganization(request);
+    const issue = await json(await request.post(`/api/issues`, {
+      data: { title: "Review uploaded text files", status: "backlog", allowDuplicate: true },
     }));
     const files = [
       { name: "AGENTS.md", mimeType: "text/markdown", buffer: Buffer.from("# File charter\n\nKeep **original** bytes.\n") },
       { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("Plain text <script>never execute</script>\n") },
     ];
     const attachments = [];
-    for (const file of files) attachments.push(await json(await request.post(`/api/companies/${company.id}/issues/${issue.id}/attachments`, { multipart: { file } })));
+    for (const file of files) attachments.push(await json(await request.post(`/api/issues/${issue.id}/attachments`, { multipart: { file } })));
     await json(await request.post(`/api/issues/${issue.id}/comments`, {
       data: { body: "Review the attached files.", attachmentIds: attachments.map((attachment) => attachment.id) },
     }));
@@ -36,7 +36,7 @@ for (const mobile of [false, true]) {
         },
       }));
     }
-    await page.goto(`/${company.issuePrefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     await page.getByRole("link", { name: "Open AGENTS.md", exact: true }).click();
     const panel = mobile ? page.getByTestId("mobile-task-side-panel") : page.locator("aside").filter({ has: page.getByRole("tab", { name: "AGENTS.md", exact: true }) });
     await expectTaskPanelTab(panel, mobile, "AGENTS.md");

@@ -4,6 +4,7 @@ import {
   expectLandsOnFirstTaskWithoutDashboardBounce,
   instrumentNavLog,
 } from "./helpers/onboarding-landing";
+import { ensureOrganization } from "./helpers/organization";
 
 /**
  * E2E: post-wizard onboarding launch.
@@ -12,11 +13,6 @@ import {
  * drops the user straight onto that task's detail page (not the dashboard),
  * so they land in the conversation the agent will start in. The chat intro
  * still has unit coverage in BoardChat tests.
- *
- * PAP-404: onboarding used to intermittently bounce to the company dashboard.
- * The bounce only reproduces when the instance already has ≥1 company (the
- * board's test ports), so the second test seeds a company first to exercise
- * exactly that failing condition.
  */
 
 const FIRST_TASK_TITLE = "Paperclip onboarding";
@@ -61,24 +57,13 @@ async function installLaunchIntercepts(page: Page, baseURL?: string) {
   });
 }
 
-/** Drive the wizard from the /onboarding route through to "Get started". */
-async function runOnboardingWizard(page: Page, companyName: string) {
+/**
+ * Drive the wizard from the /onboarding route through to "Get started". The
+ * organization exists already, so the route opens on the agent step.
+ */
+async function runOnboardingWizard(page: Page) {
+  await ensureOrganization(page.request);
   await page.goto("/onboarding");
-
-  // Launcher card path (existing companies) — enter the wizard if the
-  // route shows a launcher instead of opening the wizard directly.
-  const startBtn = page.getByRole("button", { name: /Start Onboarding/i });
-  if (await startBtn.count()) await startBtn.first().click();
-
-  // Step 0: front door (skipped when the wizard opens on the create path).
-  const frontDoor = page.getByText("Build a new organization");
-  if (await frontDoor.count()) await frontDoor.first().click();
-
-  // Step 1: company name.
-  await page.getByPlaceholder("e.g. Northwind Labs").fill(companyName);
-  await page.getByRole("button", { name: /^Continue/ }).click();
-
-  // Step 1's "Next" creates the company; the mission step no longer runs.
 
   // Step 3: name the agent. The role picker is gone — the arc asks for a
   // name and hires under the neutral `general` role.
@@ -97,30 +82,26 @@ async function runOnboardingWizard(page: Page, companyName: string) {
   // "Connect", not "Next": this step's button starts the sign-in where there
   // is one to start, so it is named for what it does. This test simulates
   // successful local account connection before the environment check and hire.
+  // A source the organization already connected skips straight to review.
   //
   // Waited on for enabled rather than for visible: it is already on screen,
   // disabled, and clicking a disabled button raises nothing and does nothing.
   const connectNext = page.getByRole("button", { name: /^Connect$/ });
-  await expect(connectNext).toBeEnabled({ timeout: 30_000 });
-  await connectNext.click();
+  const getStarted = page.getByRole("button", { name: /Get started/ });
+  await expect(connectNext.or(getStarted)).toBeVisible({ timeout: 30_000 });
+  if (await connectNext.isVisible()) {
+    await expect(connectNext).toBeEnabled({ timeout: 30_000 });
+    await connectNext.click();
+  }
 
   // Step 5: review → Get started creates the first task and opens its
   // detail page.
-  const getStarted = page.getByRole("button", { name: /Get started/ });
   await getStarted.waitFor({ timeout: 20_000 });
   await getStarted.click();
 }
 
-async function assertFirstTaskExists(page: Page, companyName: string) {
-  const companiesRes = await page.request.get("/api/companies");
-  expect(companiesRes.ok()).toBe(true);
-  const companies = await companiesRes.json();
-  const company = companies.find(
-    (candidate: { name: string }) => candidate.name === companyName,
-  );
-  expect(company).toBeTruthy();
-
-  const issuesRes = await page.request.get(`/api/companies/${company.id}/issues`);
+async function assertFirstTaskExists(page: Page) {
+  const issuesRes = await page.request.get(`/api/issues`);
   expect(issuesRes.ok()).toBe(true);
   const issues = await issuesRes.json();
   const firstTask = issues.find(
@@ -137,35 +118,9 @@ test.describe("First-task launch after onboarding wizard", () => {
     await instrumentNavLog(page);
     await installLaunchIntercepts(page, baseURL);
 
-    const companyName = `E2E-TypingIntro-${Date.now()}`;
-    await runOnboardingWizard(page, companyName);
+    await runOnboardingWizard(page);
 
     await expectLandsOnFirstTaskWithoutDashboardBounce(page);
-    await assertFirstTaskExists(page, companyName);
-  });
-
-  // PAP-404 regression: the dashboard bounce only fires when the instance
-  // already has a company for the route-sync effect to reset selection to.
-  // Seed one first, then onboard a brand-new company and assert we still land
-  // on the first task without a dashboard bounce.
-  test("lands on the first task even when a company already exists", async ({
-    page,
-    baseURL,
-  }) => {
-    await instrumentNavLog(page);
-    await installLaunchIntercepts(page, baseURL);
-
-    // Seed a pre-existing company so the companies list is non-empty when the
-    // wizard launches — the exact condition that reproduced the bounce.
-    const seedRes = await page.request.post("/api/companies", {
-      data: { name: `E2E-Seed-${Date.now()}` },
-    });
-    expect(seedRes.ok()).toBe(true);
-
-    const companyName = `E2E-TypingIntro-Existing-${Date.now()}`;
-    await runOnboardingWizard(page, companyName);
-
-    await expectLandsOnFirstTaskWithoutDashboardBounce(page);
-    await assertFirstTaskExists(page, companyName);
+    await assertFirstTaskExists(page);
   });
 });

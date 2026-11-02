@@ -4,10 +4,10 @@ import {
   expectLandsOnFirstTaskWithoutDashboardBounce,
   instrumentNavLog,
 } from "./helpers/onboarding-landing";
+import { ensureOrganization } from "./helpers/organization";
 
 /** The name the CEO role fills in — see AGENT_ROLE_LABELS. */
 const AGENT_NAME = "CEO";
-const TASK_TITLE = "Paperclip onboarding";
 
 /** Wait for the saved question before checking its dismissed presentation. */
 async function expectOpeningQuestionDismissed(page: import("@playwright/test").Page) {
@@ -27,7 +27,6 @@ async function dismissOpeningCard(page: import("@playwright/test").Page) {
 
 test("captures planning mode UI for desktop and mobile", async ({ page }) => {
   const timestamp = Date.now();
-  const companyName = `PAP-3413-${timestamp}`;
   const screenshotDir = "test-results/planning-mode";
 
   await instrumentNavLog(page);
@@ -65,19 +64,9 @@ test("captures planning mode UI for desktop and mobile", async ({ page }) => {
     });
   });
 
+  // With an organization in place, /onboarding opens on the agent step.
+  await ensureOrganization(page.request);
   await page.goto("/onboarding");
-  const startBtn = page.getByRole("button", { name: /Start Onboarding|New Organization|Add Agent/ });
-  if (await startBtn.count()) await startBtn.first().click();
-
-  const createCard = page.getByRole("button", { name: /Build a new organization/ });
-  if (await createCard.count()) await createCard.first().click();
-
-  await expect(page.getByRole("heading", { name: "What is the name of your organization?" })).toBeVisible({ timeout: 15_000 });
-
-  await page.locator('input[placeholder="e.g. Northwind Labs"]').fill(companyName);
-  await page.getByRole("button", { name: /^Continue/ }).click();
-
-  // Naming the company creates it and goes straight to the agent step.
 
   // The agent step asks for a name and nothing else; the name is what gates
   // "Next", and the hire is filed under the neutral `general` role.
@@ -93,13 +82,18 @@ test("captures planning mode UI for desktop and mobile", async ({ page }) => {
   // connection, then exercises the real first-task creation flow.
   //
   // Waited on for enabled rather than visible: it is already on screen, and
-  // clicking a disabled button raises nothing and does nothing.
+  // clicking a disabled button raises nothing and does nothing. A source the
+  // organization already connected skips straight to review.
   const source = page.getByRole("radio").first();
   await source.waitFor({ timeout: 30_000 });
   await source.click();
   const connectNext = page.getByRole("button", { name: /^Connect$/ });
-  await expect(connectNext).toBeEnabled({ timeout: 30_000 });
-  await connectNext.click();
+  const getStarted = page.getByRole("button", { name: /Get started/ });
+  await expect(connectNext.or(getStarted)).toBeVisible({ timeout: 30_000 });
+  if (await connectNext.isVisible()) {
+    await expect(connectNext).toBeEnabled({ timeout: 30_000 });
+    await connectNext.click();
+  }
 
   // The review step names the agent rather than the step.
   await expect(
@@ -110,25 +104,15 @@ test("captures planning mode UI for desktop and mobile", async ({ page }) => {
   // and must not bounce through the dashboard (PAP-404).
   await expectLandsOnFirstTaskWithoutDashboardBounce(page);
 
+  // Earlier specs may have onboarded too, so identify this run's first task
+  // by the page it landed on rather than by its title.
   const baseOrigin = new URL(page.url()).origin;
-  const companyRes = await page.request.get(`${baseOrigin}/api/companies`);
-  expect(companyRes.ok()).toBe(true);
-  const companies = await companyRes.json();
-  const company = companies.find((c: { name: string }) => c.name === companyName);
-  expect(company).toBeTruthy();
-  const issueRes = await page.request.get(`${baseOrigin}/api/companies/${company.id}/issues`);
+  const landedRef = decodeURIComponent(new URL(page.url()).pathname.split("/").pop() ?? "");
+  const issueRes = await page.request.get(`${baseOrigin}/api/issues/${encodeURIComponent(landedRef)}`);
   expect(issueRes.ok()).toBe(true);
-  const issues = await issueRes.json();
-  const planningSeedIssue = issues.find(
-    (candidate: { id: string; identifier?: string; title: string }) =>
-      candidate.title === TASK_TITLE,
-  );
-  expect(planningSeedIssue).toBeTruthy();
-
-  const issue = planningSeedIssue;
+  const issue = await issueRes.json();
   const issueIdentifier = issue.identifier ?? issue.id;
-  const issuePath = `/${company.issuePrefix ?? company.id}/issues/${issueIdentifier}`;
-  const companyPrefix = company.issuePrefix ?? company.id;
+  const issuePath = `/issues/${issueIdentifier}`;
   const issueLinkSelector = `a[href$="/issues/${issueIdentifier}"]`;
 
   const setMode = async (mode: "standard" | "planning") => {
@@ -162,7 +146,7 @@ test("captures planning mode UI for desktop and mobile", async ({ page }) => {
     fullPage: true,
   });
 
-  await page.goto(`/${companyPrefix}/issues`);
+  await page.goto(`/issues`);
   await expect(page.locator(issueLinkSelector)).toBeVisible();
   await expect(page.locator(issueLinkSelector)).not.toContainText("Plan mode");
   await page.screenshot({
@@ -193,7 +177,7 @@ test("captures planning mode UI for desktop and mobile", async ({ page }) => {
     fullPage: true,
   });
 
-  await page.goto(`/${companyPrefix}/issues`);
+  await page.goto(`/issues`);
   await expect(page.locator(issueLinkSelector)).toBeVisible();
   await expect(page.locator(issueLinkSelector)).not.toContainText("Plan mode");
   await page.screenshot({

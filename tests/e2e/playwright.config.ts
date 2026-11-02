@@ -16,6 +16,7 @@ const PAPERCLIP_DECISION_SIGNING_SECRET =
 const PAPERCLIP_TOOL_ACTION_SIGNING_SECRET =
   process.env.PAPERCLIP_TOOL_ACTION_SIGNING_SECRET ?? "playwright-e2e-tool-action-signing-secret";
 const PLAYWRIGHT_CHANNEL = process.env.PAPERCLIP_PLAYWRIGHT_CHANNEL;
+const FRESH_INSTANCE_TEST = /naming creates the organization/;
 
 process.env.PAPERCLIP_HOME = PAPERCLIP_HOME;
 process.env.PAPERCLIP_CONFIG = PAPERCLIP_CONFIG;
@@ -51,7 +52,20 @@ export default defineConfig({
   },
   projects: [
     {
+      // This test creates the instance's only organization through the UI, so
+      // it must run before any spec that ensures one exists.
+      name: "fresh-instance",
+      testMatch: "onboarding.spec.ts",
+      grep: FRESH_INSTANCE_TEST,
+      use: {
+        browserName: "chromium",
+        ...(PLAYWRIGHT_CHANNEL ? { channel: PLAYWRIGHT_CHANNEL } : {}),
+      },
+    },
+    {
       name: "chromium",
+      grepInvert: FRESH_INSTANCE_TEST,
+      dependencies: ["fresh-instance"],
       use: {
         browserName: "chromium",
         ...(PLAYWRIGHT_CHANNEL ? { channel: PLAYWRIGHT_CHANNEL } : {}),

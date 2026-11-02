@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test, expect, type APIResponse } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 async function json(response: APIResponse) {
   const body = await response.text();
@@ -13,25 +14,27 @@ for (const { unfinishedWrite, stopResponse } of [{ unfinishedWrite: false, stopR
   test(`embedded ACP Stop: ${unfinishedWrite ? "Interrupt continues without replaying the write" : stopResponse ? "composer Stop preserves queued input and accepts a new direction" : "Interrupt delivers queued input in the same session"}`, async ({ page, request }) => {
     test.setTimeout(120_000);
     const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-stop-browser-"));
-    const company = await json(await request.post("/api/companies", { data: { name: `ACP Stop ${Date.now()}` } }));
+    await ensureOrganization(request);
+    let ownerId: string | undefined;
     const originalSettings = await json(await request.get("/api/instance/settings/experimental"));
     try {
       await json(await request.patch("/api/instance/settings/experimental", { data: { enableClassicTaskInterface: false } }));
-      const owner = await json(await request.post(`/api/companies/${company.id}/agents`, { data: {
+      const owner = await json(await request.post(`/api/agents`, { data: {
         name: "ACP Stop fixture", role: "engineer", adapterType: "claude_local",
         adapterConfig: { engine: "acp", cwd: root, stateDir: path.join(root, "state"),
           agentCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.resolve("scripts/mcp-fixtures/servers/acp-stop-agent.mjs"))}`,
           env: { PAPERCLIP_STOP_FIXTURE_ROOT: root, PAPERCLIP_STOP_FIXTURE_FINISH_TASK: "1", ...(unfinishedWrite ? { PAPERCLIP_STOP_FIXTURE_TOOL: "write" } : {}) },
         }, runtimeConfig: { heartbeat: { enabled: false, wakeOnDemand: true } },
       } }));
-      const issue = await json(await request.post(`/api/companies/${company.id}/issues`, { data: {
-        title: "ACP Stop continuation", status: "backlog", assigneeAgentId: owner.id,
+      ownerId = owner.id;
+      const issue = await json(await request.post(`/api/issues`, { data: {
+        title: "ACP Stop continuation", status: "backlog", assigneeAgentId: owner.id, allowDuplicate: true,
       } }));
       await json(await request.patch(`/api/issues/${issue.id}`, { data: { status: "todo" } }));
       await expect.poll(async () => (await readFile(path.join(root, "prompts"), "utf8").catch(() => "")).trim().split("\n").filter(Boolean).length, { timeout: 45_000 }).toBe(1);
       const [active] = await json(await request.get(`/api/issues/${issue.id}/live-runs`));
       expect(active).toBeTruthy();
-      await page.goto(`/${company.issuePrefix}/issues/${issue.identifier}`);
+      await page.goto(`/issues/${issue.identifier}`);
       const editor = page.getByRole("textbox", { name: "editable markdown" });
       await editor.fill("List my recent Drive files.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -79,7 +82,7 @@ for (const { unfinishedWrite, stopResponse } of [{ unfinishedWrite: false, stopR
       if (unfinishedWrite) expect(await readFile(path.join(root, "writes"), "utf8")).toBe(writesAtStop);
       await expect(page.getByRole("dialog")).toHaveCount(0);
     } finally {
-      await request.patch(`/api/companies/${company.id}`, { data: { status: "archived" } });
+      if (ownerId) await request.post(`/api/agents/${ownerId}/terminate`);
       await request.patch("/api/instance/settings/experimental", { data: { enableClassicTaskInterface: originalSettings.enableClassicTaskInterface } });
       await rm(root, { recursive: true, force: true });
     }

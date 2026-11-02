@@ -7,8 +7,8 @@ import { stageGrokSubscriptionFixture } from "./grok-subscription-fixture.js";
 import { findSecretLeak, normalizedSecrets, sanitizeJson } from "./redaction.js";
 import { buildPaperclipServerEnvironment } from "./harness-env.js";
 
-const companyId = "11111111-2222-4333-8444-555555555555";
-const raw = JSON.stringify({ [`https://auth.x.ai::${companyId}`]: {
+const accountId = "11111111-2222-4333-8444-555555555555";
+const raw = JSON.stringify({ [`https://auth.x.ai::${accountId}`]: {
   key: "fixture-access-credential", refresh_token: "fixture-refresh-credential", email: "fixture@example.invalid",
 } });
 const roots: string[] = [];
@@ -21,27 +21,27 @@ async function setup() {
   return { PAPERCLIP_RUNNER_E2E_TEMP_ROOT: root, PAPERCLIP_HOME: home, PAPERCLIP_INSTANCE_ID: "runner-e2e-test" };
 }
 
-it("stages only the explicit company credential privately and cleans refreshed state", async () => {
+it("stages only the explicit credential privately and cleans refreshed state", async () => {
   const environment = await setup();
-  const remove = await stageGrokSubscriptionFixture({ raw, companyId, environment });
-  const home = resolveManagedGrokHomeDir(environment, companyId);
+  const remove = await stageGrokSubscriptionFixture({ raw, environment });
+  const home = resolveManagedGrokHomeDir(environment);
   expect(await readFile(path.join(home, "auth.json"), "utf8")).toBe(raw);
   expect((await stat(home)).mode & 0o777).toBe(0o700);
   expect((await stat(path.join(home, "auth.json"))).mode & 0o777).toBe(0o600);
-  await expect(stageGrokSubscriptionFixture({ raw, companyId, environment })).rejects.toThrow();
+  await expect(stageGrokSubscriptionFixture({ raw, environment })).rejects.toThrow();
   await remove();
   await expect(stat(home)).rejects.toThrow();
 });
 
 it("refuses malformed credentials and nonisolated or redirected homes", async () => {
   const environment = await setup();
-  await expect(stageGrokSubscriptionFixture({ raw: "{}", companyId, environment })).rejects.toThrow("malformed");
-  await expect(stageGrokSubscriptionFixture({ raw, companyId: "../outside", environment })).rejects.toThrow("isolated");
-  await expect(stageGrokSubscriptionFixture({ raw, companyId, environment: { ...environment, PAPERCLIP_HOME: tmpdir() } })).rejects.toThrow("outside");
-  const home = resolveManagedGrokHomeDir(environment, companyId);
+  await expect(stageGrokSubscriptionFixture({ raw: "{}", environment })).rejects.toThrow("malformed");
+  await expect(stageGrokSubscriptionFixture({ raw, environment: { ...environment, PAPERCLIP_INSTANCE_ID: "default" } })).rejects.toThrow("isolated");
+  await expect(stageGrokSubscriptionFixture({ raw, environment: { ...environment, PAPERCLIP_HOME: tmpdir() } })).rejects.toThrow("outside");
+  const home = resolveManagedGrokHomeDir(environment);
   await mkdir(path.dirname(home), { recursive: true });
   await symlink(tmpdir(), home);
-  await expect(stageGrokSubscriptionFixture({ raw, companyId, environment })).rejects.toThrow("redirected");
+  await expect(stageGrokSubscriptionFixture({ raw, environment })).rejects.toThrow("redirected");
 });
 
 it("strips subscription input from the server environment and masks token fragments", () => {

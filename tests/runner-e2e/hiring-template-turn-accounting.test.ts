@@ -50,14 +50,13 @@ const negatives: Array<[string, (f: Fixture) => void, HiringTemplateTurnPredicat
   ["hidden process retries", f => { notification(f).processLossRetryCount = 1; }, "successful-native-without-retries"],
   ["a scheduled retry", f => { notification(f).scheduledRetryAttempt = 1; }, "successful-native-without-retries"],
   ["a continuation run", f => { notification(f).continuationAttempt = 1; }, "successful-native-without-retries"],
-  ["a run in another company", f => { notification(f).companyId = "other"; }, "resolved-company-account-and-identity"],
-  ["a wrong managed account", f => { notification(f).contextSnapshot.aiConnection.connectionId = "other"; }, "resolved-company-account-and-identity"],
-  ["a wrong provider", f => { worker(f).contextSnapshot.aiConnection.provider = "other"; }, "resolved-company-account-and-identity"],
-  ["a wrong auth method", f => { worker(f).contextSnapshot.aiConnection.method = "host"; }, "resolved-company-account-and-identity"],
-  ["a wrong responsible-user binding", f => { notification(f).contextSnapshot.aiConnection.responsibleUserId = "other"; }, "resolved-company-account-and-identity"],
-  ["a wrong run responsible user", f => { request(f).responsibleUserId = "other"; }, "resolved-company-account-and-identity"],
-  ["an accepted foreign identity", f => { notification(f).identityHistory[0].responsibleUserId = "other"; }, "resolved-company-account-and-identity"],
-  ["an identity receipt for another run", f => { notification(f).identityHistory[0].runId = "other"; }, "resolved-company-account-and-identity"],
+  ["a wrong managed account", f => { notification(f).contextSnapshot.aiConnection.connectionId = "other"; }, "resolved-account-and-identity"],
+  ["a wrong provider", f => { worker(f).contextSnapshot.aiConnection.provider = "other"; }, "resolved-account-and-identity"],
+  ["a wrong auth method", f => { worker(f).contextSnapshot.aiConnection.method = "host"; }, "resolved-account-and-identity"],
+  ["a wrong responsible-user binding", f => { notification(f).contextSnapshot.aiConnection.responsibleUserId = "other"; }, "resolved-account-and-identity"],
+  ["a wrong run responsible user", f => { request(f).responsibleUserId = "other"; }, "resolved-account-and-identity"],
+  ["an accepted foreign identity", f => { notification(f).identityHistory[0].responsibleUserId = "other"; }, "resolved-account-and-identity"],
+  ["an identity receipt for another run", f => { notification(f).identityHistory[0].runId = "other"; }, "resolved-account-and-identity"],
   ["a missing instruction receipt", f => { request(f).identityHistory.pop(); }, "three-distinct-requested-chat-turns"],
   ["a rejected instruction receipt", f => { request(f).identityHistory[1].status = "rejected"; }, "three-distinct-requested-chat-turns"],
   ["a wrong instruction comment", f => { request(f).identityHistory[1].messageId = "other"; }, "three-distinct-requested-chat-turns"],
@@ -115,12 +114,12 @@ it("does not modify observations or expose opaque run content", () => {
   const before = JSON.stringify(f), result = gradeHiringTemplateTurns(f);
   assert.equal(JSON.stringify(f), before);
   assert.equal(result.version, HIRING_TEMPLATE_TURN_ACCOUNTING_VERSION);
-  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_|"company"|"board"|"account"|"notify-1"|"lead-first"/);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_|"board"|"account"|"notify-1"|"lead-first"/);
 });
 
 const missingObservations = [
   "evidence.agents", "evidence.tasks", "evidence.runs", "evidence.first", "evidence.second", "evidence.binding", "evidence.connectionId",
-  "apiState.issue", "apiState.runs", "apiState.comments", "apiState.issue.companyId", "apiState.issue.conversationUserId",
+  "apiState.issue", "apiState.runs", "apiState.comments", "apiState.issue.conversationUserId",
   "apiState.issue.conversationAgentId", "apiState.issue.conversationSessionGeneration",
   "evidence.runs.0.identityHistory", "evidence.runs.0.contextSnapshot.aiConnection", "evidence.runs.0.startedAt", "evidence.runs.0.finishedAt",
   "evidence.tasks.0.completedAt", "evidence.tasks.0.originRunId", "apiState.comments.0.createdAt", "apiState.comments.3.createdByRunId",
@@ -237,8 +236,8 @@ it("rejects an attempted mutation even if it fails and a benign read follows", (
     const payload = event.payload.prpEvent.payload as Record<string, any>;
     if (payload.executionId) payload.executionId = "mutation";
     if (payload.item) { payload.item.id = "mutation"; if (payload.item.tool_use_id) payload.item.tool_use_id = "mutation"; }
-    if (payload.item?.input) payload.item.input.operationId = "POST /api/companies/{companyId}/issues";
-    if (payload.item?.result) Object.assign(payload.item.result, { apiOperationId: "POST /api/companies/{companyId}/issues", ok: false, status: 403 });
+    if (payload.item?.input) payload.item.input.operationId = "POST /api/issues";
+    if (payload.item?.result) Object.assign(payload.item.result, { apiOperationId: "POST /api/issues", ok: false, status: 403 });
   }
   ledger.events.unshift(...mutation);
   ledger.events.forEach((event, i) => event.seq = i + 1);

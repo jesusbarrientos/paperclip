@@ -1,10 +1,11 @@
 import { test, expect, request as pwRequest, type APIRequestContext } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 /**
  * E2E: Signoff execution policy flow.
  *
  * Validates the full signoff lifecycle through the API and UI:
- *   1. Create a company with executor + reviewer + approver agents
+ *   1. Create executor + reviewer + approver agents
  *   2. Create an issue with a two-stage execution policy (review → approval)
  *   3. Executor marks done → issue routes to reviewer (in_review)
  *   4. Reviewer approves → issue routes to approver
@@ -23,7 +24,6 @@ import { test, expect, request as pwRequest, type APIRequestContext } from "@pla
 
 const PORT = Number(process.env.PAPERCLIP_E2E_PORT ?? 3199);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const COMPANY_NAME = `E2E-Signoff-${Date.now()}`;
 
 interface AgentAuth {
   agentId: string;
@@ -33,8 +33,6 @@ interface AgentAuth {
 }
 
 interface TestContext {
-  companyId: string;
-  companyPrefix: string;
   executor: AgentAuth;
   reviewer: AgentAuth;
   approver: AgentAuth;
@@ -43,7 +41,6 @@ interface TestContext {
 }
 
 interface IssueRunLockState {
-  companyId: string;
   assigneeAgentId: string | null;
   checkoutRunId: string | null;
   executionRunId: string | null;
@@ -92,7 +89,7 @@ async function invokeHeartbeat(
       issueRunLock.checkoutRunId,
     ].filter((candidate): candidate is string => Boolean(candidate)));
     const recentRunsRes = await board.get(
-      `${BASE_URL}/api/companies/${issueRunLock.companyId}/heartbeat-runs?agentId=${agentId}&limit=20`,
+      `${BASE_URL}/api/heartbeat-runs?agentId=${agentId}&limit=20`,
     );
     if (recentRunsRes.ok()) {
       const recentRuns = await recentRunsRes.json();
@@ -123,7 +120,6 @@ async function getIssueRunLockState(board: APIRequestContext, issueId: string): 
   expect(res.ok()).toBe(true);
   const issue = await res.json();
   return {
-    companyId: issue.companyId,
     assigneeAgentId: issue.assigneeAgentId ?? null,
     checkoutRunId: issue.checkoutRunId ?? null,
     executionRunId: issue.executionRunId ?? null,
@@ -276,7 +272,7 @@ async function agentCheckoutAndPatch(
   return board.patch(`${BASE_URL}/api/issues/${issueId}`, { data: patchData });
 }
 
-async function setupCompany(boardRequest: APIRequestContext): Promise<TestContext> {
+async function setupAgents(boardRequest: APIRequestContext): Promise<TestContext> {
   // Verify server is in local_trusted mode
   const healthRes = await boardRequest.get(`${BASE_URL}/api/health`);
   expect(healthRes.ok()).toBe(true);
@@ -289,21 +285,11 @@ async function setupCompany(boardRequest: APIRequestContext): Promise<TestContex
     );
   }
 
-  // Create company
-  const companyRes = await boardRequest.post(`${BASE_URL}/api/companies`, {
-    data: { name: COMPANY_NAME },
-  });
-  if (!companyRes.ok()) {
-    const errBody = await companyRes.text();
-    throw new Error(`POST /api/companies → ${companyRes.status()}: ${errBody}`);
-  }
-  const company = await companyRes.json();
-  const companyId = company.id;
-  const companyPrefix = company.issuePrefix ?? company.prefix ?? company.urlKey ?? "E2E";
+  await ensureOrganization(boardRequest, { baseUrl: BASE_URL });
 
   // Helper: hire/approve agent + API key + request context
   async function createAgent(name: string, role: string, title: string): Promise<AgentAuth> {
-    const agentRes = await boardRequest.post(`${BASE_URL}/api/companies/${companyId}/agent-hires`, {
+    const agentRes = await boardRequest.post(`${BASE_URL}/api/agent-hires`, {
       data: {
         name,
         role,
@@ -344,8 +330,6 @@ async function setupCompany(boardRequest: APIRequestContext): Promise<TestContex
   const approver = await createAgent("Approver", "cto", "CTO");
 
   return {
-    companyId,
-    companyPrefix,
     executor,
     reviewer,
     approver,
@@ -359,7 +343,7 @@ async function createIssueWithPolicy(ctx: TestContext, title: string, stages?: u
     { type: "review", participants: [{ type: "agent", agentId: ctx.reviewer.agentId }] },
     { type: "approval", participants: [{ type: "agent", agentId: ctx.approver.agentId }] },
   ];
-  const res = await ctx.boardRequest.post(`${BASE_URL}/api/companies/${ctx.companyId}/issues`, {
+  const res = await ctx.boardRequest.post(`${BASE_URL}/api/issues`, {
     data: {
       title,
       status: "in_progress",
@@ -378,7 +362,7 @@ test.describe("Signoff execution policy", () => {
 
   test.beforeAll(async () => {
     const boardRequest = await pwRequest.newContext({ baseURL: BASE_URL });
-    ctx = await setupCompany(boardRequest);
+    ctx = await setupAgents(boardRequest);
   });
 
   test.afterAll(async () => {
@@ -390,7 +374,7 @@ test.describe("Signoff execution policy", () => {
       await agent.request.dispose();
     }
 
-    // Clean up issues, keys, agents, company (best-effort)
+    // Clean up issues, keys, agents (best-effort)
     for (const issueId of ctx.issueIds) {
       await board.patch(`${BASE_URL}/api/issues/${issueId}`, {
         data: { status: "cancelled", comment: "E2E test cleanup." },
@@ -400,7 +384,6 @@ test.describe("Signoff execution policy", () => {
       await board.delete(`${BASE_URL}/api/agents/${agent.agentId}/keys/${agent.keyId}`).catch(() => {});
       await board.delete(`${BASE_URL}/api/agents/${agent.agentId}`).catch(() => {});
     }
-    await board.delete(`${BASE_URL}/api/companies/${ctx.companyId}`).catch(() => {});
     await board.dispose();
   });
 
@@ -433,7 +416,7 @@ test.describe("Signoff execution policy", () => {
     });
 
     // Step 2: Navigate to issue in UI and verify execution label
-    await page.goto(`/${ctx.companyPrefix}/issues/${issue.identifier}`);
+    await page.goto(`/issues/${issue.identifier}`);
     await expect(page.locator("text=Review pending")).toBeVisible({ timeout: 10_000 });
 
     // Step 3: Reviewer approves → should route to approver

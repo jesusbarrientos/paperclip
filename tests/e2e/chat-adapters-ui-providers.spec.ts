@@ -7,7 +7,7 @@ import {
   expectSetupRail,
   fillProviderSetup,
   installChatControlPlaneMock,
-  seedCompanyAndAgent,
+  seedAgents,
   selectMaya,
   PROVIDER_LIFECYCLE_COPY,
   PROVIDERS,
@@ -97,14 +97,14 @@ async function exerciseGitHubReviewSetup(page: Page, mock: ChatMock, seed: Seed,
   expect(await reconnected.json()).toMatchObject({ assignedAgentId: seed.agentId, assignedAgentName: "Maya" });
   await expect(page.getByRole("heading", { name: "Verify connection & tools", exact: true })).toBeVisible();
   mock.setStatus("active");
-  await page.goto(`/${seed.prefix}/apps/chat/endpoint-github/settings`);
+  await page.goto(`/apps/chat/endpoint-github/settings`);
   await expect(page.getByText(/Maya is permanently assigned to this bot/)).toBeVisible();
   await nav.getByRole("link", { name: "Activity", exact: true }).click();
   await page.getByText("Connection health and controls", { exact: true }).click();
   await page.getByRole("button", { name: "Remove connection", exact: true }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove connection", exact: true }).click();
   await expect.poll(() => mock.removed).toBe(true);
-  await expect(page).toHaveURL(new RegExp(`/${seed.prefix}/apps$`));
+  await expect(page).toHaveURL(new RegExp(`/apps$`));
 }
 
 /**
@@ -119,7 +119,7 @@ test.describe.serial("native chat adapter UI", () => {
   let seed: Seed;
 
   test.beforeAll(async ({ request }) => {
-    seed = await seedCompanyAndAgent(request);
+    seed = await seedAgents(request);
   });
 
   test("GitHub: the default-off gate keeps direct tool setup and fences chat routes", async ({
@@ -132,7 +132,7 @@ test.describe.serial("native chat adapter UI", () => {
       enableChatConnectors: false,
     });
 
-    await page.goto(`/${seed.prefix}/apps`);
+    await page.goto(`/apps`);
     await expect(page.getByRole("heading", { name: "Connectors" })).toBeVisible(
       { timeout: 30_000 },
     );
@@ -158,13 +158,13 @@ test.describe.serial("native chat adapter UI", () => {
       page.getByText("Chat with an agent", { exact: true }),
     ).toHaveCount(0);
 
-    await page.goto(`/${seed.prefix}/apps/chat/connect?provider=github`);
-    await expect(page).toHaveURL(new RegExp(`/${seed.prefix}/apps$`));
+    await page.goto(`/apps/chat/connect?provider=github`);
+    await expect(page).toHaveURL(new RegExp(`/apps$`));
     await expect(
       page.getByRole("heading", { name: "Connectors" }),
     ).toBeVisible();
-    await page.goto(`/${seed.prefix}/apps/chat/endpoint-github/settings`);
-    await expect(page).toHaveURL(new RegExp(`/${seed.prefix}/apps$`));
+    await page.goto(`/apps/chat/endpoint-github/settings`);
+    await expect(page).toHaveURL(new RegExp(`/apps$`));
     await expect.poll(() => mock.chatEndpointListReads).toBeGreaterThan(0);
     await expect(page.getByRole("button", { name: "Connect AgentMail", exact: true })).toBeVisible();
     expect(mock.createdWithAgentId).toBeNull();
@@ -181,7 +181,7 @@ test.describe.serial("native chat adapter UI", () => {
         enableChatConnectors: enabled,
       });
 
-      await page.goto(`/${seed.prefix}/agents/${seed.agentId}/channels`);
+      await page.goto(`/agents/${seed.agentId}/channels`);
       const channelsHeading = page.getByRole("heading", {
         name: "Channels",
         exact: true,
@@ -210,7 +210,7 @@ test.describe.serial("native chat adapter UI", () => {
         enableChatConnectors: true,
       });
 
-      await page.goto(`/${seed.prefix}/apps`);
+      await page.goto(`/apps`);
       await expect(
         page.getByRole("heading", { name: "Connectors" }),
       ).toBeVisible({ timeout: 30_000 });
@@ -224,7 +224,7 @@ test.describe.serial("native chat adapter UI", () => {
         await page.getByRole("button", { name: "Change", exact: true }).click();
         await expect(page.getByRole("heading", { name: "Connect GitHub as" })).toBeVisible();
         await expect(page.getByRole("heading", { name: "Choose how to connect" })).toHaveCount(0);
-        await page.goto(`/${seed.prefix}/apps`);
+        await page.goto(`/apps`);
       }
       await connector
         .getByRole("button", { name: `Connect ${provider.provider === "github" ? "GitHub Code Review Bot" : provider.name}` })
@@ -377,7 +377,7 @@ test.describe.serial("native chat adapter UI", () => {
           .click();
         await expect(page).toHaveURL(
           new RegExp(
-            `/${seed.prefix}/apps/chat/endpoint-${provider.provider}/access$`,
+            `/apps/chat/endpoint-${provider.provider}/access$`,
           ),
         );
         await expect(
@@ -400,7 +400,7 @@ test.describe.serial("native chat adapter UI", () => {
 
       await expect(page).toHaveURL(
         new RegExp(
-          `/${seed.prefix}/apps/chat/endpoint-${provider.provider}/settings$`,
+          `/apps/chat/endpoint-${provider.provider}/settings$`,
         ),
       );
       await expect(
@@ -540,7 +540,7 @@ test.describe.serial("native chat adapter UI", () => {
       await expect
         .poll(() => mock.linkIntentPrincipalId)
         .toBe(`principal-${provider.provider}`);
-      const confirmationUrl = `https://paperclip.example.test/${seed.prefix}/chat-identity/confirm?token=e2e-redacted`;
+      const confirmationUrl = `https://paperclip.example.test/chat-identity/confirm?token=e2e-redacted`;
       await expect(
         page.getByText(confirmationUrl, { exact: true }),
       ).toBeVisible();
@@ -576,7 +576,7 @@ test.describe.serial("native chat adapter UI", () => {
       const taskLink = page.getByRole("link", { name: "Open task" });
       await expect(taskLink).toHaveAttribute(
         "href",
-        new RegExp(`/${seed.prefix}/issues/issue-${provider.provider}$`),
+        new RegExp(`/issues/issue-${provider.provider}$`),
       );
       mock.conversationState = "waiting";
       await expect(page.getByText("waiting", { exact: true })).toBeVisible({
@@ -669,7 +669,7 @@ test.describe.serial("native chat adapter UI", () => {
         .click();
       await expect(page).toHaveURL(
         new RegExp(
-          `/${seed.prefix}/apps/chat/connect\\?.*resume=endpoint-${provider.provider}`,
+          `/apps/chat/connect\\?.*resume=endpoint-${provider.provider}`,
         ),
       );
       expect(new URL(page.url()).searchParams.get("reconnect")).toBe("1");
@@ -764,7 +764,7 @@ test.describe.serial("native chat adapter UI", () => {
 
       mock.setStatus("active");
       await page.goto(
-        `/${seed.prefix}/apps/chat/endpoint-${provider.provider}/activity`,
+        `/apps/chat/endpoint-${provider.provider}/activity`,
       );
       await page.getByText("Connection health and controls", { exact: true }).click();
       await page.getByRole("button", { name: "Remove connection" }).click();
@@ -776,7 +776,7 @@ test.describe.serial("native chat adapter UI", () => {
       await confirmation
         .getByRole("button", { name: "Remove connection" })
         .click();
-      await expect(page).toHaveURL(new RegExp(`/${seed.prefix}/apps$`));
+      await expect(page).toHaveURL(new RegExp(`/apps$`));
       await expect.poll(() => mock.removed).toBe(true);
       await expect.poll(() => mock.lifecycleActions).toEqual(["pause", "resume", "remove"]);
     });
@@ -801,11 +801,11 @@ test.describe("iMessage Photon setup and management", () => {
     chatAndTool: false,
   };
   test.beforeAll(async ({ request }) => {
-    seed = await seedCompanyAndAgent(request);
+    seed = await seedAgents(request);
   });
   test("connects Pro shared DMs without presenting a fake owned number or enabling groups", async ({page}) => {
     await installChatControlPlaneMock(page, photon, seed, { enableChatConnectors: true, photonShared: true });
-    await page.goto(`/${seed.prefix}/apps`);
+    await page.goto(`/apps`);
     await page.getByRole("button", {name:"Connect iMessage Photon",exact:true}).click();
     await selectMaya(page);
     await page.getByLabel("Project ID").fill("project-e2e");
@@ -834,7 +834,7 @@ test.describe("iMessage Photon setup and management", () => {
         (value) => localStorage.setItem("paperclip.theme", value),
         theme,
       );
-      await page.goto(`/${seed.prefix}/apps`);
+      await page.goto(`/apps`);
       const card = page.locator(
         '[role="listitem"][data-app-slug="imessage-photon"]',
       );

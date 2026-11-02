@@ -195,7 +195,7 @@ export function createPublicMcpEvents(db: Db, oauth: PublicMcpOAuth, api: ApiDis
       const wanted = s.name === names[0] ? ["issue.updated", "issue.checked_out", "issue.released"].includes(activity.action) && changedStatus && ISSUE_STATUSES.includes(details.status as typeof ISSUE_STATUSES[number]) && (!Array.isArray(s.arguments.statuses) || s.arguments.statuses.includes(details.status))
         : s.name === names[1] ? activity.action === "issue.comment_added" && z.uuid().safeParse(details.commentId).success
         : ["issue.document_created", "issue.document_updated"].includes(activity.action) && typeof details.key === "string" && typeof details.revisionNumber === "number";
-      const data = { taskId: s.taskId, url: oauth.config.origin + "/" + encodeURIComponent(company.prefix) + "/issues/" + s.taskId,
+      const data = { taskId: s.taskId, url: oauth.config.origin + "/issues/" + s.taskId,
         ...(s.name === names[0] ? { status: details.status } : s.name === names[1] ? { commentId: details.commentId } : { documentKey: details.key, revisionNumber: details.revisionNumber }) };
       // Nonmatching activity also gets a receipt, so it cannot starve later matches.
       await db.insert(deliveries).values({ subscriptionId: s.id, activityId: activity.id,

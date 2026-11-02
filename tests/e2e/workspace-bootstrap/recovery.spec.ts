@@ -17,7 +17,7 @@ for (const persistent of [false, true]) {
       return response.json();
     };
     const title = `${persistent ? "Bound persistent failure" : "Recover and preserve work"} ${Date.now()}`;
-    await page.goto(`${base}/${fixture.prefix}/dashboard`);
+    await page.goto(`${base}/dashboard`);
     const announcement = page.getByRole("button", { name: "Dismiss announcement" });
     if (await announcement.isVisible()) await announcement.click();
     await page.getByRole("link", { name: "Tasks", exact: true }).click();
@@ -43,9 +43,9 @@ for (const persistent of [false, true]) {
     const href = await taskLink.getAttribute("href");
     expect(href).toBeTruthy();
     await page.goto(new URL(href!, base).href);
-    const tasks = await api(`/companies/${fixture.companyId}/issues`);
+    const tasks = await api("/issues");
     const task = tasks.find((row: { title: string }) => row.title === title);
-    const runs = async () => (await api(`/companies/${fixture.companyId}/heartbeat-runs`)).filter((row: { agentId: string }) => row.agentId === fixture.agentId);
+    const runs = async () => (await api("/heartbeat-runs")).filter((row: { agentId: string }) => row.agentId === fixture.agentId);
     await expect.poll(async () => (await runs()).some((row: { errorCode: string }) => row.errorCode === "workspace_git_scan_timeout"), { timeout: 30_000 }).toBe(true);
     await expect(page.getByText(/Agent resumes in/)).toBeVisible();
     await page.screenshot({ path: info.outputPath("scheduled-retry.png"), fullPage: true });

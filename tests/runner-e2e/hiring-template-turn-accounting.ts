@@ -3,13 +3,13 @@
  * server completion turns are separately admitted and still count toward costs.
  * Outcome artifacts and source/read coverage are graded by their own checks.
  */
-export const HIRING_TEMPLATE_TURN_ACCOUNTING_VERSION = "paperclip.hiring-template-turn-accounting.v2";
+export const HIRING_TEMPLATE_TURN_ACCOUNTING_VERSION = "paperclip.hiring-template-turn-accounting.v3";
 const predicateIds = [
   "known-fixture-context",
   "complete-public-run-ledger",
   "exact-five-required-work-turns",
   "successful-native-without-retries",
-  "resolved-company-account-and-identity",
+  "resolved-account-and-identity",
   "three-distinct-requested-chat-turns",
   "one-coder-execution-per-known-task",
   "task-origins-are-first-two-requested-turns",
@@ -55,7 +55,7 @@ const dispatchIdentity = (run: JsonRecord, cause: string, user: unknown) => acce
 // Compare only public accounting fields; malformed projections fail closed.
 function accountingProjection(run: JsonRecord): string | null {
   try {
-    return JSON.stringify({ id: run.id, companyId: run.companyId,
+    return JSON.stringify({ id: run.id,
       agentId: run.agentId, status: run.status, runtimeMode: run.runtimeMode,
       responsibleUserId: run.responsibleUserId, invocationSource: run.invocationSource,
       triggerDetail: run.triggerDetail, startedAt: run.startedAt, finishedAt: run.finishedAt,
@@ -66,7 +66,7 @@ function accountingProjection(run: JsonRecord): string | null {
         .map(key => [key, context(run)[key]])),
       account: Object.fromEntries(["connectionId", "responsibleUserId", "provider", "method", "mode"]
         .map(key => [key, object(context(run).aiConnection)[key]])),
-      identities: rows(run.identityHistory).map(i => Object.fromEntries(["runId", "companyId", "responsibleUserId",
+      identities: rows(run.identityHistory).map(i => Object.fromEntries(["runId", "responsibleUserId",
         "status", "cause", "messageId", "acceptedAt"].map(key => [key, i[key]]))) });
   } catch { return null; }
 }
@@ -171,7 +171,7 @@ export function gradeHiringCompletionActions(notifications: JsonRecord[], readRu
 
 function evaluate(evidence: unknown, apiState: unknown): HiringTemplateTurnAccountingResult {
   const e = object(evidence), api = object(apiState);
-  const chat = object(api.issue), user = chat.conversationUserId, company = chat.companyId;
+  const chat = object(api.issue), user = chat.conversationUserId;
   const runs = rows(e.runs), publicRuns = rows(api.runs), comments = rows(api.comments);
   const agents = rows(e.agents), tasks = rows(e.tasks), lead = e.leadId;
   const coder = agents.find(a => a.id !== lead && a.name === e.hireName);
@@ -189,11 +189,11 @@ function evaluate(evidence: unknown, apiState: unknown): HiringTemplateTurnAccou
   const predicates: HiringTemplateTurnPredicate[] = [];
   const check = (id: HiringTemplateTurnPredicateId, passed: unknown) => predicates.push({ id, passed: Boolean(passed) });
   const binding = object(e.binding);
-  check("known-fixture-context", present(company) && present(user) && present(lead) && present(coder?.id)
+  check("known-fixture-context", present(user) && present(lead) && present(coder?.id)
     && chat.id === e.chatIssueId && chat.conversationAgentId === lead
     && typeof chat.conversationSessionGeneration === "number" && Number.isInteger(chat.conversationSessionGeneration) && chat.conversationSessionGeneration >= 0
     && agents.length === 2 && agents.some(a => a.id === lead)
-    && unique(agents.map(a => a.id)) && agents.every(a => a.companyId === company)
+    && unique(agents.map(a => a.id))
     && present(e.connectionId) && present(binding.provider) && present(binding.method) && binding.mode === "responsible_user"
     && unique(taskIds) && unique(tasks.map(t => t.id)) && sameSet(taskIds, tasks.map(t => t.id)));
   check("complete-public-run-ledger", sameSet(runs.map(r => r.id), publicRuns.map(r => r.id))
@@ -207,16 +207,16 @@ function evaluate(evidence: unknown, apiState: unknown): HiringTemplateTurnAccou
     && r.runtimeMode === "native" && Number.isFinite(date(r.startedAt)) && Number.isFinite(date(r.finishedAt))
     && date(r.finishedAt) >= date(r.startedAt) && !r.retryOfRunId && zero(r.processLossRetryCount)
     && zero(r.scheduledRetryAttempt) && zero(r.continuationAttempt)));
-  check("resolved-company-account-and-identity", runs.length > 0 && runs.every(r => {
+  check("resolved-account-and-identity", runs.length > 0 && runs.every(r => {
     const account = object(context(r).aiConnection), identities = accepted(r);
-    return r.companyId === company && r.responsibleUserId === user && account.responsibleUserId === user
+    return r.responsibleUserId === user && account.responsibleUserId === user
       && account.connectionId === e.connectionId && ["provider", "method", "mode"].every(k => account[k] === binding[k])
       && identities.length > 0 && identities.every(i => i.responsibleUserId === user
-        && i.runId === r.id && i.companyId === company);
+        && i.runId === r.id);
   }));
   check("three-distinct-requested-chat-turns", requests.length === 3 && unique(requests.map(c => c.id))
     && sameSet(requested.map(r => context(r).wakeCommentId), requests.map(c => c.id))
-    && requests.every(c => c.companyId === company && c.issueId === chat.id && c.authorUserId === user
+    && requests.every(c => c.issueId === chat.id && c.authorUserId === user
       && !c.authorAgentId && present(c.body) && Number.isFinite(date(c.createdAt)))
     && requested.every(r => {
       const c = context(r), comment = requests.find(p => p.id === c.wakeCommentId);
@@ -233,7 +233,7 @@ function evaluate(evidence: unknown, apiState: unknown): HiringTemplateTurnAccou
   check("one-coder-execution-per-known-task", tasks.length === 2 && taskIds.every(id => {
     const task = taskById.get(id), matching = workers.filter(r => context(r).issueId === id), run = matching[0] ?? {};
     const c = context(run ?? {});
-    return task && matching.length === 1 && task.companyId === company && task.assigneeAgentId === coder?.id
+    return task && matching.length === 1 && task.assigneeAgentId === coder?.id
       && task.projectId === e.projectId && !task.parentId && task.status === "done" && task.responsibleUserId === user
       && Number.isFinite(date(task.completedAt)) && date(task.completedAt) >= date(run.startedAt)
       && run.invocationSource === "assignment" && run.triggerDetail === "system"
@@ -271,7 +271,7 @@ function evaluate(evidence: unknown, apiState: unknown): HiringTemplateTurnAccou
   check("completion-runs-have-attributed-chat-replies", notifications.every(r => {
     const updates = rows(context(r).chatCompletionUpdates);
     const completedAt = Math.max(...updates.map(u => date(u.completedAt)));
-    return updates.length > 0 && comments.some(c => c.companyId === company && c.issueId === chat.id
+    return updates.length > 0 && comments.some(c => c.issueId === chat.id
       && c.authorAgentId === lead && !c.authorUserId && c.createdByRunId === r.id && present(c.body)
       && (c.conversationSessionGeneration == null || c.conversationSessionGeneration === chat.conversationSessionGeneration)
       && date(c.createdAt) >= completedAt && date(c.createdAt) >= date(r.startedAt));

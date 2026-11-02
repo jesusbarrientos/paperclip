@@ -25,8 +25,6 @@ require_cmd() {
 
 PAPERCLIP_API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
 API_BASE="${PAPERCLIP_API_URL%/}/api"
-COMPANY_ID="${COMPANY_ID:-${PAPERCLIP_COMPANY_ID:-}}"
-COMPANY_SELECTOR="${COMPANY_SELECTOR:-}"
 
 RUN_SUFFIX="${HERMES_SMOKE_RUN_SUFFIX:-$(date +%Y%m%d-%H%M%S)-$$}"
 HERMES_IMAGE="${HERMES_IMAGE:-paperclip-hermes-gateway-smoke:local}"
@@ -81,7 +79,6 @@ Required:
   PAPERCLIP_AUTH_HEADER='Bearer <board-token>'     # or PAPERCLIP_COOKIE
 
 Common flags:
-  COMPANY_ID=<uuid> or COMPANY_SELECTOR=<prefix|name|uuid>
   HERMES_VERSION=0.17.0
   HERMES_IMAGE=paperclip-hermes-gateway-smoke:local
   HERMES_GATEWAY_PORT=8642
@@ -306,37 +303,12 @@ require_board_auth() {
   if [[ ${#AUTH_HEADERS[@]} -eq 0 ]]; then
     fail "board/operator auth required. Set PAPERCLIP_COOKIE, PAPERCLIP_AUTH_HEADER, or a board-capable PAPERCLIP_API_KEY."
   fi
-  api_request "GET" "/companies"
+  api_request "GET" "/organization"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
     redact_text "$RESPONSE_BODY" >&2
     echo >&2
-    fail "board/operator auth invalid for /api/companies (HTTP ${RESPONSE_CODE})"
+    fail "board/operator auth invalid or organization missing for /api/organization (HTTP ${RESPONSE_CODE})"
   fi
-}
-
-resolve_company_id() {
-  if [[ -n "$COMPANY_ID" ]]; then
-    log "using company ${COMPANY_ID}"
-    return
-  fi
-
-  api_request "GET" "/companies"
-  assert_status "200"
-
-  if [[ -n "$COMPANY_SELECTOR" ]]; then
-    COMPANY_ID="$(jq -r --arg selector "$COMPANY_SELECTOR" '
-      map(select(
-        (.id == $selector)
-        or ((.issuePrefix // "") == $selector)
-        or ((.name // "") == $selector)
-      )) | .[0].id // empty
-    ' <<<"$RESPONSE_BODY")"
-    [[ -n "$COMPANY_ID" ]] || fail "no company matched COMPANY_SELECTOR=${COMPANY_SELECTOR}"
-  else
-    COMPANY_ID="$(jq -r '.[0].id // empty' <<<"$RESPONSE_BODY")"
-    [[ -n "$COMPANY_ID" ]] || fail "no companies found"
-  fi
-  log "resolved company ${COMPANY_ID}"
 }
 
 capture_container_logs() {
@@ -389,7 +361,6 @@ capture_diagnostics() {
   mkdir -p "$HERMES_SMOKE_DIAG_DIR"
   {
     echo "runSuffix=${RUN_SUFFIX}"
-    echo "companyId=${COMPANY_ID:-}"
     echo "agentId=${AGENT_ID:-}"
     echo "inviteId=${INVITE_ID:-}"
     echo "joinRequestId=${JOIN_REQUEST_ID:-}"
@@ -433,8 +404,8 @@ cleanup_paperclip_state() {
     fi
   fi
 
-  if [[ -n "$JOIN_REQUEST_ID" && -n "$COMPANY_ID" ]]; then
-    api_request "POST" "/companies/${COMPANY_ID}/join-requests/${JOIN_REQUEST_ID}/reject" "{}"
+  if [[ -n "$JOIN_REQUEST_ID" ]]; then
+    api_request "POST" "/join-requests/${JOIN_REQUEST_ID}/reject" "{}"
     if [[ "$RESPONSE_CODE" != "200" && "$RESPONSE_CODE" != "404" && "$RESPONSE_CODE" != "409" ]]; then
       warn "reject join request returned HTTP ${RESPONSE_CODE}"
     fi
@@ -757,8 +728,6 @@ join_hermes_agent() {
   PAPERCLIP_AUTH_HEADER="${PAPERCLIP_AUTH_HEADER:-}" \
   PAPERCLIP_API_KEY="${PAPERCLIP_API_KEY:-}" \
   PAPERCLIP_COOKIE="${PAPERCLIP_COOKIE:-}" \
-  COMPANY_ID="$COMPANY_ID" \
-  COMPANY_SELECTOR="$COMPANY_SELECTOR" \
   HERMES_JOIN_OUTPUT_FILE="$JOIN_OUTPUT_FILE" \
     bash scripts/smoke/hermes-gateway-join.sh > "${join_log}.raw" 2>&1 || {
       redact_text "$(cat "${join_log}.raw")" > "$join_log"
@@ -815,7 +784,7 @@ create_smoke_issue() {
     --arg description "$description" \
     --arg assignee "$AGENT_ID" \
     '{title:$title,description:$description,status:"todo",priority:"high",assigneeAgentId:$assignee}')"
-  api_request "POST" "/companies/${COMPANY_ID}/issues" "$payload"
+  api_request "POST" "/issues" "$payload"
   assert_status "201"
   SMOKE_ISSUE_ID="$(jq -r '.id // empty' <<<"$RESPONSE_BODY")"
   SMOKE_ISSUE_IDENTIFIER="$(jq -r '.identifier // empty' <<<"$RESPONSE_BODY")"
@@ -840,7 +809,7 @@ trigger_wakeup() {
 
 get_run_status() {
   local run_id="$1"
-  api_request "GET" "/companies/${COMPANY_ID}/heartbeat-runs?agentId=${AGENT_ID}&limit=200"
+  api_request "GET" "/heartbeat-runs?agentId=${AGENT_ID}&limit=200"
   if [[ "$RESPONSE_CODE" != "200" ]]; then
     echo ""
     return 0
@@ -972,7 +941,6 @@ main() {
   assert_status "200"
   log "Paperclip health deploymentMode=$(jq -r '.deploymentMode // "unknown"' <<<"$RESPONSE_BODY") exposure=$(jq -r '.deploymentExposure // "unknown"' <<<"$RESPONSE_BODY")"
   require_board_auth
-  resolve_company_id
 
   prepare_fresh_state
   write_hermes_model_config
@@ -993,7 +961,6 @@ main() {
   scan_diagnostics_for_secret_leaks
 
   log "success"
-  log "companyId=${COMPANY_ID}"
   log "agentId=${AGENT_ID}"
   log "inviteId=${INVITE_ID}"
   log "joinRequestId=${JOIN_REQUEST_ID}"

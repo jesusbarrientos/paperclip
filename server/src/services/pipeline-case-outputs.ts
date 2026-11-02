@@ -73,7 +73,7 @@ function previewFor(input: { body?: string | null; summary?: string | null; sour
 }
 
 function sourceIssuePath(companyPrefix: string, identifier: string | null, issueId: string) {
-  return `/${companyPrefix}/issues/${identifier ?? issueId}`;
+  return `/issues/${identifier ?? issueId}`;
 }
 
 function sourceDocumentPath(companyPrefix: string, identifier: string | null, issueId: string, key: string) {

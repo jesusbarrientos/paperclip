@@ -16,7 +16,7 @@ extra tasks, agents, documents or interactions.
 
 Both use the actual production default hire: no custom QA instructions bundle.
 Before execution, the public bundle receipt must hash to the unchanged master
-AGENTS.md, and company/agent budgets must each be 1,000 cents. Profile model,
+AGENTS.md, and organization/agent budgets must each be 1,000 cents. Profile model,
 effort, credentials, skills, permissions and provider configuration are inherited.
 
 The native oracle requires exactly one succeeded native run attributed to this

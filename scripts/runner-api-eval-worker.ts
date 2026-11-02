@@ -115,7 +115,7 @@ try {
           runnerBinary: defaultCapabilityRunnerdBinary(), stateDirectory: join(server.root, `runner-${request.attemptId}`),
           lifecyclePolicy: { mode: "per_turn", idleTimeoutMs: null },
           prpIdentity: { runnerInstanceId: `runner-${fixture.runId}`, environmentLeaseId: `lease-${fixture.runId}`, runId: fixture.runId, normalizedSessionId: `session-${fixture.runId}`, turnId: `turn-${fixture.runId}`, itemId: `item-${fixture.runId}` },
-          controlPlaneRegistration: (prp) => registerRunnerPrpAuthority({ companyId: fixture.companyId, runId: fixture.runId, authority: prp }),
+          controlPlaneRegistration: (prp) => registerRunnerPrpAuthority({ runId: fixture.runId, authority: prp }),
         });
         const active = bundle;
         timer = setTimeout(() => { error = "Attempt exceeded 120 seconds"; void active.transport.close(error); }, 120_000);

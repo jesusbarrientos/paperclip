@@ -65,7 +65,7 @@ export function gradeBlocker(input: {
       "No unpermitted agent or hire approval is created.");
     check(`${c.phase}.provider-runs`, c.runs.length > 0 && c.runs.length <= 4 &&
       c.runs.every(r => r.status === "succeeded" && r.runtimeMode === "legacy"),
-      "All company provider runs must succeed in the intended legacy runtime.");
+      "All provider runs must succeed in the intended legacy runtime.");
   }
   if (final) {
     const answered = final.interactions.find(i => i.id === question?.id);

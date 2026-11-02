@@ -700,18 +700,18 @@ Accept the card above and I write it. This task stays in review until then.`;
       api: { get, postSensitive },
       execution,
       nonce: "test",
-      company: {
-        id: "ui-created-company",
+      organization: {
+        id: "ui-created-organization",
         name: "First task test",
         issuePrefix: "FIRST",
       },
       credentials: { OPENAI_API_KEY: "fixture-key" },
     });
     expect(get).toHaveBeenCalledExactlyOnceWith(
-      "/api/companies/ui-created-company/environments?driver=local",
+      "/api/environments?driver=local",
     );
     expect(postSensitive).toHaveBeenCalledExactlyOnceWith(
-      "/api/companies/ui-created-company/secrets",
+      "/api/secrets",
       expect.objectContaining({ key: "OPENAI_API_KEY", value: "fixture-key" }),
     );
     expect(fixtures.secretRefs.OPENAI_API_KEY).toEqual({
@@ -726,7 +726,7 @@ Accept the card above and I write it. This task stays in review until then.`;
         api: { get, postSensitive },
         execution,
         nonce: "test",
-        company: fixtures.company,
+        organization: fixtures.organization,
         credentials: {},
       }),
     ).rejects.toThrow("Missing credential");
@@ -745,9 +745,9 @@ Accept the card above and I write it. This task stays in review until then.`;
         version: "latest" as const,
       };
       const fixtures = {
-        company: { id: "company", name: "Garden" },
+        organization: { id: "organization", name: "Garden" },
         environment: { id: "local", driver: "local" },
-        agent: { id: "agent", companyId: "company", name: "Lead" },
+        agent: { id: "agent", name: "Lead" },
         secretRefs: { [execution.profile.credential]: secret },
         teardown: async () => {},
       };

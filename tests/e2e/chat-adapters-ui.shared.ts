@@ -7,12 +7,13 @@ import {
   type Page,
   type Route,
 } from "@playwright/test";
+import { ensureOrganization } from "./helpers/organization";
 
 /**
  * Deterministic browser coverage for the native chat-connector UI.
  *
  * Provider APIs are deliberately not contacted here. The shared Paperclip
- * server supplies the company, agent, and connector catalog, while a small
+ * server supplies the organization, agents, and connector catalog, while a small
  * stateful route fixture emulates the chat-control-plane responses. Live
  * provider webhook and credential qualification belongs in the manual runbook
  * because those checks require real accounts and publicly reachable ingress.
@@ -156,8 +157,6 @@ export const PROVIDER_LIFECYCLE_COPY: Record<
 };
 
 export type Seed = {
-  companyId: string;
-  prefix: string;
   agentId: string;
   otherAgentId: string;
 };
@@ -173,20 +172,27 @@ export async function json<T>(
   return (await response.json()) as T;
 }
 
-export async function seedCompanyAndAgent(request: APIRequestContext): Promise<Seed> {
-  const company = await json<{ id: string; issuePrefix: string }>(
-    await request.post("/api/companies", {
-      data: { name: `Chat adapters browser E2E ${Date.now()}` },
-    }),
-    "create company",
+async function ensureNamedAgent(
+  request: APIRequestContext,
+  name: string,
+  title: string,
+  capabilities: string,
+): Promise<string> {
+  const agents = await json<Array<{ id: string; name: string; status?: string }>>(
+    await request.get("/api/agents"),
+    "list agents",
   );
-  const agent = await json<{ id: string }>(
-    await request.post(`/api/companies/${company.id}/agents`, {
+  // The organization is shared by every spec and duplicate names get a numeric
+  // suffix, while these flows look agents up by the exact names "Maya"/"Nora".
+  const existing = agents.find((agent) => agent.name === name && agent.status !== "terminated");
+  if (existing) return existing.id;
+  const created = await json<{ id: string }>(
+    await request.post("/api/agents", {
       data: {
-        name: "Maya",
+        name,
         role: "qa",
-        title: "Chat connector test agent",
-        capabilities: "Exercises deterministic chat connector browser flows.",
+        title,
+        capabilities,
         adapterType: "process",
         adapterConfig: {
           command: process.execPath,
@@ -194,30 +200,26 @@ export async function seedCompanyAndAgent(request: APIRequestContext): Promise<S
         },
       },
     }),
-    "create agent",
+    `create agent ${name}`,
   );
-  const otherAgent = await json<{ id: string }>(
-    await request.post(`/api/companies/${company.id}/agents`, {
-      data: {
-        name: "Nora",
-        role: "qa",
-        title: "Second chat connector test agent",
-        capabilities: "Proves a chat connection keeps its chosen agent.",
-        adapterType: "process",
-        adapterConfig: {
-          command: process.execPath,
-          args: ["--input-type=module", "-e", "process.exit(0)"],
-        },
-      },
-    }),
-    "create second agent",
+  return created.id;
+}
+
+export async function seedAgents(request: APIRequestContext): Promise<Seed> {
+  await ensureOrganization(request);
+  const agentId = await ensureNamedAgent(
+    request,
+    "Maya",
+    "Chat connector test agent",
+    "Exercises deterministic chat connector browser flows.",
   );
-  return {
-    companyId: company.id,
-    prefix: company.issuePrefix,
-    agentId: agent.id,
-    otherAgentId: otherAgent.id,
-  };
+  const otherAgentId = await ensureNamedAgent(
+    request,
+    "Nora",
+    "Second chat connector test agent",
+    "Proves a chat connection keeps its chosen agent.",
+  );
+  return { agentId, otherAgentId };
 }
 
 export function bodyOf(route: Route): Record<string, unknown> {
@@ -236,7 +238,6 @@ export function endpointFixture(provider: ProviderCase, seed: Seed) {
   const now = new Date().toISOString();
   return {
     id: `endpoint-${provider.provider}`,
-    companyId: seed.companyId,
     connectionId: `connection-${provider.provider}`,
     provider: provider.provider,
     publicId: `public-${provider.provider}`,
@@ -385,7 +386,6 @@ export async function installChatControlPlaneMock(
   };
   const resource = {
     id: `resource-${provider.provider}`,
-    companyId: seed.companyId,
     endpointId: endpoint.id,
     type: provider.resourceType,
     providerResourceId: `provider-resource-${provider.provider}`,
@@ -456,7 +456,7 @@ export async function installChatControlPlaneMock(
       if (operation === "reviews") { await fulfill(route, []); return; }
     }
 
-    if (pathname === `/api/companies/${seed.companyId}/chat-endpoints`) {
+    if (pathname === "/api/chat-endpoints") {
       if (method === "GET") {
         state.chatEndpointListReads += 1;
         await fulfill(route, { endpoints: state.created ? [endpoint] : [] });
@@ -634,12 +634,12 @@ export async function installChatControlPlaneMock(
       return;
     }
     if (pathname === `/api/chat-endpoints/${endpoint.id}/principals/principal-slack-self/link-intent` && method === "POST") {
-      await fulfill(route, { confirmationUrl: `https://paperclip.example.test/${seed.prefix}/chat-identity/confirm?token=e2e-self` });
+      await fulfill(route, { confirmationUrl: `https://paperclip.example.test/chat-identity/confirm?token=e2e-self` });
       return;
     }
     if (pathname === "/api/chat-identity-links/confirm" && method === "POST") {
       slackIdentityLinked = true;
-      await fulfill(route, { endpointId: endpoint.id, companyId: seed.companyId });
+      await fulfill(route, { endpointId: endpoint.id });
       return;
     }
 
@@ -723,7 +723,7 @@ export async function installChatControlPlaneMock(
     ) {
       state.linkIntentPrincipalId = `principal-${provider.provider}`;
       await fulfill(route, {
-        confirmationUrl: `https://paperclip.example.test/${seed.prefix}/chat-identity/confirm?token=e2e-redacted`,
+        confirmationUrl: `https://paperclip.example.test/chat-identity/confirm?token=e2e-redacted`,
       });
       return;
     }
@@ -746,7 +746,6 @@ export async function installChatControlPlaneMock(
         conversations: [
           {
             id: `conversation-${provider.provider}`,
-            companyId: seed.companyId,
             endpointId: endpoint.id,
             resourceId: resource.id,
             issueId: `issue-${provider.provider}`,

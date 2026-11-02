@@ -67,10 +67,10 @@ a raw secret-looking value is rejected by catalog validation.
 
 The manual Grok subscription profile uses `GROK_AUTH_JSON` as an explicit login
 fixture. It does not put this credential in agent configuration or substitute an
-API key. Setup seeds a new company-scoped Grok home inside the disposable instance
+API key. Setup seeds the organization Grok home inside the disposable instance
 with mode 0700 and an exclusive mode-0600 auth file. Setup rejects redirected,
 occupied, or nonisolated homes. Production runner discovery and refresh operate on
-that company login; teardown destroys it after the remote environment is removed.
+that login; teardown destroys it after the remote environment is removed.
 This fixture tests subscription execution, not the interactive browser login flow.
 
 ## Environments
@@ -79,7 +79,7 @@ An `EnvironmentFixture` declares driver/provider, credential requirements,
 attempt deadline, lifecycle behavior, expected execution target, and a payload
 factory validated by the shared environment schema.
 
-The local environment is instance-managed: company creation ensures it exists,
+The local environment is instance-managed: organization creation ensures it exists,
 and the public API intentionally rejects a second local environment. The setup
 registry therefore discovers that row through the public environments API.
 This still provides full isolation because every cell starts a new Paperclip
@@ -137,7 +137,7 @@ Native turns 1 and 2 include an actionable human review in the completion report
 
 Every selected case runs in its own isolated Paperclip process, and independent
 cases may run concurrently. Follow-up turns inside one case retain their shared
-task state. Each case creates and tears down its own company, secrets,
+task state. Each case creates and tears down its own organization, secrets,
 environment selection, agent, and browser-created task. The current plan case
 proves three runs on the same issue: publish a two-step Plan,
 request a three-step revision through the UI, and accept the exact new revision
@@ -162,8 +162,8 @@ explicit control title. The harness captures the exact browser creation response
 instead of searching by a title that the agent may already have changed. It
 never patches the title itself. Normal production instructions own the early
 naming behavior; fixture prompts and agent instruction bundles contain no naming
-hints. Existing company/secret/environment/agent registry dependencies are reused,
-with 500-cent company and agent budgets and normal instance teardown.
+hints. Existing organization/secret/environment/agent registry dependencies are reused,
+with 500-cent organization and agent budgets and normal instance teardown.
 
 Keep the call input, successful result, execution receipt, saved task, and
 agent/run-attributed audit correlated. Missing evidence must fail. The first-five
@@ -189,7 +189,7 @@ test-only runner endpoints are prohibited.
 The expected dependency shape is:
 
 ```text
-company
+organization
 └── encrypted secrets
     └── environment
         └── agent
@@ -220,7 +220,7 @@ manual or scheduled campaign, not a PR requirement.
 production composer, plan revision/approval controls, questions, reset command,
 and project cards. Keep its 28 local cells intentional. `expectedRunCount`
 counts provider turns, including cancelled and handed-off task runs, but excludes
-synthetic `/new` runs. Assertions must inspect all company runs because ordinary
+synthetic `/new` runs. Assertions must inspect all instance runs because ordinary
 issue lists exclude the source conversation. `assertChatHandoff` rejects missing
 projects/plans, chat children, wrong assignees, and execution before plan commit.
 
@@ -228,7 +228,7 @@ Retained `api-state.json`, `chat-handoff.json`, and plan-revision evidence
 include persisted comments, session generations, run context and logs, project
 workspaces, task documents, and ordering. They pass through the normal sanitizer.
 Screenshots are allowlisted to the exact disposable agent chat. Cleanup cancels
-all active runs in the isolated company, including handed-off work; usage from
+all active runs in the isolated instance, including handed-off work; usage from
 failed and cancelled runs must not disappear from campaign totals.
 
 
@@ -308,7 +308,7 @@ is explicit-only. No private control-plane hooks or direct database writes are u
 `blocker-cases.ts`, `blocker-fixtures.ts`, `blocker-flow.ts`, and
 `blocker-scoring.ts` define the explicit local legacy `blocker-guidance` suite.
 Its fixture registry creates a manager through the public API and assigns the
-production operational skill to worker and manager. Company-wide evidence and
+production operational skill to worker and manager. Instance-wide evidence and
 cleanup include unexpected manager runs. The grader checks saved human input,
 requester identity for scope questions, ownership history, no additional work or
 hires, and the browser-answer continuation. See [Direct blocker guidance](README.md#direct-blocker-guidance)
@@ -317,7 +317,7 @@ for coverage boundaries and run commands.
 
 ## Source-derived hiring template fixture
 
-The explicit `hiring-templates` suite reuses the public company/agent, personal
+The explicit `hiring-templates` suite reuses the public organization/agent, personal
 managed account and browser chat fixtures. `hiringTemplateProfile` removes the
 custom instruction bundle from the ordinary profile; the real agent creation
 route selects the evaluated revision's CEO bundle. Keep its two local native
@@ -326,7 +326,7 @@ profiles, five expected runs and 15-minute deadline stable for paired runs.
 enables only the existing API-tool path. It adds no private fixture endpoint,
 provider fake or database write.
 
-`hiring-template-flow.ts` reads the production instructions and company skill
+`hiring-template-flow.ts` reads the production instructions and skill
 files through public APIs before dispatch and verifies their hashes against the
 checkout. The public run-events API supplies paginated read evidence after
 execution. `hiring-template-scoring.ts` grades deterministic child documents,

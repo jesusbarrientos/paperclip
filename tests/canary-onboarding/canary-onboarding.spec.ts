@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
 const expectedVersion = process.env.PAPERCLIPAI_VERSION!;
-const companyName = `Canary Smoke ${Date.now()}`;
+const organizationName = `Canary Smoke ${Date.now()}`;
 const agentName = "Canary Smoke Lead";
 
 async function getJson<T>(request: APIRequestContext, url: string): Promise<T> {
@@ -18,7 +18,7 @@ test("the exact published canary installs and reaches Connect a model", async ({
 
   // Browser storage is scoped to the Paperclip origin, not to a data directory.
   // A customer can therefore start a freshly installed server with an existing
-  // onboarding draft. Creating the organization invalidates the company list;
+  // onboarding draft. Creating the organization invalidates the organization query;
   // this release check must prove that a refetch does not remount the wizard
   // from that old draft and leave the customer on the name screen.
   await page.addInitScript(() => {
@@ -28,9 +28,9 @@ test("the exact published canary installs and reaches Connect a model", async ({
       createdCompanyId: null,
     }));
   });
-  let delayCompanyListRefetch = false;
-  await page.route("**/api/companies", async (route) => {
-    if (delayCompanyListRefetch && route.request().method() === "GET") {
+  let delayOrganizationRefetch = false;
+  await page.route("**/api/organization", async (route) => {
+    if (delayOrganizationRefetch && route.request().method() === "GET") {
       // Make the invalidation window observable. The previous implementation
       // unmounted the live wizard for this entire request.
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -51,30 +51,29 @@ test("the exact published canary installs and reaches Connect a model", async ({
   await expect(
     page.getByRole("heading", { name: "What is the name of your organization?" }),
   ).toBeVisible();
-  await page.getByRole("textbox").fill(companyName);
-  delayCompanyListRefetch = true;
+  await page.getByRole("textbox").fill(organizationName);
+  delayOrganizationRefetch = true;
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   const agentNameField = page.locator("#onboarding-agent-name");
   await expect(agentNameField).toBeVisible({ timeout: 30_000 });
 
-  const companies = await getJson<Array<{ id: string; name: string }>>(
+  const organization = await getJson<{ id: string; name: string }>(
     page.request,
-    "/api/companies",
+    "/api/organization",
   );
-  const company = companies.find((candidate) => candidate.name === companyName);
-  expect(company, `organization ${companyName} should exist through the API`).toBeTruthy();
+  expect(organization.name).toBe(organizationName);
 
   expect(
     await getJson<Array<{ id: string }>>(
       page.request,
-      `/api/companies/${company!.id}/agents`,
+      "/api/agents",
     ),
   ).toEqual([]);
   expect(
     await getJson<Array<{ id: string }>>(
       page.request,
-      `/api/companies/${company!.id}/issues`,
+      "/api/issues",
     ),
   ).toEqual([]);
 
@@ -88,13 +87,13 @@ test("the exact published canary installs and reaches Connect a model", async ({
   expect(
     await getJson<Array<{ id: string }>>(
       page.request,
-      `/api/companies/${company!.id}/agents`,
+      "/api/agents",
     ),
   ).toEqual([]);
   expect(
     await getJson<Array<{ id: string }>>(
       page.request,
-      `/api/companies/${company!.id}/issues`,
+      "/api/issues",
     ),
   ).toEqual([]);
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);

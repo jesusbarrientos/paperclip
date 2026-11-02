@@ -77,7 +77,7 @@ export const publicMcpCapabilities: Capability[] = [
     name: "paperclip_connection", description: "Identify the connected person, organization and permissions. This connection acts as the person; assigning a task never impersonates its agent.",
     schema: z.object({}).strict(),
     run: async (p, _a, _api, origin) => ({
-      user: { id: p.actor.userId, name: p.actor.userName }, company: p.company,
+      user: { id: p.actor.userId, name: p.actor.userName }, organization: p.company,
       scopes: p.grant.scopes, connectionId: p.grant.id, manageUrl: origin + "/assistant-connections",
       execution: "Tasks run through Paperclip scheduling, budgets and approvals. The assistant subscription does not provide agent execution capacity.",
     }),
@@ -111,7 +111,7 @@ export const publicMcpCapabilities: Capability[] = [
       const issue = await api(p, "GET", base);
       const comments = await api(p, "GET", base + "/comments?limit=30");
       const activity = await api(p, "GET", base + "/activity?limit=30");
-      return { task: pick(issue, taskFields), url: origin + "/" + pathId(p.company.issuePrefix) + "/issues/" + pathId(object(issue).identifier ?? a.taskId),
+      return { task: pick(issue, taskFields), url: origin + "/issues/" + pathId(object(issue).identifier ?? a.taskId),
         comments: rows(comments).map((v) => pick(v, commentFields)),
         history: rows(activity).slice(0, 30).map((v) => pick(v, ["id", "action", "actorType", "actorId", "createdAt"])) };
     },
@@ -126,7 +126,7 @@ export const publicMcpCapabilities: Capability[] = [
         ...(a.projectId ? { projectId: a.projectId } : {}), status: "todo",
         idempotencyKey: `mcp:${hashMcpSecret(p.grant.userId)}:${a.requestId}`,
       });
-      return { task: pick(result, taskFields), url: origin + "/" + pathId(p.company.issuePrefix) + "/issues/" + pathId(object(result).identifier ?? object(result).id),
+      return { task: pick(result, taskFields), url: origin + "/issues/" + pathId(object(result).identifier ?? object(result).id),
         scheduling: "Submitted to normal Paperclip scheduling. Creation does not guarantee execution has started." };
     },
   },
@@ -142,7 +142,7 @@ export const publicMcpCapabilities: Capability[] = [
     run: async (p, a, api, origin) => ({
       documents: rows(await api(p, "GET", `/issues/${pathId(a.taskId)}/documents`)).map((v) => pick(v, documentFields)),
       deliverables: rows(await api(p, "GET", `/issues/${pathId(a.taskId)}/work-products`)).map((v) => pick(v, ["id", "type", "title", "url", "status", "summary", "updatedAt"])),
-      taskUrl: origin + "/" + pathId(p.company.issuePrefix) + "/issues/" + pathId(a.taskId),
+      taskUrl: origin + "/issues/" + pathId(a.taskId),
     }),
   },
   {
@@ -155,7 +155,7 @@ export const publicMcpCapabilities: Capability[] = [
     schema: z.object({}).strict(),
     run: async (p, a, api, origin) => ({ approvals: rows(await api(p, "GET", `/approvals?status=pending`)).map((v) => ({
       ...pick(v, ["id", "type", "status", "requestedByAgentId", "requestedByUserId", "createdAt"]),
-      url: origin + "/" + pathId(p.company.issuePrefix) + "/approvals/" + pathId(object(v).id),
+      url: origin + "/approvals/" + pathId(object(v).id),
     })) }),
   },
 ];
